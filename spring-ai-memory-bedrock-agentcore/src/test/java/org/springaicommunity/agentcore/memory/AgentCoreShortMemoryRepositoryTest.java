@@ -75,6 +75,11 @@ public class AgentCoreShortMemoryRepositoryTest {
 
 	@Test
 	public void testChatMemory() {
+		// Use explicit totalEventsLimit=10 to test multi-event scenario
+		// (default is now 1 to prevent message multiplication)
+		var memoryRepositoryWithLimit = new AgentCoreShortMemoryRepository("testMemoryId", client, 10,
+				"default-session", 100, false);
+
 		CreateEventResponse response = CreateEventResponse.builder().event(buildTestEvent()).build();
 		when(client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
 
@@ -84,7 +89,7 @@ public class AgentCoreShortMemoryRepositoryTest {
 		when(client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
 
 		var chatMemory = MessageWindowChatMemory.builder()
-			.chatMemoryRepository(memoryRepository)
+			.chatMemoryRepository(memoryRepositoryWithLimit)
 			.maxMessages(10)
 			.build();
 
@@ -181,8 +186,7 @@ public class AgentCoreShortMemoryRepositoryTest {
 	}
 
 	@ParameterizedTest
-	@CsvSource({ ", 100", // null limit -> PAGE_SIZE
-			"200, 100", // limit > PAGE_SIZE -> PAGE_SIZE
+	@CsvSource({ "200, 100", // limit > PAGE_SIZE -> PAGE_SIZE
 			"50, 50", // limit < PAGE_SIZE -> limit
 			"100, 100", // limit = PAGE_SIZE -> PAGE_SIZE
 			"1, 1" // very small limit -> limit
@@ -307,6 +311,50 @@ public class AgentCoreShortMemoryRepositoryTest {
 		assertThat(org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
 				() -> memoryRepository.saveAll("testActorId:testSessionId", messages)))
 			.hasMessageContaining("Unsupported message type: SystemMessage");
+	}
+
+	@Test
+	void shouldDefaultToOneWhenTotalEventsLimitIsNull() {
+		// Given: repository with null totalEventsLimit
+		// Default should be 1 because each event contains the full conversation window.
+		// Loading multiple events causes message multiplication since each event
+		// contains all messages from that turn (Event1=[msg1,msg2],
+		// Event2=[msg1,msg2,msg3,msg4]).
+		var memoryRepository = new AgentCoreShortMemoryRepository("testMemoryId", client, null, "default-session", 10,
+				false);
+
+		// Create event with multiple messages (simulating a conversation window)
+		var event = Event.builder()
+			.payload(
+					PayloadType.builder()
+						.conversational(Conversational.builder()
+							.role(Role.USER)
+							.content(Content.builder().text("message 1").build())
+							.build())
+						.build(),
+					PayloadType.builder()
+						.conversational(Conversational.builder()
+							.role(Role.ASSISTANT)
+							.content(Content.builder().text("response 1").build())
+							.build())
+						.build())
+			.build();
+
+		ListEventsResponse response = ListEventsResponse.builder()
+			.events(List.of(event))
+			.nextToken("more-events-available") // More events exist but should not be
+												// fetched
+			.build();
+		when(client.listEvents(any(ListEventsRequest.class))).thenReturn(response);
+
+		// When: fetching messages
+		List<Message> messages = memoryRepository.findByConversationId("testActorId:testSessionId");
+
+		// Then: should return messages from only 1 event (the default limit)
+		assertThat(messages).hasSize(2);
+
+		// Verify only one API call was made (no pagination due to limit=1)
+		verify(client, times(1)).listEvents(any(ListEventsRequest.class));
 	}
 
 }

@@ -88,7 +88,15 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 	private List<Event> fetchAllEvents(ActorAndSession actorAndSession) {
 		var allEvents = new java.util.ArrayList<Event>();
 		var nextToken = (String) null;
-		int requestPageSize = totalEventsLimit != null ? Math.min(pageSize, totalEventsLimit) : pageSize;
+
+		// Default to 1 when totalEventsLimit is null.
+		// Each event contains the full conversation window (all messages from that turn),
+		// so fetching multiple events causes message multiplication:
+		// Event1=[msg1,msg2], Event2=[msg1,msg2,msg3,msg4] → loading both = 6 messages
+		// instead of 4.
+		// The most recent event always contains the complete windowed history.
+		int effectiveLimit = totalEventsLimit != null ? totalEventsLimit : 1;
+		int requestPageSize = Math.min(pageSize, effectiveLimit);
 
 		try {
 			do {
@@ -107,8 +115,9 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 				allEvents.addAll(listEventsResponse.events());
 				nextToken = listEventsResponse.nextToken();
 
-				if (totalEventsLimit != null && allEvents.size() >= totalEventsLimit) {
-					return allEvents.size() <= totalEventsLimit ? allEvents : allEvents.subList(0, totalEventsLimit);
+				// Always apply limit check (effectiveLimit is never null)
+				if (allEvents.size() >= effectiveLimit) {
+					return allEvents.size() <= effectiveLimit ? allEvents : allEvents.subList(0, effectiveLimit);
 				}
 			}
 			while (nextToken != null);
