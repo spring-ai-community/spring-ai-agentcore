@@ -14,9 +14,42 @@ A Spring Boot starter that provides seamless integration between Spring AI and A
 
 ## Memory Types
 
-**Current Implementation**: This starter currently implements **short-term memory** functionality using AWS Bedrock AgentCore Memory.
+This starter implements both **short-term** and **long-term** memory using AWS Bedrock AgentCore Memory.
 
-**Future Roadmap**: Long-term memory implementations are planned for future releases, including episodic, semantic, procedural, and other memory subtypes.
+### Short-Term Memory
+- Implements `ChatMemoryRepository` interface for conversation history
+- Works with `MessageWindowChatMemory` for sliding window conversations
+
+### Long-Term Memory
+- **Semantic Facts**: Semantic search for user facts (e.g., "User likes coffee")
+- **User Preferences**: List all stored preferences (e.g., "Dark mode enabled")
+- **Summaries**: Search conversation summaries by session
+- **Episodic**: Search past interactions and reflections
+
+### Advisor Execution Order
+
+LTM advisors run **before** STM advisor (lower order = earlier execution):
+
+| Order | Advisor | Target | Purpose |
+|-------|---------|--------|---------|
+| 100 | Semantic Facts | System prompt | Add relevant facts |
+| 101 | User Preferences | System prompt | Add preferences |
+| 102 | Summaries | User prompt | Augment query with context |
+| 103 | Episodic | System prompt | Add past interactions |
+| 1000+ | STM (MessageChatMemoryAdvisor) | Messages | Add conversation history |
+
+**Why LTM before STM?** LTM enriches the prompt with persistent knowledge (facts, preferences) before STM adds recent conversation history. This ensures the model has full context: who the user is (LTM) + what was just discussed (STM).
+
+### System Prompt vs User Prompt
+
+| Memory Type | Target | Reason |
+|-------------|--------|--------|
+| Semantic Facts | System | Stable context about user, cacheable |
+| User Preferences | System | Stable settings, cacheable |
+| Episodic | System | Background context, cacheable |
+| Summaries | User | Query-specific augmentation, varies per request |
+
+**Prompt Caching Benefits**: Facts, preferences, and episodic memories go to the system prompt because they're relatively stable across requests. With Bedrock's prompt caching (`cache-options.strategy: SYSTEM_AND_TOOLS`), the system prompt is cached and reused, reducing latency and cost. Only summaries augment the user prompt since they're query-specific.
 
 ## Quick Start
 
@@ -43,10 +76,10 @@ agentcore:
 ```java
 @Service
 public class ChatService {
-    
+
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
-    
+
     public ChatService(ChatClient.Builder chatClientBuilder, ChatMemoryRepository memoryRepository) {
         this.chatClient = chatClientBuilder.build();
         this.chatMemory = MessageWindowChatMemory.builder()
@@ -54,7 +87,7 @@ public class ChatService {
             .maxMessages(10)
             .build();
     }
-    
+
     public String chat(String conversationId, String message) {
         return chatClient.prompt()
             .user(message)
@@ -93,6 +126,55 @@ agentcore:
 logging:
   level:
     org.springaicommunity.agentcore.memory: DEBUG
+```
+
+### Long-Term Memory Configuration
+
+Configure LTM strategies by providing strategy IDs from your AgentCore Memory setup:
+
+```yaml
+agentcore:
+  memory:
+    memory-id: ${AGENTCORE_MEMORY_ID}
+
+    # Long-term memory strategies
+    long-term:
+      semantic-facts:
+        strategy-id: ${SEMANTIC_STRATEGY_ID}  # Semantic memory strategy
+        top-k: 3                               # Number of facts to retrieve
+      user-preferences:
+        strategy-id: ${PREFERENCE_STRATEGY_ID} # User preference strategy
+      summary:
+        strategy-id: ${SUMMARY_STRATEGY_ID}    # Summary strategy
+        top-k: 3
+      episodic:
+        strategy-id: ${EPISODIC_STRATEGY_ID}   # Episodic memory strategy
+        episodes-top-k: 3                       # Number of episodes
+        reflections-top-k: 2                    # Number of reflections
+```
+
+Each strategy is optional - only configure the ones you need. Advisors are auto-created for configured strategies.
+
+### Using Long-Term Memory
+
+LTM advisors require user ID (and optionally session ID) to be passed via advisor params:
+
+```java
+@Service
+public class ChatService {
+
+    private final ChatClient chatClient;
+
+    public Flux<String> chat(String userId, String sessionId, String message) {
+        return chatClient.prompt()
+            .user(message)
+            .advisors(a -> a
+                .param(AgentCoreLongMemoryAdvisor.USER_ID_PARAM, userId)
+                .param(AgentCoreLongMemoryAdvisor.SESSION_ID_PARAM, sessionId))  // Required for summaries
+            .stream()
+            .content();
+    }
+}
 ```
 
 ## Conversation ID Format
@@ -173,16 +255,16 @@ try {
 
 ```java
 public interface ChatMemoryRepository {
-    
+
     // Retrieve conversation history
     List<Message> findByConversationId(String conversationId);
-    
+
     // Save messages to conversation
     void saveAll(String conversationId, List<Message> messages);
-    
+
     // Delete entire conversation
     void deleteByConversationId(String conversationId);
-    
+
     // Not supported - throws UnsupportedOperationException
     List<String> findConversationIds();
 }
@@ -205,7 +287,7 @@ public interface ChatMemoryRepository {
 ```java
 @Configuration
 public class ChatConfig {
-    
+
     @Bean
     public ChatMemory chatMemory(ChatMemoryRepository memoryRepository) {
         return MessageWindowChatMemory.builder()
@@ -221,9 +303,9 @@ public class ChatConfig {
 ```java
 @Service
 public class ConversationService {
-    
+
     private final ChatMemoryRepository memoryRepository;
-    
+
     public void archiveOldConversations() {
         // Custom logic to manage conversation lifecycle
         List<Message> messages = memoryRepository.findByConversationId("user123");
@@ -251,7 +333,7 @@ agentcore:
   memory:
     page-size: 50              # Smaller pages for better memory usage
     total-events-limit: 200    # Limit conversation history
-    
+
 # For comprehensive history
 agentcore:
   memory:
