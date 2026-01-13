@@ -1,6 +1,7 @@
 package org.springaicommunity.agentcore.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -45,19 +46,16 @@ class AgentCoreLongMemoryAdvisorTest {
 	}
 
 	@Test
-	void shouldSkipEnrichmentWhenNoUserId() {
+	void shouldThrowExceptionWhenNoUserId() {
 		// Given
 		var request = ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new UserMessage("Hello"))))
 			.context(Map.of())
 			.build();
 
-		// When
-		semanticAdvisor.adviseCall(request, chain);
-
-		// Then
-		verify(repository, never()).searchMemories(anyString(), anyString(), anyString(), anyInt());
-		verify(repository, never()).listMemories(anyString(), anyString());
+		// When/Then
+		assertThatThrownBy(() -> semanticAdvisor.adviseCall(request, chain)).isInstanceOf(IllegalStateException.class)
+			.hasMessageContaining(AgentCoreLongMemoryAdvisor.USER_ID_PARAM);
 	}
 
 	@Test
