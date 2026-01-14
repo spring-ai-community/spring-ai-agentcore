@@ -525,4 +525,48 @@ public class AgentCoreShortMemoryRepositoryTest {
 		assertThat(payloads.get(2).conversational().content().text()).isEqualTo("new 3");
 	}
 
+	@Test
+	void shouldReverseEventsToChronologicalOrder() {
+		// Given: AgentCore returns events in descending order (newest first)
+		ListEventsResponse listEventsResponse = ListEventsResponse.builder()
+			.events(Event.builder()
+				.eventId("event-3")
+				.payload(PayloadType.builder()
+					.conversational(Conversational.builder()
+						.role(Role.USER)
+						.content(Content.builder().text("third message").build())
+						.build())
+					.build())
+				.build(),
+					Event.builder()
+						.eventId("event-2")
+						.payload(PayloadType.builder()
+							.conversational(Conversational.builder()
+								.role(Role.USER)
+								.content(Content.builder().text("second message").build())
+								.build())
+							.build())
+						.build(),
+					Event.builder()
+						.eventId("event-1")
+						.payload(PayloadType.builder()
+							.conversational(Conversational.builder()
+								.role(Role.USER)
+								.content(Content.builder().text("first message").build())
+								.build())
+							.build())
+						.build())
+			.build();
+		when(client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+
+		// When
+		List<Message> messages = memoryRepository.findByConversationId("testActorId:testSessionId");
+
+		// Then: Messages should be in chronological order (oldest first)
+		assertThat(messages).hasSize(3);
+		assertThat(messages.get(0).getText()).isEqualTo("first message");
+		assertThat(messages.get(1).getText()).isEqualTo("second message");
+		assertThat(messages.get(2).getText()).isEqualTo("third message");
+	}
+
 }
