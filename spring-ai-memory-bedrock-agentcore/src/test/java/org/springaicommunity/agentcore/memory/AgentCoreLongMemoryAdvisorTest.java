@@ -25,6 +25,11 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 
+/**
+ * Unit tests for {@link AgentCoreLongMemoryAdvisor}.
+ *
+ * @author Yuriy Bezsonov
+ */
 @ExtendWith(MockitoExtension.class)
 class AgentCoreLongMemoryAdvisorTest {
 

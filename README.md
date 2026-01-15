@@ -28,7 +28,7 @@ A Spring Boot starter that enables existing Spring Boot applications to conform 
 ```java
 @Service
 public class MyAgentService {
-    
+
     @AgentCoreInvocation
     public String handleUserPrompt(MyRequest request) {
         return "You said: " + request.prompt;
@@ -132,11 +132,11 @@ The starter includes `AgentCoreTaskTracker` to communicate this state to the run
 @AgentCoreInvocation
 public String asyncTaskHandling(MyRequest request, AgentCoreContext context) {
     agentCoreTaskTracker.increment();  // Tell runtime: "I'm starting background work"
-    
+
     CompletableFuture.runAsync(() -> {
         // Long-running background work
     }).thenRun(agentCoreTaskTracker::decrement);  // Tell runtime: "Background work completed"
-    
+
     return "Task started";
 }
 ```
@@ -202,7 +202,7 @@ Rate limits are applied per client IP address and reset every minute.
 **Response (503) - When Actuator detects issues:**
 ```json
 {
-  "status": "Unhealthy", 
+  "status": "Unhealthy",
   "time_of_last_update": 1697123456
 }
 ```
@@ -218,7 +218,7 @@ Implement `AgentCoreInvocationsHandler` to provide custom `/invocations` endpoin
 ```java
 @RestController
 public class CustomInvocationsController implements AgentCoreInvocationsHandler {
-    
+
     @PostMapping("/invocations")
     public ResponseEntity<?> handleInvocations(@RequestBody String request) {
         // Custom invocation logic
@@ -234,7 +234,7 @@ Implement `AgentCorePingHandler` to provide custom `/ping` endpoint handling:
 ```java
 @RestController
 public class CustomPingController implements AgentCorePingHandler {
-    
+
     @GetMapping("/ping")
     public ResponseEntity<?> ping() {
         // Custom health check logic
@@ -261,6 +261,112 @@ See the `examples/` directory for complete working examples:
 - Java 17+
 - Spring Boot 3.x
 - Maven or Gradle
+
+## AgentCore Memory
+
+The `spring-ai-memory-bedrock-agentcore` module provides Spring AI ChatMemory integration with AWS Bedrock AgentCore Memory service, supporting both Short-Term Memory (STM) and Long-Term Memory (LTM) with 4 consolidation strategies.
+
+### Add Dependency
+
+```xml
+<dependency>
+    <groupId>org.springaicommunity</groupId>
+    <artifactId>spring-ai-memory-bedrock-agentcore</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+### Configuration (application.properties)
+
+```properties
+# STM Configuration
+agentcore.memory.memory-id=your_memory_id
+agentcore.memory.total-events-limit=100
+
+# LTM Strategies
+agentcore.memory.long-term.semantic-facts.strategy-id=SemanticFacts-xxxxx
+agentcore.memory.long-term.user-preferences.strategy-id=UserPreferences-xxxxx
+agentcore.memory.long-term.summary.strategy-id=ConversationSummary-xxxxx
+agentcore.memory.long-term.episodic.strategy-id=EpisodicMemory-xxxxx
+
+# Bedrock Model
+spring.ai.bedrock.converse.chat.options.model=global.amazon.nova-2-lite-v1:0
+```
+
+### Usage Example
+
+```java
+@Service
+public class ChatService {
+
+    private final ChatClient chatClient;
+
+    public ChatService(ChatClient.Builder builder,
+                       ChatMemoryRepository memoryRepository,
+                       @Autowired(required = false) List<AgentCoreLongMemoryAdvisor> ltmAdvisors,
+                       @Value("${agentcore.memory.memory-id:}") String memoryId) {
+
+        List<Advisor> advisors = new ArrayList<>();
+
+        // STM - only if memory ID configured
+        if (!memoryId.isEmpty()) {
+            ChatMemory chatMemory = MessageWindowChatMemory.builder()
+                    .chatMemoryRepository(memoryRepository)
+                    .maxMessages(Integer.MAX_VALUE)  // Actual limit: agentcore.memory.total-events-limit
+                    .build();
+            advisors.add(MessageChatMemoryAdvisor.builder(chatMemory).build());
+        }
+
+        // LTM - auto-collects all configured strategy advisors
+        if (ltmAdvisors != null && !ltmAdvisors.isEmpty()) {
+            advisors.addAll(ltmAdvisors);
+        }
+
+        this.chatClient = builder
+                .defaultAdvisors(advisors.toArray(new Advisor[0]))
+                .build();
+    }
+
+    public Flux<String> chat(String userId, String sessionId, String message) {
+        return chatClient.prompt()
+                .user(message)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, userId + ":" + sessionId)
+                               .param(AgentCoreLongMemoryAdvisor.USER_ID_PARAM, userId)
+                               .param(AgentCoreLongMemoryAdvisor.SESSION_ID_PARAM, sessionId))
+                .stream()
+                .content();
+    }
+}
+```
+
+### Running Integration Tests
+
+Unit tests run with `mvn test`. Integration tests require `mvn verify` and AWS credentials.
+
+**Full test suite** (unit tests + E2E integration tests):
+```bash
+AGENTCORE_IT=true mvn clean verify -pl spring-ai-memory-bedrock-agentcore
+```
+
+**E2E Test only** (creates ephemeral memory, runs tests, cleans up):
+```bash
+AGENTCORE_IT=true mvn verify -pl spring-ai-memory-bedrock-agentcore -Dit.test=AgentCoreMemoryE2EIT
+```
+
+**Env Test** (uses pre-existing memory from environment variables):
+```bash
+AGENTCORE_MEMORY_MEMORY_ID=your_memory_id \
+AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_FACTS_STRATEGY_ID=SemanticFacts-xxxxx \
+AGENTCORE_MEMORY_LONG_TERM_USER_PREFERENCES_STRATEGY_ID=UserPreferences-xxxxx \
+AGENTCORE_MEMORY_LONG_TERM_SUMMARY_STRATEGY_ID=ConversationSummary-xxxxx \
+AGENTCORE_MEMORY_LONG_TERM_EPISODIC_STRATEGY_ID=EpisodicMemory-xxxxx \
+mvn verify -pl spring-ai-memory-bedrock-agentcore -Dit.test=AgentCoreMemoryEnvIT
+```
+
+Or use the helper script:
+```bash
+./scripts/it-memory.sh [app_prefix]
+```
 
 ## License
 

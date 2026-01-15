@@ -23,6 +23,11 @@ import software.amazon.awssdk.services.bedrockagentcore.model.MemoryRecordSummar
 import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryRecordsRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryRecordsResponse;
 
+/**
+ * Unit tests for {@link AgentCoreLongMemoryRepository}.
+ *
+ * @author Yuriy Bezsonov
+ */
 @ExtendWith(MockitoExtension.class)
 class AgentCoreLongMemoryRepositoryTest {
 
