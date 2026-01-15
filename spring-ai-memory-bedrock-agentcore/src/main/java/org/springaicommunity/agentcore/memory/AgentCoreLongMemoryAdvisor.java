@@ -13,6 +13,7 @@ import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisor;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -24,10 +25,15 @@ import reactor.core.publisher.Flux;
  * Unified advisor for all long-term memory strategies. Supports 4 modes:
  * <ul>
  * <li>SEMANTIC: Semantic search for facts -> system message</li>
- * <li>LIST: List all memories for preferences -> system message</li>
+ * <li>USER_PREFERENCE: List all user preferences -> system message</li>
  * <li>EPISODIC: Search episodes + reflections -> system message</li>
  * <li>SUMMARY: Search summaries -> user message (augments query)</li>
  * </ul>
+ *
+ * <p>
+ * Uses the same {@code conversationId} format as STM: {@code userId} or
+ * {@code userId:sessionId}. This allows a single param for both STM and LTM.
+ * </p>
  *
  * @author Yuriy Bezsonov
  */
@@ -35,9 +41,7 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongMemoryAdvisor.class);
 
-	public static final String USER_ID_PARAM = "longTermMemoryUserId";
-
-	public static final String SESSION_ID_PARAM = "longTermMemorySessionId";
+	private static final String DEFAULT_SESSION = "default";
 
 	private final AgentCoreLongMemoryRepository repository;
 
@@ -55,12 +59,12 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
 	public enum Mode {
 
-		SEMANTIC, LIST, EPISODIC, SUMMARY
+		SEMANTIC, USER_PREFERENCE, EPISODIC, SUMMARY
 
 	}
 
 	/**
-	 * Constructor for LIST mode (no topK needed).
+	 * Constructor for USER_PREFERENCE mode (lists all preferences, no topK/search).
 	 */
 	public AgentCoreLongMemoryAdvisor(AgentCoreLongMemoryRepository repository, String strategyId, String contextLabel,
 			Mode mode, int order) {
@@ -68,7 +72,7 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 	}
 
 	/**
-	 * Constructor for SEMANTIC, LIST, SUMMARY modes.
+	 * Constructor for SEMANTIC, USER_PREFERENCE, SUMMARY modes.
 	 */
 	public AgentCoreLongMemoryAdvisor(AgentCoreLongMemoryRepository repository, String strategyId, String contextLabel,
 			Mode mode, int order, int topK) {
@@ -101,18 +105,11 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 	}
 
 	private ChatClientRequest enrichRequest(ChatClientRequest request) {
-		String userId = extractParam(request, USER_ID_PARAM);
-		if (userId == null || userId.isEmpty()) {
-			throw new IllegalStateException("LTM advisor requires '" + USER_ID_PARAM + "' parameter. "
-					+ "Add .param(AgentCoreLongMemoryAdvisor.USER_ID_PARAM, userId) to your ChatClient call.");
-		}
+		ActorAndSession parsed = parseConversationId(request);
+		String userId = parsed.actor();
+		String sessionId = parsed.session();
 
 		if (this.mode == Mode.SUMMARY) {
-			String sessionId = extractParam(request, SESSION_ID_PARAM);
-			if (sessionId == null || sessionId.isEmpty()) {
-				throw new IllegalStateException("SUMMARY mode requires '" + SESSION_ID_PARAM + "' parameter. "
-						+ "Add .param(AgentCoreLongMemoryAdvisor.SESSION_ID_PARAM, sessionId) to your ChatClient call.");
-			}
 			return enrichWithSummary(request, userId, sessionId);
 		}
 
@@ -129,6 +126,27 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 		String context = formatContext(memories);
 		logger.info("Enriched system prompt with {} {} for user: {}", memories.size(), this.contextLabel, userId);
 		return addToSystemMessage(request, context);
+	}
+
+	/**
+	 * Parse conversationId into actor and session.
+	 */
+	private ActorAndSession parseConversationId(ChatClientRequest request) {
+		String conversationId = extractParam(request, ChatMemory.CONVERSATION_ID);
+		if (conversationId == null || conversationId.isEmpty()) {
+			throw new IllegalStateException("LTM advisor requires '" + ChatMemory.CONVERSATION_ID
+					+ "' parameter (format: 'userId' or 'userId:sessionId'). "
+					+ "Add .param(ChatMemory.CONVERSATION_ID, conversationId) to your ChatClient call.");
+		}
+
+		if (conversationId.contains(":")) {
+			String[] parts = conversationId.split(":", 2);
+			return new ActorAndSession(parts[0], parts[1]);
+		}
+		return new ActorAndSession(conversationId, DEFAULT_SESSION);
+	}
+
+	record ActorAndSession(String actor, String session) {
 	}
 
 	private ChatClientRequest enrichWithEpisodic(ChatClientRequest request, String userId) {

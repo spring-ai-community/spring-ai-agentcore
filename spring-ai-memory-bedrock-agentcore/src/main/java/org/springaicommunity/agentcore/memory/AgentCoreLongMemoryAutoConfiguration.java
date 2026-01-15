@@ -3,6 +3,7 @@ package org.springaicommunity.agentcore.memory;
 import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryAdvisor.Mode;
 import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryConfiguration.EpisodicConfig;
 import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryConfiguration.StrategyConfig;
+import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryConfiguration.UserPreferenceConfig;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -24,29 +25,29 @@ public class AgentCoreLongMemoryAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	@ConditionalOnProperty(name = "agentcore.memory.long-term.semantic-facts.strategy-id")
+	@ConditionalOnProperty(name = "agentcore.memory.long-term.semantic.strategy-id")
 	AgentCoreLongMemoryRepository agentCoreLongMemoryRepository(BedrockAgentCoreClient client,
 			AgentCoreShortMemoryRepositoryConfiguration shortMemoryConfig) {
 		return new AgentCoreLongMemoryRepository(client, shortMemoryConfig.memoryId());
 	}
 
 	@Bean
-	@ConditionalOnProperty(name = "agentcore.memory.long-term.semantic-facts.strategy-id")
-	AgentCoreLongMemoryAdvisor semanticFactsAdvisor(AgentCoreLongMemoryRepository repository,
+	@ConditionalOnProperty(name = "agentcore.memory.long-term.semantic.strategy-id")
+	AgentCoreLongMemoryAdvisor semanticAdvisor(AgentCoreLongMemoryRepository repository,
 			AgentCoreLongMemoryConfiguration config) {
-		StrategyConfig strategyConfig = config.semanticFacts();
+		StrategyConfig strategyConfig = config.semantic();
 		return new AgentCoreLongMemoryAdvisor(repository, strategyConfig.strategyId(),
 				"Known facts about the user (use naturally in conversation)", Mode.SEMANTIC, 100,
 				strategyConfig.topK());
 	}
 
 	@Bean
-	@ConditionalOnProperty(name = "agentcore.memory.long-term.user-preferences.strategy-id")
-	AgentCoreLongMemoryAdvisor userPreferencesAdvisor(AgentCoreLongMemoryRepository repository,
+	@ConditionalOnProperty(name = "agentcore.memory.long-term.user-preference.strategy-id")
+	AgentCoreLongMemoryAdvisor userPreferenceAdvisor(AgentCoreLongMemoryRepository repository,
 			AgentCoreLongMemoryConfiguration config) {
-		StrategyConfig strategyConfig = config.userPreferences();
-		return new AgentCoreLongMemoryAdvisor(repository, strategyConfig.strategyId(),
-				"User preferences (apply when relevant)", Mode.LIST, 101, strategyConfig.topK());
+		UserPreferenceConfig prefConfig = config.userPreference();
+		return new AgentCoreLongMemoryAdvisor(repository, prefConfig.strategyId(),
+				"User preferences (apply when relevant)", Mode.USER_PREFERENCE, 101);
 	}
 
 	@Bean

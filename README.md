@@ -272,29 +272,79 @@ The `spring-ai-memory-bedrock-agentcore` module provides Spring AI ChatMemory in
 <dependency>
     <groupId>org.springaicommunity</groupId>
     <artifactId>spring-ai-memory-bedrock-agentcore</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0-RC2</version>
 </dependency>
 ```
 
-### Configuration (application.properties)
+### Short-Term Memory (STM)
 
-```properties
-# STM Configuration
-agentcore.memory.memory-id=your_memory_id
-agentcore.memory.total-events-limit=100
+STM stores recent conversation history using Spring AI's `ChatMemoryRepository` interface.
 
-# LTM Strategies
-agentcore.memory.long-term.semantic-facts.strategy-id=SemanticFacts-xxxxx
-agentcore.memory.long-term.user-preferences.strategy-id=UserPreferences-xxxxx
-agentcore.memory.long-term.summary.strategy-id=ConversationSummary-xxxxx
-agentcore.memory.long-term.episodic.strategy-id=EpisodicMemory-xxxxx
-
-# Bedrock Model
-spring.ai.bedrock.converse.chat.options.model=global.amazon.nova-2-lite-v1:0
+**Configuration:**
+```yaml
+agentcore:
+  memory:
+    memory-id: ${AGENTCORE_MEMORY_MEMORY_ID}
+    total-events-limit: 100  # Context window size
 ```
 
-### Usage Example
+**Usage:**
+```java
+@Service
+public class ChatService {
 
+    public ChatService(ChatClient.Builder builder, ChatMemoryRepository memoryRepository) {
+        ChatMemory chatMemory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(memoryRepository)
+                .build();
+
+        this.chatClient = builder
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .build();
+    }
+
+    public Flux<String> chat(String userId, String sessionId, String message) {
+        return chatClient.prompt()
+                .user(message)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, userId + ":" + sessionId))
+                .stream()
+                .content();
+    }
+}
+```
+
+### Long-Term Memory (LTM)
+
+LTM provides persistent knowledge across sessions with 4 consolidation strategies:
+
+| Strategy | Purpose | Retrieval |
+|----------|---------|-----------|
+| **Semantic** | User facts (e.g., "likes coffee") | Semantic search |
+| **User Preference** | Settings (e.g., "dark mode") | Lists all |
+| **Summary** | Conversation summaries | Semantic search |
+| **Episodic** | Past interactions & reflections | Semantic search |
+
+**Configuration:**
+```yaml
+agentcore:
+  memory:
+    memory-id: ${AGENTCORE_MEMORY_MEMORY_ID}
+    long-term:
+      semantic:
+        strategy-id: ${AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_STRATEGY_ID}
+        top-k: 5
+      user-preference:
+        strategy-id: ${AGENTCORE_MEMORY_LONG_TERM_USER_PREFERENCE_STRATEGY_ID}
+      summary:
+        strategy-id: ${AGENTCORE_MEMORY_LONG_TERM_SUMMARY_STRATEGY_ID}
+        top-k: 3
+      episodic:
+        strategy-id: ${AGENTCORE_MEMORY_LONG_TERM_EPISODIC_STRATEGY_ID}
+        episodes-top-k: 3
+        reflections-top-k: 2
+```
+
+**Usage with STM + LTM:**
 ```java
 @Service
 public class ChatService {
@@ -317,8 +367,8 @@ public class ChatService {
             advisors.add(MessageChatMemoryAdvisor.builder(chatMemory).build());
         }
 
-        // LTM - auto-collects all configured strategy advisors
-        if (ltmAdvisors != null && !ltmAdvisors.isEmpty()) {
+        // LTM - auto-configured advisors for each strategy
+        if (ltmAdvisors != null) {
             advisors.addAll(ltmAdvisors);
         }
 
@@ -330,43 +380,18 @@ public class ChatService {
     public Flux<String> chat(String userId, String sessionId, String message) {
         return chatClient.prompt()
                 .user(message)
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, userId + ":" + sessionId)
-                               .param(AgentCoreLongMemoryAdvisor.USER_ID_PARAM, userId)
-                               .param(AgentCoreLongMemoryAdvisor.SESSION_ID_PARAM, sessionId))
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, userId + ":" + sessionId))
                 .stream()
                 .content();
     }
 }
 ```
 
-### Running Integration Tests
+For detailed configuration options and API reference, see [spring-ai-memory-bedrock-agentcore/README.md](spring-ai-memory-bedrock-agentcore/README.md).
 
-Unit tests run with `mvn test`. Integration tests require `mvn verify` and AWS credentials.
+## Development
 
-**Full test suite** (unit tests + E2E integration tests):
-```bash
-AGENTCORE_IT=true mvn clean verify -pl spring-ai-memory-bedrock-agentcore
-```
-
-**E2E Test only** (creates ephemeral memory, runs tests, cleans up):
-```bash
-AGENTCORE_IT=true mvn verify -pl spring-ai-memory-bedrock-agentcore -Dit.test=AgentCoreMemoryE2EIT
-```
-
-**Env Test** (uses pre-existing memory from environment variables):
-```bash
-AGENTCORE_MEMORY_MEMORY_ID=your_memory_id \
-AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_FACTS_STRATEGY_ID=SemanticFacts-xxxxx \
-AGENTCORE_MEMORY_LONG_TERM_USER_PREFERENCES_STRATEGY_ID=UserPreferences-xxxxx \
-AGENTCORE_MEMORY_LONG_TERM_SUMMARY_STRATEGY_ID=ConversationSummary-xxxxx \
-AGENTCORE_MEMORY_LONG_TERM_EPISODIC_STRATEGY_ID=EpisodicMemory-xxxxx \
-mvn verify -pl spring-ai-memory-bedrock-agentcore -Dit.test=AgentCoreMemoryEnvIT
-```
-
-Or use the helper script:
-```bash
-./scripts/it-memory.sh [app_prefix]
-```
+See [DEV.md](DEV.md) for testing, building, and contributing.
 
 ## License
 

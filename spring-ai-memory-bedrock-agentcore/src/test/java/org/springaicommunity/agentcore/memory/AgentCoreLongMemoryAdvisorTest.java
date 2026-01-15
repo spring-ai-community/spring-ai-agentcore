@@ -21,6 +21,7 @@ import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryAdvisor.Mode;
 import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryRepository.MemoryRecord;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -47,11 +48,12 @@ class AgentCoreLongMemoryAdvisorTest {
 	void setUp() {
 		semanticAdvisor = new AgentCoreLongMemoryAdvisor(repository, "strategy-123", "Known facts", Mode.SEMANTIC, 100,
 				3);
-		listAdvisor = new AgentCoreLongMemoryAdvisor(repository, "strategy-456", "User preferences", Mode.LIST, 101, 3);
+		listAdvisor = new AgentCoreLongMemoryAdvisor(repository, "strategy-456", "User preferences",
+				Mode.USER_PREFERENCE, 101, 3);
 	}
 
 	@Test
-	void shouldThrowExceptionWhenNoUserId() {
+	void shouldThrowExceptionWhenNoConversationId() {
 		// Given
 		var request = ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new UserMessage("Hello"))))
@@ -60,7 +62,7 @@ class AgentCoreLongMemoryAdvisorTest {
 
 		// When/Then
 		assertThatThrownBy(() -> semanticAdvisor.adviseCall(request, chain)).isInstanceOf(IllegalStateException.class)
-			.hasMessageContaining(AgentCoreLongMemoryAdvisor.USER_ID_PARAM);
+			.hasMessageContaining(ChatMemory.CONVERSATION_ID);
 	}
 
 	@Test
@@ -74,7 +76,7 @@ class AgentCoreLongMemoryAdvisorTest {
 
 		var request = ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new UserMessage("What do I like?"))))
-			.context(Map.of(AgentCoreLongMemoryAdvisor.USER_ID_PARAM, "user-456"))
+			.context(Map.of(ChatMemory.CONVERSATION_ID, "user-456"))
 			.build();
 
 		// When
@@ -103,7 +105,7 @@ class AgentCoreLongMemoryAdvisorTest {
 
 		var request = ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new UserMessage("Show settings"))))
-			.context(Map.of(AgentCoreLongMemoryAdvisor.USER_ID_PARAM, "user-456"))
+			.context(Map.of(ChatMemory.CONVERSATION_ID, "user-456:session-1"))
 			.build();
 
 		// When
@@ -126,7 +128,7 @@ class AgentCoreLongMemoryAdvisorTest {
 
 		var request = ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new UserMessage("Hello"))))
-			.context(Map.of(AgentCoreLongMemoryAdvisor.USER_ID_PARAM, "user-456"))
+			.context(Map.of(ChatMemory.CONVERSATION_ID, "user-456"))
 			.build();
 
 		// When
@@ -141,7 +143,7 @@ class AgentCoreLongMemoryAdvisorTest {
 		assertThat(semanticAdvisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-SEMANTIC");
 		assertThat(semanticAdvisor.getOrder()).isEqualTo(100);
 
-		assertThat(listAdvisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-LIST");
+		assertThat(listAdvisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-USER_PREFERENCE");
 		assertThat(listAdvisor.getOrder()).isEqualTo(101);
 	}
 

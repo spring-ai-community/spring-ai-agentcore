@@ -39,15 +39,15 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 
 	private static final String MEMORY_ID_PROP = "agentcore.memory.memory-id=test-memory";
 
-	private static final String SEMANTIC_STRATEGY_PROP = "agentcore.memory.long-term.semantic-facts.strategy-id=semantic-123";
+	private static final String SEMANTIC_STRATEGY_PROP = "agentcore.memory.long-term.semantic.strategy-id=semantic-123";
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withConfiguration(AutoConfigurations.of(AgentCoreShortMemoryRepositoryAutoConfiguration.class,
 				AgentCoreLongMemoryAutoConfiguration.class));
 
 	@Test
-	@DisabledIfEnvironmentVariable(named = "AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_FACTS_STRATEGY_ID", matches = ".+",
-			disabledReason = "Env var AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_FACTS_STRATEGY_ID is set")
+	@DisabledIfEnvironmentVariable(named = "AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_STRATEGY_ID", matches = ".+",
+			disabledReason = "Env var AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_STRATEGY_ID is set")
 	@DisplayName("Should not create LTM beans when no strategy IDs configured")
 	void shouldNotCreateLtmBeansWhenNoStrategyIds() {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
@@ -59,14 +59,14 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 	}
 
 	@Test
-	@DisplayName("Should create semantic facts advisor when strategy ID configured")
-	void shouldCreateSemanticFactsAdvisor() {
+	@DisplayName("Should create semantic advisor when strategy ID configured")
+	void shouldCreateSemanticAdvisor() {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP)
 			.run(context -> {
 				assertThat(context).hasSingleBean(AgentCoreLongMemoryRepository.class);
-				assertThat(context).hasBean("semanticFactsAdvisor");
-				AgentCoreLongMemoryAdvisor advisor = context.getBean("semanticFactsAdvisor",
+				assertThat(context).hasBean("semanticAdvisor");
+				AgentCoreLongMemoryAdvisor advisor = context.getBean("semanticAdvisor",
 						AgentCoreLongMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
 				assertThat(advisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-SEMANTIC");
@@ -74,17 +74,17 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 	}
 
 	@Test
-	@DisplayName("Should create user preferences advisor when strategy ID configured")
-	void shouldCreateUserPreferencesAdvisor() {
+	@DisplayName("Should create user preference advisor when strategy ID configured")
+	void shouldCreateUserPreferenceAdvisor() {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP,
-					"agentcore.memory.long-term.user-preferences.strategy-id=prefs-456")
+					"agentcore.memory.long-term.user-preference.strategy-id=prefs-456")
 			.run(context -> {
-				assertThat(context).hasBean("userPreferencesAdvisor");
-				AgentCoreLongMemoryAdvisor advisor = context.getBean("userPreferencesAdvisor",
+				assertThat(context).hasBean("userPreferenceAdvisor");
+				AgentCoreLongMemoryAdvisor advisor = context.getBean("userPreferenceAdvisor",
 						AgentCoreLongMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-LIST");
+				assertThat(advisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-USER_PREFERENCE");
 			});
 	}
 
@@ -123,13 +123,13 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 	void shouldCreateAllAdvisorsWhenAllConfigured() {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP,
-					"agentcore.memory.long-term.user-preferences.strategy-id=prefs-456",
+					"agentcore.memory.long-term.user-preference.strategy-id=prefs-456",
 					"agentcore.memory.long-term.summary.strategy-id=summary-789",
 					"agentcore.memory.long-term.episodic.strategy-id=episodic-abc")
 			.run(context -> {
 				assertThat(context).hasSingleBean(AgentCoreLongMemoryRepository.class);
-				assertThat(context).hasBean("semanticFactsAdvisor");
-				assertThat(context).hasBean("userPreferencesAdvisor");
+				assertThat(context).hasBean("semanticAdvisor");
+				assertThat(context).hasBean("userPreferenceAdvisor");
 				assertThat(context).hasBean("summaryAdvisor");
 				assertThat(context).hasBean("episodicAdvisor");
 
@@ -144,14 +144,13 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 	@DisplayName("Should use custom topK values")
 	void shouldUseCustomTopKValues() {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
-			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP,
-					"agentcore.memory.long-term.semantic-facts.top-k=10",
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP, "agentcore.memory.long-term.semantic.top-k=10",
 					"agentcore.memory.long-term.episodic.strategy-id=episodic-abc",
 					"agentcore.memory.long-term.episodic.episodes-top-k=5",
 					"agentcore.memory.long-term.episodic.reflections-top-k=3")
 			.run(context -> {
 				AgentCoreLongMemoryConfiguration config = context.getBean(AgentCoreLongMemoryConfiguration.class);
-				assertThat(config.semanticFacts().topK()).isEqualTo(10);
+				assertThat(config.semantic().topK()).isEqualTo(10);
 				assertThat(config.episodic().episodesTopK()).isEqualTo(5);
 				assertThat(config.episodic().reflectionsTopK()).isEqualTo(3);
 			});
@@ -162,7 +161,7 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 	void shouldCollectAllAdvisorsViaListInjection() {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP,
-					"agentcore.memory.long-term.user-preferences.strategy-id=prefs-456",
+					"agentcore.memory.long-term.user-preference.strategy-id=prefs-456",
 					"agentcore.memory.long-term.summary.strategy-id=summary-789",
 					"agentcore.memory.long-term.episodic.strategy-id=episodic-abc")
 			.run(context -> {
@@ -172,8 +171,9 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 					.values();
 				assertThat(advisors).hasSize(4);
 				assertThat(advisors).extracting(AgentCoreLongMemoryAdvisor::getName)
-					.containsExactlyInAnyOrder("AgentCoreLongMemoryAdvisor-SEMANTIC", "AgentCoreLongMemoryAdvisor-LIST",
-							"AgentCoreLongMemoryAdvisor-SUMMARY", "AgentCoreLongMemoryAdvisor-EPISODIC");
+					.containsExactlyInAnyOrder("AgentCoreLongMemoryAdvisor-SEMANTIC",
+							"AgentCoreLongMemoryAdvisor-USER_PREFERENCE", "AgentCoreLongMemoryAdvisor-SUMMARY",
+							"AgentCoreLongMemoryAdvisor-EPISODIC");
 			});
 	}
 
