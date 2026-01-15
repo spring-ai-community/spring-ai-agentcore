@@ -5,6 +5,7 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,12 +20,14 @@ public class ChatController {
 	public ChatController(ChatClient.Builder chatClientBuilder, ChatMemoryRepository memoryRepository) {
 		this.chatMemory = MessageWindowChatMemory.builder()
 			.chatMemoryRepository(memoryRepository)
-			.maxMessages(10)
+			.maxMessages(2)
 			.build();
 		
 		this.chatClient = chatClientBuilder
 			.defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
 			.build();
+
+		memoryRepository.deleteByConversationId(CONVERSATION_ID);
 	}
 
 	@PostMapping("/api/chat")
@@ -39,7 +42,7 @@ public class ChatController {
 	}
 
 	@GetMapping("/api/chat/history")
-	public List<org.springframework.ai.chat.messages.Message> getHistory() {
+	public List<Message> getHistory() {
 		return chatMemory.get(CONVERSATION_ID);
 	}
 

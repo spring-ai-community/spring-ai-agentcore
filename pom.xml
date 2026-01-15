@@ -45,6 +45,10 @@
             <name>Andrei Shakirin</name>
             <email>andrei.shakirin@gmail.com</email>
         </developer>
+        <developer>
+            <name>Yuriy Bezsonov</name>
+            <email>ybezsonov@gmail.com</email>
+        </developer>
     </developers>
 
     <issueManagement>
@@ -63,7 +67,7 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
 
-        <spring-boot.version>3.2.0</spring-boot.version>
+        <spring-boot.version>3.5.9</spring-boot.version>
         <bucket4j-core.version>8.7.0</bucket4j-core.version>
 
         <!-- plugin versions -->

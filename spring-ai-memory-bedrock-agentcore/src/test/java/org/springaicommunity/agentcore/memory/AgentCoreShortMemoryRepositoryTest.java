@@ -9,6 +9,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -16,7 +17,9 @@ import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcore.model.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -307,6 +310,263 @@ public class AgentCoreShortMemoryRepositoryTest {
 		assertThat(org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
 				() -> memoryRepository.saveAll("testActorId:testSessionId", messages)))
 			.hasMessageContaining("Unsupported message type: SystemMessage");
+	}
+
+	// ==================== Delta Detection Tests ====================
+
+	@Test
+	void shouldOnlySaveMessagesWithoutEventId() {
+		// Given: Mix of messages - some with eventId (already saved), some without (new)
+		Map<String, Object> existingMetadata = new HashMap<>();
+		existingMetadata.put(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
+
+		List<Message> messages = List.of(UserMessage.builder().text("old message 1").metadata(existingMetadata).build(),
+				AssistantMessage.builder().content("old message 2").properties(existingMetadata).build(),
+				UserMessage.builder().text("new message 1").build(), // No eventId -
+																		// should be saved
+				AssistantMessage.builder().content("new message 2").build() // No eventId
+																			// - should be
+																			// saved
+		);
+
+		CreateEventResponse response = CreateEventResponse.builder()
+			.event(Event.builder().eventId("new-event-id").memoryId("testMemoryId").build())
+			.build();
+		when(client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+
+		// When
+		memoryRepository.saveAll("testActorId:testSessionId", messages);
+
+		// Then: Only 2 new messages should be saved
+		ArgumentCaptor<CreateEventRequest> requestCaptor = ArgumentCaptor.forClass(CreateEventRequest.class);
+		verify(client, times(1)).createEvent(requestCaptor.capture());
+		assertThat(requestCaptor.getValue().payload()).hasSize(2);
+		assertThat(requestCaptor.getValue().payload().get(0).conversational().content().text())
+			.isEqualTo("new message 1");
+		assertThat(requestCaptor.getValue().payload().get(1).conversational().content().text())
+			.isEqualTo("new message 2");
+	}
+
+	@Test
+	void shouldNotCallCreateEventWhenAllMessagesAlreadySaved() {
+		// Given: All messages have eventId (already saved)
+		Map<String, Object> existingMetadata = new HashMap<>();
+		existingMetadata.put(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
+
+		List<Message> messages = List.of(UserMessage.builder().text("old message 1").metadata(existingMetadata).build(),
+				AssistantMessage.builder().content("old message 2").properties(existingMetadata).build());
+
+		// When
+		memoryRepository.saveAll("testActorId:testSessionId", messages);
+
+		// Then: No createEvent call should be made
+		verify(client, never()).createEvent(any(CreateEventRequest.class));
+	}
+
+	@Test
+	void shouldMarkSavedMessagesWithEventId() {
+		// Given: New messages without eventId
+		UserMessage userMessage = UserMessage.builder().text("new user message").build();
+		AssistantMessage assistantMessage = AssistantMessage.builder().content("new assistant message").build();
+		List<Message> messages = new ArrayList<>();
+		messages.add(userMessage);
+		messages.add(assistantMessage);
+
+		String returnedEventId = "returned-event-id-123";
+		CreateEventResponse response = CreateEventResponse.builder()
+			.event(Event.builder().eventId(returnedEventId).memoryId("testMemoryId").build())
+			.build();
+		when(client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+
+		// When
+		memoryRepository.saveAll("testActorId:testSessionId", messages);
+
+		// Then: Messages should be marked with the returned eventId
+		assertThat(userMessage.getMetadata().get(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY))
+			.isEqualTo(returnedEventId);
+		assertThat(assistantMessage.getMetadata().get(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY))
+			.isEqualTo(returnedEventId);
+	}
+
+	@Test
+	void shouldRestoreEventIdFromAgentCoreWhenFinding() {
+		// Given: AgentCore returns events with eventId
+		String eventId = "agentcore-event-id-456";
+		Event event = Event.builder()
+			.memoryId("testMemoryId")
+			.actorId("testActorId")
+			.sessionId("testSessionId")
+			.eventId(eventId)
+			.payload(PayloadType.builder()
+				.conversational(Conversational.builder()
+					.role(Role.USER)
+					.content(Content.builder().text("stored message").build())
+					.build())
+				.build())
+			.build();
+
+		ListEventsResponse listEventsResponse = ListEventsResponse.builder().events(event).build();
+		when(client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+
+		// When
+		List<Message> messages = memoryRepository.findByConversationId("testActorId:testSessionId");
+
+		// Then: Messages should have eventId in metadata
+		assertThat(messages).hasSize(1);
+		assertThat(messages.get(0).getMetadata().get(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY))
+			.isEqualTo(eventId);
+	}
+
+	@Test
+	void shouldHandleRoundTripCorrectly() {
+		// This test simulates the full flow:
+		// 1. Find existing messages (with eventIds)
+		// 2. Add new messages
+		// 3. Save all - only new messages should be saved
+
+		String existingEventId = "existing-event-id";
+		String newEventId = "new-event-id";
+
+		// Setup: findByConversationId returns messages with eventId
+		Event existingEvent = Event.builder()
+			.memoryId("testMemoryId")
+			.actorId("testActorId")
+			.sessionId("testSessionId")
+			.eventId(existingEventId)
+			.payload(
+					PayloadType.builder()
+						.conversational(Conversational.builder()
+							.role(Role.USER)
+							.content(Content.builder().text("existing user message").build())
+							.build())
+						.build(),
+					PayloadType.builder()
+						.conversational(Conversational.builder()
+							.role(Role.ASSISTANT)
+							.content(Content.builder().text("existing assistant message").build())
+							.build())
+						.build())
+			.build();
+
+		ListEventsResponse listEventsResponse = ListEventsResponse.builder().events(existingEvent).build();
+		when(client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+
+		CreateEventResponse createResponse = CreateEventResponse.builder()
+			.event(Event.builder().eventId(newEventId).memoryId("testMemoryId").build())
+			.build();
+		when(client.createEvent(any(CreateEventRequest.class))).thenReturn(createResponse);
+
+		// Step 1: Find existing messages
+		List<Message> existingMessages = memoryRepository.findByConversationId("testActorId:testSessionId");
+		assertThat(existingMessages).hasSize(2);
+
+		// Step 2: Create combined list with new messages
+		List<Message> allMessages = new ArrayList<>(existingMessages);
+		allMessages.add(UserMessage.builder().text("new user message").build());
+		allMessages.add(AssistantMessage.builder().content("new assistant message").build());
+
+		// Step 3: Save all - should only save the 2 new messages
+		memoryRepository.saveAll("testActorId:testSessionId", allMessages);
+
+		// Verify: Only new messages were saved
+		ArgumentCaptor<CreateEventRequest> requestCaptor = ArgumentCaptor.forClass(CreateEventRequest.class);
+		verify(client, times(1)).createEvent(requestCaptor.capture());
+		assertThat(requestCaptor.getValue().payload()).hasSize(2);
+		assertThat(requestCaptor.getValue().payload().get(0).conversational().content().text())
+			.isEqualTo("new user message");
+		assertThat(requestCaptor.getValue().payload().get(1).conversational().content().text())
+			.isEqualTo("new assistant message");
+	}
+
+	@Test
+	void shouldHandleEmptyMessageList() {
+		// When
+		memoryRepository.saveAll("testActorId:testSessionId", List.of());
+
+		// Then: No createEvent call
+		verify(client, never()).createEvent(any(CreateEventRequest.class));
+	}
+
+	@Test
+	void shouldHandleNullMessageList() {
+		// When
+		memoryRepository.saveAll("testActorId:testSessionId", null);
+
+		// Then: No createEvent call
+		verify(client, never()).createEvent(any(CreateEventRequest.class));
+	}
+
+	@Test
+	void shouldPreserveMessageOrderInDelta() {
+		// Given: Messages in specific order, some with eventId
+		Map<String, Object> existingMetadata = new HashMap<>();
+		existingMetadata.put(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
+
+		List<Message> messages = List.of(UserMessage.builder().text("old 1").metadata(existingMetadata).build(),
+				UserMessage.builder().text("new 1").build(),
+				AssistantMessage.builder().content("old 2").properties(existingMetadata).build(),
+				AssistantMessage.builder().content("new 2").build(), UserMessage.builder().text("new 3").build());
+
+		CreateEventResponse response = CreateEventResponse.builder()
+			.event(Event.builder().eventId("new-event-id").memoryId("testMemoryId").build())
+			.build();
+		when(client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+
+		// When
+		memoryRepository.saveAll("testActorId:testSessionId", messages);
+
+		// Then: New messages should be in order
+		ArgumentCaptor<CreateEventRequest> requestCaptor = ArgumentCaptor.forClass(CreateEventRequest.class);
+		verify(client).createEvent(requestCaptor.capture());
+		List<PayloadType> payloads = requestCaptor.getValue().payload();
+		assertThat(payloads).hasSize(3);
+		assertThat(payloads.get(0).conversational().content().text()).isEqualTo("new 1");
+		assertThat(payloads.get(1).conversational().content().text()).isEqualTo("new 2");
+		assertThat(payloads.get(2).conversational().content().text()).isEqualTo("new 3");
+	}
+
+	@Test
+	void shouldReverseEventsToChronologicalOrder() {
+		// Given: AgentCore returns events in descending order (newest first)
+		ListEventsResponse listEventsResponse = ListEventsResponse.builder()
+			.events(Event.builder()
+				.eventId("event-3")
+				.payload(PayloadType.builder()
+					.conversational(Conversational.builder()
+						.role(Role.USER)
+						.content(Content.builder().text("third message").build())
+						.build())
+					.build())
+				.build(),
+					Event.builder()
+						.eventId("event-2")
+						.payload(PayloadType.builder()
+							.conversational(Conversational.builder()
+								.role(Role.USER)
+								.content(Content.builder().text("second message").build())
+								.build())
+							.build())
+						.build(),
+					Event.builder()
+						.eventId("event-1")
+						.payload(PayloadType.builder()
+							.conversational(Conversational.builder()
+								.role(Role.USER)
+								.content(Content.builder().text("first message").build())
+								.build())
+							.build())
+						.build())
+			.build();
+		when(client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+
+		// When
+		List<Message> messages = memoryRepository.findByConversationId("testActorId:testSessionId");
+
+		// Then: Messages should be in chronological order (oldest first)
+		assertThat(messages).hasSize(3);
+		assertThat(messages.get(0).getText()).isEqualTo("first message");
+		assertThat(messages.get(1).getText()).isEqualTo("second message");
+		assertThat(messages.get(2).getText()).isEqualTo("third message");
 	}
 
 }

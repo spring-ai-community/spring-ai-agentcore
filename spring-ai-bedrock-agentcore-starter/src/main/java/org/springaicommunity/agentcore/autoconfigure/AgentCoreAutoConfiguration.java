@@ -27,6 +27,7 @@ import org.springaicommunity.agentcore.ping.AgentCoreTaskTracker;
 import org.springaicommunity.agentcore.service.AgentCoreMethodInvoker;
 import org.springaicommunity.agentcore.service.AgentCoreMethodRegistry;
 import org.springaicommunity.agentcore.service.AgentCoreMethodScanner;
+import org.springaicommunity.agentcore.service.SseNormalizer;
 import org.springaicommunity.agentcore.throttle.ThrottleConfiguration;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -59,9 +60,16 @@ public class AgentCoreAutoConfiguration {
 	}
 
 	@Bean
+	@ConditionalOnMissingBean
+	public SseNormalizer sseNormalizer() {
+		return new SseNormalizer();
+	}
+
+	@Bean
 	@ConditionalOnMissingBean(AgentCoreInvocationsHandler.class)
-	public AgentCoreInvocationsController agentCoreController(AgentCoreMethodInvoker invoker) {
-		return new AgentCoreInvocationsController(invoker);
+	public AgentCoreInvocationsController agentCoreController(AgentCoreMethodInvoker invoker,
+			SseNormalizer sseNormalizer) {
+		return new AgentCoreInvocationsController(invoker, sseNormalizer);
 	}
 
 	@Bean

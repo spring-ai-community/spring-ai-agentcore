@@ -132,6 +132,28 @@ public Flux<String> streamingAgent(String prompt) {
 }
 ```
 
+### Reactor Dependency Note
+
+The starter includes `reactor-core` as a dependency to properly handle newline characters in SSE streaming responses. This ensures markdown tables, code blocks, and other formatted content render correctly in streaming clients.
+
+If you're using Spring MVC without any reactive features, you can exclude the reactor dependency:
+
+```xml
+<dependency>
+    <groupId>org.springaicommunity</groupId>
+    <artifactId>spring-ai-bedrock-agentcore-starter</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <exclusions>
+        <exclusion>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+        </exclusion>
+    </exclusions>
+</dependency>
+```
+
+> **Note:** In a future release, the starter will be split into separate `web-mvc` and `web-flux` modules for cleaner dependency management.
+
 ## Configuration
 
 The starter uses fixed configuration per AgentCore contract:

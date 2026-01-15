@@ -33,7 +33,7 @@ echo "✅ Environment variable set: AGENTCORE_MEMORY_ID=$MEMORY_ID"
 # Build application
 echo "🔨 Building application..."
 cd ..
-mvn clean package -q
+mvn clean package
 
 echo "🎉 Deployment complete!"
 echo ""

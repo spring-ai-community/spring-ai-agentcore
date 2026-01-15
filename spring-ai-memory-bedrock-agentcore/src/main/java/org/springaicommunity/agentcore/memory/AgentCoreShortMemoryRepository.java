@@ -11,12 +11,39 @@ import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcore.model.*;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
+/**
+ * ChatMemoryRepository implementation for Amazon Bedrock AgentCore Memory.
+ *
+ * <p>
+ * This implementation uses eventId-based delta detection to save only new messages,
+ * avoiding duplication in AgentCore events. Each message's metadata contains the eventId
+ * of the AgentCore event it was saved in, allowing efficient delta calculation.
+ * </p>
+ *
+ * <p>
+ * Key behaviors:
+ * </p>
+ * <ul>
+ * <li>findByConversationId: Returns messages with eventId in metadata for tracking</li>
+ * <li>saveAll: Only saves messages without eventId (new messages)</li>
+ * <li>After save: Marks saved messages with the returned eventId</li>
+ * </ul>
+ */
 public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreShortMemoryRepository.class);
+
+	/**
+	 * Metadata key for storing the AgentCore eventId in message metadata. Used for delta
+	 * detection - messages with this key have already been saved.
+	 */
+	public static final String EVENT_ID_METADATA_KEY = "agentcore.eventId";
 
 	private final BedrockAgentCoreClient client;
 
@@ -57,12 +84,12 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 			var actorAndSession = actorAndSession(conversationId);
 			var allEvents = fetchAllEvents(actorAndSession);
 
-			var messages = allEvents.stream()
-				.flatMap(event -> event.payload()
-					.stream()
-					.map(payload -> (Message) switch (payload.conversational().role()) {
-						case ASSISTANT -> new AssistantMessage(payload.conversational().content().text());
-						case USER -> new UserMessage(payload.conversational().content().text());
+			var messages = allEvents.stream().flatMap(event -> {
+				String eventId = event.eventId();
+				return event.payload().stream().map(payload -> {
+					Message message = switch (payload.conversational().role()) {
+						case ASSISTANT -> createAssistantMessage(payload, eventId);
+						case USER -> createUserMessage(payload, eventId);
 						default -> {
 							if (ignoreUnknownRoles) {
 								logger.warn("Ignoring unknown role: {}", payload.conversational().role());
@@ -72,9 +99,10 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 								throw new IllegalStateException("Unsupported role: " + payload.conversational().role());
 							}
 						}
-					}))
-				.filter(Objects::nonNull)
-				.collect(java.util.stream.Collectors.toList());
+					};
+					return message;
+				});
+			}).filter(Objects::nonNull).collect(java.util.stream.Collectors.toList());
 
 			logger.debug("Retrieved {} messages for conversation: {}", messages.size(), conversationId);
 			return messages;
@@ -85,8 +113,28 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 		}
 	}
 
+	/**
+	 * Create AssistantMessage with eventId in metadata for delta tracking.
+	 */
+	private AssistantMessage createAssistantMessage(PayloadType payload, String eventId) {
+		return AssistantMessage.builder()
+			.content(payload.conversational().content().text())
+			.properties((eventId != null) ? Map.of(EVENT_ID_METADATA_KEY, eventId) : Map.of())
+			.build();
+	}
+
+	/**
+	 * Create UserMessage with eventId in metadata for delta tracking.
+	 */
+	private UserMessage createUserMessage(PayloadType payload, String eventId) {
+		return UserMessage.builder()
+			.text(payload.conversational().content().text())
+			.metadata((eventId != null) ? Map.of(EVENT_ID_METADATA_KEY, eventId) : Map.of())
+			.build();
+	}
+
 	private List<Event> fetchAllEvents(ActorAndSession actorAndSession) {
-		var allEvents = new java.util.ArrayList<Event>();
+		var allEvents = new ArrayList<Event>();
 		var nextToken = (String) null;
 		int requestPageSize = totalEventsLimit != null ? Math.min(pageSize, totalEventsLimit) : pageSize;
 
@@ -108,11 +156,15 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 				nextToken = listEventsResponse.nextToken();
 
 				if (totalEventsLimit != null && allEvents.size() >= totalEventsLimit) {
-					return allEvents.size() <= totalEventsLimit ? allEvents : allEvents.subList(0, totalEventsLimit);
+					allEvents = new ArrayList<>(allEvents.subList(0, totalEventsLimit));
+					break;
 				}
 			}
 			while (nextToken != null);
 
+			// AgentCore returns events in descending order (newest first),
+			// reverse to chronological order for LLM context
+			Collections.reverse(allEvents);
 			return allEvents;
 		}
 		catch (SdkException e) {
@@ -122,6 +174,19 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 		}
 	}
 
+	/**
+	 * Save only new messages (delta) to AgentCore.
+	 *
+	 * <p>
+	 * Messages that already have an eventId in their metadata have been saved before and
+	 * are skipped. Only messages without eventId are saved as a new event.
+	 * </p>
+	 *
+	 * <p>
+	 * After successful save, the returned eventId is added to each saved message's
+	 * metadata for future delta detection.
+	 * </p>
+	 */
 	@Override
 	public void saveAll(String conversationId, List<Message> messages) {
 		validateConversationId(conversationId);
@@ -130,35 +195,29 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 			return;
 		}
 
-		logger.debug("Saving {} messages for conversation: {}", messages.size(), conversationId);
+		// Delta detection: filter to only new messages (no eventId in metadata)
+		List<Message> delta = messages.stream()// .toList();
+			.filter(m -> m.getMetadata().get(EVENT_ID_METADATA_KEY) == null)
+			.toList();
+
+		if (delta.isEmpty()) {
+			logger.debug("No new messages to save for conversation: {} (all {} messages already saved)", conversationId,
+					messages.size());
+			return;
+		}
+
+		logger.debug("Saving {} new messages (delta) for conversation: {} (total: {})", delta.size(), conversationId,
+				messages.size());
 
 		try {
 			var actorAndSession = actorAndSession(conversationId);
 
-			var payloads = messages.stream().map(message -> {
-				Role role;
+			var payloads = delta.stream().map(this::buildPayloadType).filter(Objects::nonNull).toList();
 
-				if (message instanceof AssistantMessage) {
-					role = Role.ASSISTANT;
-				}
-				else if (message instanceof UserMessage) {
-					role = Role.USER;
-				}
-				else {
-					if (ignoreUnknownRoles) {
-						logger.warn("Ignoring unknown message type: {}", message.getClass().getSimpleName());
-						return null;
-					}
-					else {
-						throw new IllegalStateException(
-								"Unsupported message type: " + message.getClass().getSimpleName());
-					}
-				}
-
-				var content = Content.builder().text(message.getText()).build();
-				var conversational = Conversational.builder().content(content).role(role).build();
-				return PayloadType.builder().conversational(conversational).build();
-			}).filter(Objects::nonNull).toList();
+			if (payloads.isEmpty()) {
+				logger.debug("No valid payloads to save after filtering");
+				return;
+			}
 
 			var createEventRequest = CreateEventRequest.builder()
 				.memoryId(memoryId)
@@ -168,13 +227,43 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 				.eventTimestamp(Instant.now())
 				.build();
 
-			client.createEvent(createEventRequest);
-			logger.debug("Successfully saved {} messages for conversation: {}", messages.size(), conversationId);
+			var response = client.createEvent(createEventRequest);
+			String eventId = response.event().eventId();
+
+			// Mark saved messages with eventId for future delta detection
+			delta.forEach(m -> m.getMetadata().put(EVENT_ID_METADATA_KEY, eventId));
+
+			logger.debug("Successfully saved {} messages as event {} for conversation: {}", delta.size(), eventId,
+					conversationId);
 		}
 		catch (SdkException e) {
 			logger.error("Failed to save messages for conversation: {}", conversationId, e);
 			throw new AgentCoreMemoryException("Failed to save messages for conversation: " + conversationId, e);
 		}
+	}
+
+	private PayloadType buildPayloadType(Message message) {
+		Role role;
+
+		if (message instanceof AssistantMessage) {
+			role = Role.ASSISTANT;
+		}
+		else if (message instanceof UserMessage) {
+			role = Role.USER;
+		}
+		else {
+			if (ignoreUnknownRoles) {
+				logger.warn("Ignoring unknown message type: {}", message.getClass().getSimpleName());
+				return null;
+			}
+			else {
+				throw new IllegalStateException("Unsupported message type: " + message.getClass().getSimpleName());
+			}
+		}
+
+		var content = Content.builder().text(message.getText()).build();
+		var conversational = Conversational.builder().content(content).role(role).build();
+		return PayloadType.builder().conversational(conversational).build();
 	}
 
 	@Override
