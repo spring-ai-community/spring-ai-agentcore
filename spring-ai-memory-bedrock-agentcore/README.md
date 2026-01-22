@@ -1,99 +1,109 @@
-# Spring AI Bedrock AgentCore Memory Repository
+# Spring AI Bedrock AgentCore Memory
 
-A Spring Boot starter that provides seamless integration between Spring AI and Amazon Bedrock AgentCore Memory for persistent conversation storage.
+Spring AI ChatMemory integration with Amazon Bedrock AgentCore Memory service.
+
+For quick start and usage examples, see the [main README](../README.md#agentcore-memory).
 
 ## Features
 
 - **Spring AI Integration**: Implements `ChatMemoryRepository` interface
 - **Auto-configuration**: Zero-configuration setup with Spring Boot
-- **Pagination Support**: Efficient handling of large conversation histories
-- **Configurable Limits**: Control memory usage and retrieval behavior
-- **Error Handling**: Robust error handling with configurable unknown role behavior
-- **Logging**: Comprehensive debug and error logging
-- **Production Ready**: Input validation, memory optimization, and proper exception handling
+- **Short-Term Memory**: Conversation history with `MessageWindowChatMemory`
+- **Long-Term Memory**: 4 consolidation strategies (Semantic, User Preference, Summary, Episodic)
 
 ## Memory Types
 
-**Current Implementation**: This starter currently implements **short-term memory** functionality using AWS Bedrock AgentCore Memory.
+### Short-Term Memory (STM)
+- Implements `ChatMemoryRepository` interface for conversation history
+- Works with `MessageWindowChatMemory` for sliding window conversations
 
-**Future Roadmap**: Long-term memory implementations are planned for future releases, including episodic, semantic, procedural, and other memory subtypes.
+### Long-Term Memory (LTM)
+- **Semantic**: Semantic search for user facts using the current query
+- **User Preference**: Lists ALL stored preferences regardless of query — preferences should always apply
+- **Summary**: Semantic search for conversation summaries by session
+- **Episodic**: Semantic search for past interactions and reflections
 
-## Quick Start
+### Advisor Execution Order
 
-### 1. Add Dependency
+LTM advisors run **before** STM advisor (lower order = earlier execution):
 
-```xml
-<dependency>
-    <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-memory-bedrock-agentcore</artifactId>
-    <version>1.0.0-RC2</version>
-</dependency>
-```
+| Order | Advisor | Target | Purpose |
+|-------|---------|--------|---------|
+| 100 | Semantic | System prompt | Add relevant facts |
+| 101 | User Preference | System prompt | Add preferences |
+| 102 | Summary | User prompt | Augment query with context |
+| 103 | Episodic | System prompt | Add past interactions |
+| 1000+ | STM (MessageChatMemoryAdvisor) | Messages | Add conversation history |
 
-### 2. Configure Memory ID
+**Why LTM before STM?** LTM enriches the prompt with persistent knowledge (facts, preferences) before STM adds recent conversation history. This ensures the model has full context: who the user is (LTM) + what was just discussed (STM).
 
-```yaml
-agentcore:
-  memory:
-    memory-id: your-agentcore-memory-id
-```
+### System Prompt vs User Prompt
 
-### 3. Use with Spring AI
+| Memory Type | Target | Reason |
+|-------------|--------|--------|
+| Semantic | System | Stable context about user, cacheable |
+| User Preference | System | Stable settings, cacheable |
+| Episodic | System | Background context, cacheable |
+| Summary | User | Query-specific augmentation, varies per request |
 
-```java
-@Service
-public class ChatService {
+**Prompt Caching Benefits**: Facts, preferences, and episodic memories go to the system prompt because they're relatively stable across requests. With Bedrock's prompt caching (`cache-options.strategy: SYSTEM_AND_TOOLS`), the system prompt is cached and reused, reducing latency and cost. Only summaries augment the user prompt since they're query-specific.
 
-    private final ChatClient chatClient;
-    private final ChatMemory chatMemory;
+## Configuration Reference
 
-    public ChatService(ChatClient.Builder chatClientBuilder, ChatMemoryRepository memoryRepository) {
-        this.chatClient = chatClientBuilder.build();
-        this.chatMemory = MessageWindowChatMemory.builder()
-            .chatMemoryRepository(memoryRepository)
-            .maxMessages(10)
-            .build();
-    }
-
-    public String chat(String conversationId, String message) {
-        return chatClient.prompt()
-            .user(message)
-            .advisors(chatMemory.getChatMemoryAdvisor(conversationId))
-            .call()
-            .content();
-    }
-}
-```
-
-## Configuration
-
-### Basic Configuration
+### STM Configuration
 
 ```yaml
 agentcore:
   memory:
     memory-id: your-memory-id                    # Required: AgentCore Memory ID
-    total-events-limit: 100                      # Optional: Max events to retrieve
+    total-events-limit: 100                      # Optional: Max events to retrieve (context window)
     default-session: default-session             # Optional: Default session name
     page-size: 50                               # Optional: API pagination size
     ignore-unknown-roles: false                 # Optional: Handle unknown message roles
 ```
 
-### Advanced Configuration
+### LTM Configuration
 
 ```yaml
 agentcore:
   memory:
-    memory-id: ${AGENTCORE_MEMORY_ID}
-    total-events-limit: 500
-    default-session: main
-    page-size: 100
-    ignore-unknown-roles: true
-
-logging:
-  level:
-    org.springaicommunity.agentcore.memory: DEBUG
+    long-term:
+      semantic:
+        strategy-id: ${SEMANTIC_STRATEGY_ID}     # Enables strategy (omit to disable)
+        top-k: 3                                 # Default: 3
+        scope: ACTOR                             # Default: ACTOR
+      user-preference:
+        strategy-id: ${USER_PREFERENCE_STRATEGY_ID}  # Enables strategy (no top-k: lists all)
+        scope: ACTOR                             # Default: ACTOR
+      summary:
+        strategy-id: ${SUMMARY_STRATEGY_ID}      # Enables strategy
+        top-k: 3                                 # Default: 3
+        scope: SESSION                           # Default: SESSION
+      episodic:
+        strategy-id: ${EPISODIC_STRATEGY_ID}     # Enables strategy
+        reflections-strategy-id: ${REFLECTIONS_STRATEGY_ID}  # Optional: enables reflections
+        episodes-top-k: 3                        # Default: 3
+        reflections-top-k: 2                     # Default: 2
+        scope: ACTOR                             # Default: ACTOR
 ```
+
+#### Scope Options
+
+| Scope | Namespace Pattern | Use Case |
+|-------|-------------------|----------|
+| `ACTOR` | `/strategy/{memoryStrategyId}/actors/{actorId}` | Search across all sessions for the user |
+| `SESSION` | `/strategy/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}` | Search only current session |
+
+#### Defaults Summary
+
+| Strategy | top-k | scope |
+|----------|-------|-------|
+| semantic | 3 | ACTOR |
+| user-preference | n/a (lists all) | ACTOR |
+| summary | 3 | SESSION |
+| episodic | episodes: 3, reflections: 2 | ACTOR |
+
+Set `enabled: true` to activate LTM, then configure individual strategies. Each strategy is optional - only configure the ones you need. Advisors are auto-created for configured strategies. Set `enabled: false` to temporarily disable all LTM without removing strategy configuration.
 
 ## Conversation ID Format
 
@@ -102,90 +112,24 @@ The repository supports flexible conversation ID formats:
 - **Simple**: `user123` → actor: `user123`, session: `default-session`
 - **With Session**: `user123:session456` → actor: `user123`, session: `session456`
 
-## Memory Management
-
-### Pagination
-
-The repository automatically handles pagination for large conversation histories:
-
-```java
-// Retrieves all events across multiple pages
-List<Message> messages = memoryRepository.findByConversationId("user123");
-
-// With total events limit
-agentcore.memory.total-events-limit=50  // Only retrieve first 50 events
-```
-
-### Memory Optimization
-
-- **Efficient pagination**: Uses configurable page sizes
-- **Smart limits**: Stops early when total limit is reached
-- **Memory-efficient**: Avoids unnecessary object creation
-
 ## Error Handling
-
-### Input Validation
-
-```java
-// Throws IllegalArgumentException for invalid inputs
-memoryRepository.findByConversationId(null);        // ❌ Null conversation ID
-memoryRepository.findByConversationId("");          // ❌ Empty conversation ID
-memoryRepository.saveAll("conv1", null);            // ❌ Null messages
-```
-
-### Unknown Role Handling
 
 ```yaml
 agentcore:
   memory:
-    ignore-unknown-roles: true   # Log warning and continue
-    # ignore-unknown-roles: false  # Throw exception (default)
+    ignore-unknown-roles: true   # Log warning for unsupported message types
 ```
 
-### AWS SDK Errors
-
-All AWS SDK exceptions are wrapped in `AgentCoreMemoryException` with meaningful messages:
-
-```java
-try {
-    List<Message> messages = memoryRepository.findByConversationId("user123");
-} catch (AgentCoreMemoryException e) {
-    log.error("Failed to retrieve conversation: {}", e.getMessage(), e);
-}
-```
-
-## Supported Message Types
-
-### Spring AI to AgentCore Mapping
-
-| Spring AI Message | AgentCore Role | Supported |
-|-------------------|----------------|-----------|
-| `UserMessage`     | `USER`         | ✅        |
-| `AssistantMessage`| `ASSISTANT`    | ✅        |
-| `SystemMessage`   | N/A            | ⚠️ Filtered/Exception |
-| `ToolResponseMessage` | N/A        | ⚠️ Filtered/Exception |
-
-**Note**: AgentCore currently only supports USER and ASSISTANT roles. Other message types are either filtered out (if `ignore-unknown-roles=true`) or cause exceptions.
+All AWS SDK exceptions are wrapped in `AgentCoreMemoryException`.
 
 ## API Reference
 
-### ChatMemoryRepository Methods
+### ChatMemoryRepository
 
 ```java
-public interface ChatMemoryRepository {
-
-    // Retrieve conversation history
-    List<Message> findByConversationId(String conversationId);
-
-    // Save messages to conversation
-    void saveAll(String conversationId, List<Message> messages);
-
-    // Delete entire conversation
-    void deleteByConversationId(String conversationId);
-
-    // Not supported - throws UnsupportedOperationException
-    List<String> findConversationIds();
-}
+List<Message> findByConversationId(String conversationId);
+void saveAll(String conversationId, List<Message> messages);
+void deleteByConversationId(String conversationId);
 ```
 
 ### Configuration Properties
@@ -193,183 +137,53 @@ public interface ChatMemoryRepository {
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `agentcore.memory.memory-id` | String | null | AgentCore Memory ID (required) |
-| `agentcore.memory.total-events-limit` | Integer | null | Max events to retrieve - **controls context window size** |
-| `agentcore.memory.default-session` | String | "default-session" | Default session name |
-| `agentcore.memory.page-size` | Integer | 100 | API pagination page size |
-| `agentcore.memory.ignore-unknown-roles` | Boolean | false | Handle unknown message roles gracefully |
+| `agentcore.memory.total-events-limit` | Integer | null | Context window size |
+| `agentcore.memory.default-session` | String | "default-session" | Default session |
+| `agentcore.memory.page-size` | Integer | 100 | API pagination size |
+| `agentcore.memory.ignore-unknown-roles` | Boolean | false | Handle unknown roles |
 
-> **Note**: `total-events-limit` is the effective context window size. Each event contains ~1 message with delta detection. `MessageWindowChatMemory.maxMessages` does not limit what the model sees when using this repository.
+### Supported Message Types
 
-## Integration Examples
+| Spring AI Message | AgentCore Role |
+|-------------------|----------------|
+| `UserMessage`     | `USER` ✅      |
+| `AssistantMessage`| `ASSISTANT` ✅ |
+| `SystemMessage`   | Filtered ⚠️    |
+| `ToolResponseMessage` | Filtered ⚠️ |
 
-### With MessageWindowChatMemory
+## Performance
 
-```java
-@Configuration
-public class ChatConfig {
-
-    @Bean
-    public ChatMemory chatMemory(ChatMemoryRepository memoryRepository) {
-        return MessageWindowChatMemory.builder()
-            .chatMemoryRepository(memoryRepository)
-            .maxMessages(20)  // Keep last 20 messages in memory
-            .build();
-    }
-}
-```
-
-### With Custom Memory Strategy
-
-```java
-@Service
-public class ConversationService {
-
-    private final ChatMemoryRepository memoryRepository;
-
-    public void archiveOldConversations() {
-        // Custom logic to manage conversation lifecycle
-        List<Message> messages = memoryRepository.findByConversationId("user123");
-        if (messages.size() > 100) {
-            // Archive or summarize old messages
-            memoryRepository.deleteByConversationId("user123");
-        }
-    }
-}
-```
-
-## Performance Considerations
-
-### Pagination Optimization
-
-- **Page Size**: Adjust `page-size` based on your typical conversation length
-- **Total Limit**: Use `total-events-limit` to prevent memory issues with very long conversations
-- **Early Termination**: Repository stops fetching when limit is reached
-
-### Memory Usage
-
-```yaml
-# For high-volume applications
-agentcore:
-  memory:
-    page-size: 50              # Smaller pages for better memory usage
-    total-events-limit: 200    # Limit conversation history
-
-# For comprehensive history
-agentcore:
-  memory:
-    page-size: 100             # Larger pages for fewer API calls
-    total-events-limit: null   # No limit (retrieve all)
-```
-
-## Monitoring and Observability
-
-### Logging
-
-```yaml
-logging:
-  level:
-    org.springaicommunity.agentcore.memory: DEBUG  # Detailed operation logs
-    software.amazon.awssdk: INFO                   # AWS SDK logs
-```
-
-### Metrics
-
-The repository logs key metrics:
-- Number of events retrieved per conversation
-- API call performance
-- Error rates and types
+- **Page Size**: Adjust `page-size` based on typical conversation length
+- **Total Limit**: Use `total-events-limit` to control context window size
+- **Logging**: Set `org.springaicommunity.agentcore.memory: DEBUG` for detailed logs
 
 ## Troubleshooting
 
-### Common Issues
+1. **Memory ID not found**: Verify `AGENTCORE_MEMORY_MEMORY_ID` environment variable
 
-1. **Memory ID not found**
-   ```
-   Solution: Verify AGENTCORE_MEMORY_ID environment variable or configuration
-   ```
+2. **AWS Permissions**: Required:
+   - `bedrock-agentcore:ListEvents`
+   - `bedrock-agentcore:CreateEvent`
+   - `bedrock-agentcore:DeleteEvent`
+   - `bedrock-agentcore:RetrieveMemoryRecords` (for LTM)
 
-2. **AWS Permissions**
-   ```
-   Required permissions:
-   - bedrock-agentcore:ListEvents
-   - bedrock-agentcore:CreateEvent
-   - bedrock-agentcore:DeleteEvent
-   ```
-
-3. **Unknown Role Errors**
+3. **Debug logging**:
    ```yaml
-   # Enable graceful handling
-   agentcore:
-     memory:
-       ignore-unknown-roles: true
+   logging:
+     level:
+       org.springaicommunity.agentcore.memory: DEBUG
    ```
-
-4. **Large Conversation Performance**
-   ```yaml
-   # Optimize for large conversations
-   agentcore:
-     memory:
-       total-events-limit: 100
-       page-size: 50
-   ```
-
-### Debug Mode
-
-Enable comprehensive logging:
-
-```yaml
-logging:
-  level:
-    org.springaicommunity.agentcore.memory: DEBUG
-    org.springframework.ai: DEBUG
-```
 
 ## Requirements
 
-- **Java**: 17+
-- **Spring Boot**: 3.x
-- **AWS SDK**: 2.40.3+
-- **Spring AI**: 1.1.1+
-
-## AWS Permissions
-
-Required IAM permissions for the application:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "bedrock-agentcore:ListEvents",
-        "bedrock-agentcore:CreateEvent",
-        "bedrock-agentcore:DeleteEvent"
-      ],
-      "Resource": "arn:aws:bedrock-agentcore:*:*:memory/*"
-    }
-  ]
-}
-```
+- Java 17+
+- Spring Boot 3.x
+- Spring AI 1.1.1+
 
 ## Testing
 
-### Unit Tests
-Run unit tests (excludes integration tests by default):
-```bash
-mvn test
-```
-
-### Integration Tests
-Integration tests require AWS credentials and create real AgentCore Memory resources.
-
-Run integration tests only:
-```bash
-mvn test -Pintegration
-```
-
-**Note:** Integration tests may take 2-3 minutes and will create/delete AWS resources.
+See [DEV.md](../DEV.md) for testing instructions.
 
 ## License
 
-This project is licensed under the Apache License 2.0.
+Apache License 2.0

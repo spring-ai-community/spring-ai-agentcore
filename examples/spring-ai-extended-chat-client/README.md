@@ -1,6 +1,6 @@
 # Spring AI Extended Chat Client
 
-Spring AI chat client with OAuth authentication and per-user memory isolation, deployable to AWS Bedrock AgentCore Runtime.
+Spring AI chat client with OAuth authentication and per-user memory isolation, deployable to Amazon Bedrock AgentCore Runtime.
 
 ## Features
 

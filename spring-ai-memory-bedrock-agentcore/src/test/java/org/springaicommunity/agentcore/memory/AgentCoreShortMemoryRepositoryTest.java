@@ -138,7 +138,8 @@ public class AgentCoreShortMemoryRepositoryTest {
 
 	@Test
 	void shouldParseActorAndSessionWithSeparator() {
-		var result = memoryRepository.actorAndSession("actor123:session456");
+		AgentCoreMemoryConversationIdParser.ActorAndSession result = AgentCoreMemoryConversationIdParser
+			.parse("actor123:session456");
 
 		assertEquals("actor123", result.actor());
 		assertEquals("session456", result.session());
@@ -146,7 +147,8 @@ public class AgentCoreShortMemoryRepositoryTest {
 
 	@Test
 	void shouldUseDefaultSessionWhenNoSeparator() {
-		var result = memoryRepository.actorAndSession("actor123");
+		AgentCoreMemoryConversationIdParser.ActorAndSession result = AgentCoreMemoryConversationIdParser
+			.parse("actor123");
 
 		assertEquals("actor123", result.actor());
 		assertEquals("default-session", result.session());

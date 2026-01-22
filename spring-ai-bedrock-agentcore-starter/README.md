@@ -1,6 +1,6 @@
 # Spring AI Bedrock AgentCore Starter
 
-A Spring Boot starter that enables existing Spring Boot applications to conform to the AWS Bedrock AgentCore Runtime contract with minimal configuration.
+A Spring Boot starter that enables existing Spring Boot applications to conform to the Amazon Bedrock AgentCore Runtime contract with minimal configuration.
 
 ## Features
 
@@ -186,7 +186,7 @@ The `/ping` endpoint provides intelligent health monitoring:
 
 ### Background Task Tracking
 
-AWS Bedrock AgentCore Runtime monitors agent health and may shut down agents that appear idle. When your agent starts long-running background tasks (like file processing, data analysis, or calling other long-running agents), the runtime needs to know the agent is still actively working to avoid premature termination.
+Amazon Bedrock AgentCore Runtime monitors agent health and may shut down agents that appear idle. When your agent starts long-running background tasks (like file processing, data analysis, or calling other long-running agents), the runtime needs to know the agent is still actively working to avoid premature termination.
 
 The starter includes `AgentCoreTaskTracker` to communicate this state to the runtime:
 

@@ -8,7 +8,7 @@ public class AgentCoreShortMemoryRepositoryConfigurationTest {
 
 	@Test
 	void shouldHaveDefaultValues() {
-		var config = new AgentCoreShortMemoryRepositoryConfiguration(null, null, "default-session", 100, false);
+		var config = new AgentCoreMemoryProperties(null, null, "default-session", 100, false);
 
 		assertThat(config.defaultSession()).isEqualTo("default-session");
 		assertThat(config.pageSize()).isEqualTo(100);
@@ -16,7 +16,7 @@ public class AgentCoreShortMemoryRepositoryConfigurationTest {
 
 	@Test
 	void shouldCreateWithAllProperties() {
-		var config = new AgentCoreShortMemoryRepositoryConfiguration("test-memory-id", 500, "custom-session", 50, true);
+		var config = new AgentCoreMemoryProperties("test-memory-id", 500, "custom-session", 50, true);
 
 		assertThat(config.memoryId()).isEqualTo("test-memory-id");
 		assertThat(config.totalEventsLimit()).isEqualTo(500);

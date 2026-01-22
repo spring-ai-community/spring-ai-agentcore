@@ -1,21 +1,41 @@
-### Tell name
-POST http://localhost:8080/api/chat
+### Tell name - STM
+POST http://localhost:8080/api/short
 Content-Type: application/json
 
 {
   "message": "My name is Andrei"
 }
 
-### Ask name
-POST http://localhost:8080/api/chat
+### Ask name - STM
+POST http://localhost:8080/api/short
 Content-Type: application/json
 
 {
   "message": "What is my name?"
 }
 
+### Tell name - LTM
+POST http://localhost:8080/api/long
+Content-Type: application/json
+
+{
+  "message": "My name is Andrei"
+}
+
+### Ask name - LTM
+POST http://localhost:8080/api/long
+Content-Type: application/json
+
+{
+  "message": "What is my name?"
+}
+
+
 ### Get history
-GET http://localhost:8080/api/chat/history
+GET http://localhost:8080/api/history
 
 ### Clear history
-DELETE http://localhost:8080/api/chat/history
+DELETE http://localhost:8080/api/history
+
+### Get Memories
+GET http://localhost:8080/api/memories

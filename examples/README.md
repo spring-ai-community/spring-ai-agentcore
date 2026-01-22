@@ -1,6 +1,6 @@
 # Spring AI Bedrock AgentCore Examples
 
-This directory contains example Spring Boot applications and Terraform deployment configurations for AWS Bedrock AgentCore.
+This directory contains example Spring Boot applications and Terraform deployment configurations for Amazon Bedrock AgentCore.
 
 ## Quick Start
 

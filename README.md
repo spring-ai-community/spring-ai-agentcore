@@ -1,6 +1,6 @@
 # Spring AI Bedrock AgentCore
 
-A Spring Boot starter that enables existing Spring Boot applications to conform to the AWS Bedrock AgentCore Runtime contract with minimal configuration.
+A Spring Boot starter that enables existing Spring Boot applications to conform to the Amazon Bedrock AgentCore Runtime contract with minimal configuration.
 
 ## Features
 
@@ -10,6 +10,18 @@ A Spring Boot starter that enables existing Spring Boot applications to conform 
 - **Smart health checks**: Built-in `/ping` endpoint with Spring Boot Actuator integration
 - **Async task tracking**: Convenient methods for background task tracking
 - **Rate limiting**: Built-in Bucket4j throttling for invocations and ping endpoints
+- **AgentCore Memory integration**: Spring AI integration with Amazon Bedrock AgentCore Memory service
+
+## Examples
+
+See the `examples/` directory for complete working examples:
+
+- **`simple-spring-boot-app/`** - Minimal AgentCore agent with async task tracking
+- **`spring-ai-sse-chat-client/`** - SSE streaming with Spring AI and Amazon Bedrock
+- **`spring-ai-simple-chat-client/`** - Traditional Spring AI integration (without AgentCore starter)
+- **`spring-ai-override-invocations/`** - Custom controller override using marker interfaces
+- **`spring-ai-memory-integration/`** - Spring AI ChatMemory integration with Amazon Bedrock AgentCore Memory service
+- **`spring-ai-extended-chat-client/`** - Spring AI chat client with OAuth authentication and per-user memory isolation, deployable to Amazon Bedrock AgentCore Runtime.
 
 ## Quick Start
 
@@ -28,7 +40,7 @@ A Spring Boot starter that enables existing Spring Boot applications to conform 
 ```java
 @Service
 public class MyAgentService {
-    
+
     @AgentCoreInvocation
     public String handleUserPrompt(MyRequest request) {
         return "You said: " + request.prompt;
@@ -124,7 +136,7 @@ The `/ping` endpoint provides intelligent health monitoring:
 
 ### Background Task Tracking
 
-AWS Bedrock AgentCore Runtime monitors agent health and may shut down agents that appear idle. When your agent starts long-running background tasks (like file processing, data analysis, or calling other long-running agents), the runtime needs to know the agent is still actively working to avoid premature termination.
+Amazon Bedrock AgentCore Runtime monitors agent health and may shut down agents that appear idle. When your agent starts long-running background tasks (like file processing, data analysis, or calling other long-running agents), the runtime needs to know the agent is still actively working to avoid premature termination.
 
 The starter includes `AgentCoreTaskTracker` to communicate this state to the runtime:
 
@@ -132,11 +144,11 @@ The starter includes `AgentCoreTaskTracker` to communicate this state to the run
 @AgentCoreInvocation
 public String asyncTaskHandling(MyRequest request, AgentCoreContext context) {
     agentCoreTaskTracker.increment();  // Tell runtime: "I'm starting background work"
-    
+
     CompletableFuture.runAsync(() -> {
         // Long-running background work
     }).thenRun(agentCoreTaskTracker::decrement);  // Tell runtime: "Background work completed"
-    
+
     return "Task started";
 }
 ```
@@ -202,7 +214,7 @@ Rate limits are applied per client IP address and reset every minute.
 **Response (503) - When Actuator detects issues:**
 ```json
 {
-  "status": "Unhealthy", 
+  "status": "Unhealthy",
   "time_of_last_update": 1697123456
 }
 ```
@@ -218,7 +230,7 @@ Implement `AgentCoreInvocationsHandler` to provide custom `/invocations` endpoin
 ```java
 @RestController
 public class CustomInvocationsController implements AgentCoreInvocationsHandler {
-    
+
     @PostMapping("/invocations")
     public ResponseEntity<?> handleInvocations(@RequestBody String request) {
         // Custom invocation logic
@@ -234,7 +246,7 @@ Implement `AgentCorePingHandler` to provide custom `/ping` endpoint handling:
 ```java
 @RestController
 public class CustomPingController implements AgentCorePingHandler {
-    
+
     @GetMapping("/ping")
     public ResponseEntity<?> ping() {
         // Custom health check logic
@@ -247,20 +259,118 @@ When these marker interfaces are implemented, the corresponding auto-configured 
 
 See `examples/spring-ai-override-invocations/` for a complete working example.
 
-## Examples
+## AgentCore Memory
 
-See the `examples/` directory for complete working examples:
+The `spring-ai-memory-bedrock-agentcore` module provides Spring AI ChatMemory integration with Amazon Bedrock AgentCore Memory service, supporting both Short-Term Memory (STM) and Long-Term Memory (LTM) with 4 consolidation strategies.
 
-- **`simple-spring-boot-app/`** - Minimal AgentCore agent with async task tracking
-- **`spring-ai-sse-chat-client/`** - SSE streaming with Spring AI and Amazon Bedrock
-- **`spring-ai-simple-chat-client/`** - Traditional Spring AI integration (without AgentCore starter)
-- **`spring-ai-override-invocations/`** - Custom controller override using marker interfaces
+### Add Dependency
 
-## Requirements
+```xml
+<dependency>
+    <groupId>org.springaicommunity</groupId>
+    <artifactId>spring-ai-memory-bedrock-agentcore</artifactId>
+    <version>1.0.0-RC2</version>
+</dependency>
+```
 
-- Java 17+
-- Spring Boot 3.x
-- Maven or Gradle
+### Short-Term Memory (STM)
+
+STM stores recent conversation history using Spring AI's `ChatMemoryRepository` interface.
+
+**Configuration:**
+```yaml
+agentcore:
+  memory:
+    memory-id: ${AGENTCORE_MEMORY_MEMORY_ID}
+    total-events-limit: 100  # Context window size
+```
+
+**Usage:**
+```java
+@Service
+public class ChatService {
+
+    public ChatService(ChatClient.Builder builder, ChatMemoryRepository memoryRepository) {
+        ChatMemory chatMemory = MessageWindowChatMemory.builder()
+                .chatMemoryRepository(memoryRepository)
+                .build();
+
+        this.chatClient = builder
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .build();
+    }
+
+    public Flux<String> chat(String userId, String sessionId, String message) {
+        return chatClient.prompt()
+                .user(message)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, userId + ":" + sessionId))
+                .stream()
+                .content();
+    }
+}
+```
+
+### Long-Term Memory (LTM)
+
+Long-term memory (LTM) is derived from short-term memory (STM) and is automatically consolidated by Bedrock AgentCore through an asynchronous process. For more details, see the [Long-Term Memory documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/long-term-memory-long-term.html).
+
+LTM provides persistent knowledge across sessions with 4 consolidation strategies:
+
+| Strategy | Purpose | Retrieval |
+|----------|---------|-----------|
+| **Semantic** | User facts (e.g., "likes coffee") | Semantic search |
+| **User Preference** | Settings (e.g., "dark mode") | Lists all |
+| **Summary** | Conversation summaries | Semantic search |
+| **Episodic** | Past interactions & reflections | Semantic search |
+
+**Configuration:**
+```yaml
+agentcore:
+  memory:
+    memory-id: ${AGENTCORE_MEMORY_MEMORY_ID}
+    long-term:
+      semantic:
+        strategy-id: ${AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_STRATEGY_ID}
+      user-preference:
+        strategy-id: ${AGENTCORE_MEMORY_LONG_TERM_USER_PREFERENCE_STRATEGY_ID}
+      summary:
+        strategy-id: ${AGENTCORE_MEMORY_LONG_TERM_SUMMARY_STRATEGY_ID}
+      episodic:
+        strategy-id: ${AGENTCORE_MEMORY_LONG_TERM_EPISODIC_STRATEGY_ID}
+```
+
+**Usage with STM + LTM:**
+```java
+@Service
+public class ChatService {
+
+    private final ChatClient chatClient;
+
+    public ChatService(ChatClient.Builder builder,
+                       AgentCoreMemory agentCoreMemory) {
+
+        this.chatClient = builder
+                .defaultAdvisors(agentCoreMemory.advisors)
+                .build();
+    }
+
+    public Flux<String> chat(String conversationId, String message) {
+        return chatClient.prompt()
+                .user(message)
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+                .stream()
+                .content();
+    }
+}
+```
+
+The `AgentCoreMemory` bean is auto-configured when you set the required properties.
+
+For detailed configuration options and API reference, see [spring-ai-memory-bedrock-agentcore/README.md](spring-ai-memory-bedrock-agentcore/README.md).
+
+## Development
+
+See [DEV.md](DEV.md) for testing, building, and contributing.
 
 ## License
 

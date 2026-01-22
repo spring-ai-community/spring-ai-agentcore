@@ -82,7 +82,7 @@ class EndToEndSpringAIChatClientIntegrationTest {
 	}
 
 	@SpringBootApplication(scanBasePackages = "org.springaicommunity.agentcore.memory")
-	@EnableConfigurationProperties(AgentCoreShortMemoryRepositoryConfiguration.class)
+	@EnableConfigurationProperties(AgentCoreMemoryProperties.class)
 	static class TestApp {
 
 	}

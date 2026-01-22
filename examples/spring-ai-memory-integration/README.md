@@ -1,120 +1,99 @@
 # Spring AI AgentCore Memory Example
 
-A complete example demonstrating AWS Bedrock AgentCore Short-Term Memory integration with Spring AI for persistent conversation history.
+A complete example demonstrating Amazon Bedrock AgentCore Short-Term & Long-Term Memory integration with Spring AI for persistent conversation history.
+
+This example creates and uses the AgentCore Long-Term Memory Summary Strategy.
 
 ## Prerequisites
 
 - Java 17+
 - Maven 3.6+
-- AWS CLI configured with credentials
-- Terraform 1.0+
+- AWS credentials configured locally
 
-## 🏗️ Architecture
+## Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐
-│   REST Client   │───▶│  ChatController  │───▶│   Spring AI Chat   │
-│   (curl/web)    │    │                  │    │      Client         │
-└─────────────────┘    └──────────────────┘    └─────────────────────┘
-                                ▲                          │
-                                │                          ▼
-                                │               ┌─────────────────────┐
-                                │               │  Bedrock Converse   │
-                                │               │       API           │
-                                │               └─────────────────────┘
-                                │
-                       ┌──────────────────┐
-                       │   ChatMemory     │
-                       │  (Window-based)  │
-                       └──────────────────┘
-                                │
-                                ▼
-                       ┌──────────────────┐
-                       │ AgentCore Memory │
-                       │   Repository     │
-                       └──────────────────┘
-                                │
-                                ▼
-                       ┌──────────────────┐
-                       │ AWS Bedrock      │
-                       │ AgentCore Memory │
-                       │ (Short-Term)     │
-                       └──────────────────┘
+  User          ChatClient       STM Advisor      LTM Advisor      AgentCore       LLM
+   │                │                │                │                │            │
+   │  prompt        │                │                │                │            │
+   │───────────────>│                │                │                │            │
+   │                │                │                │                │            │
+   │                │  1. get history│                │                │            │
+   │                │───────────────>│                │                │            │
+   │                │                │  listEvents    │                │            │
+   │                │                │────────────────────────────────>│            │
+   │                │                │<────────────────────────────────│            │
+   │                │<───────────────│  messages      │                │            │
+   │                │                │                │                │            │
+   │                │  2. retrieve LTM                │                │            │
+   │                │────────────────────────────────>│                │            │
+   │                │                │                │  searchMemories│            │
+   │                │                │                │───────────────>│            │
+   │                │                │                │<───────────────│            │
+   │                │<────────────────────────────────│  memories      │            │
+   │                │                │                │                │            │
+   │                │  3. invoke (history + LTM + prompt)              │            │
+   │                │──────────────────────────────────────────────────────────────>│
+   │                │<──────────────────────────────────────────────────────────────│
+   │                │                │                │                │  response  │
+   │                │                │                │                │            │
+   │                │  4. save messages               │                │            │
+   │                │───────────────>│                │                │            │
+   │                │                │  putEvents     │                │            │
+   │                │                │────────────────────────────────>│            │
+   │                │                │<────────────────────────────────│            │
+   │                │                │                │                │            │
+   │<───────────────│  response      │                │                │            │
+   │                │                │                │                │            │
 ```
 
 ## Quick Start
 
-### 1. Create Infrastructure
+### Local Setup
 
-```bash
-./deploy.sh
-```
+1. Setup your local AWS credentials / auth
 
-This creates an AgentCore short-term memory and waits for it to become ACTIVE (takes ~2-3 minutes).
+1. Create the AgentCore Memory:
+    ```bash
+    mvn spring-boot:test-run
+    ```
+1. Export the `AGENTCORE_MEMORY_ID` and `SUMMARY_STRATEGY_ID` env vars
+1. Start the Spring web application
+    ```bash
+    mvn spring-boot:run
+    ```
+1. Test the application:
+    ```bash
+    # --- Short-Term Memory (STM) ---
+    # Tell your name
+    curl -X POST http://localhost:8080/api/short \
+        -H "Content-Type: application/json" \
+        -d '{"message": "My name is Andrei"}'
+    
+    # Ask for your name (memory recall)
+    curl -X POST http://localhost:8080/api/short \
+        -H "Content-Type: application/json" \
+        -d '{"message": "What is my name?"}'
 
-### 2. Export Memory ID
+    # --- Long-Term Memory (LTM) ---
+    # Ask something to be persisted in LTM
+    curl -X POST http://localhost:8080/api/long \
+        -H "Content-Type: application/json" \
+        -d '{"message": "I love hiking in the Alps"}'
 
-```bash
-export AGENTCORE_MEMORY_ID=$(cd terraform && terraform output -raw memory_id)
-```
+    # Get conversation history
+    curl http://localhost:8080/api/history
+ 
+    # Get stored LTM memories
+    curl http://localhost:8080/api/memories
 
-### 3. Run Application
-
-```bash
-mvn spring-boot:run
-```
-
-### 4. Test the API
-
-```bash
-# Tell your name
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "My name is Andrei"}'
-
-# Ask for your name (memory recall)
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "What is my name?"}'
-
-# Get conversation history
-curl http://localhost:8080/api/chat/history
-
-# Clear conversation
-curl -X DELETE http://localhost:8080/api/chat/history
-```
+    # Clear conversation
+    curl -X DELETE http://localhost:8080/api/history
+    ```
 
 ## Cleanup
 
+With the `AGENTCORE_MEMORY_ID` env var set, run:
 ```bash
-cd terraform
-terraform destroy
+mvn spring-boot:test-run
 ```
-
-## Configuration
-
-Edit `src/main/resources/application.properties`:
-
-```properties
-# AWS Bedrock Model
-spring.ai.bedrock.converse.chat.options.model=global.amazon.nova-2-lite-v1:0
-
-# AgentCore Memory
-agentcore.memory.memory-id=${AGENTCORE_MEMORY_ID}
-agentcore.memory.total-events-limit=100
-agentcore.memory.page-size=50
-agentcore.memory.ignore-unknown-roles=true
-```
-
-## How It Works
-
-The application uses:
-- **AgentCore Memory Repository** - Stores conversation history in AWS Bedrock AgentCore Memory
-- **Spring AI ChatClient** - Handles chat interactions with Amazon Bedrock models
-- **MessageChatMemoryAdvisor** - Automatically manages conversation context
-
-Conversation history is persisted in AgentCore Memory with a unique conversation ID (`testActor/testSession`), allowing the AI to remember previous interactions.
-
-## License
-
-Apache License 2.0

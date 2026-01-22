@@ -22,7 +22,7 @@
     </scm>
 
     <name>Spring AI Community - Bedrock AgentCore parent</name>
-    <description>Spring Boot starter for AWS Bedrock AgentCore runtime support</description>
+    <description>Spring Boot starter for Amazon Bedrock AgentCore runtime support</description>
 
     <organization>
         <name>Spring AI Community</name>
