@@ -36,18 +36,18 @@ import software.amazon.awssdk.services.bedrockagentcore.model.SearchCriteria;
  *
  * @author Yuriy Bezsonov
  */
-public class AgentCoreLongMemoryRetriever {
+public class AgentCoreLongTermMemoryRetriever {
 
-	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongMemoryRetriever.class);
+	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryRetriever.class);
 
 	private final BedrockAgentCoreClient client;
 
 	private final String memoryId;
 
-	public AgentCoreLongMemoryRetriever(BedrockAgentCoreClient client, String memoryId) {
+	public AgentCoreLongTermMemoryRetriever(BedrockAgentCoreClient client, String memoryId) {
 		this.client = client;
 		this.memoryId = memoryId;
-		logger.info("AgentCoreLongMemoryRetriever initialized with memoryId: {}", memoryId);
+		logger.info("AgentCoreLongTermMemoryRetriever initialized with memoryId: {}", memoryId);
 	}
 
 	/**
@@ -61,7 +61,7 @@ public class AgentCoreLongMemoryRetriever {
 	 * @return list of matching memory records
 	 */
 	public List<MemoryRecord> searchMemories(String strategyId, String actorId, String sessionId, String query,
-			int topK, AgentCoreLongMemoryScope scope) {
+			int topK, AgentCoreLongTermMemoryScope scope) {
 		String namespace = buildNamespace(scope, strategyId, actorId, sessionId);
 		return doSearch(namespace, strategyId, query, topK);
 	}
@@ -70,7 +70,7 @@ public class AgentCoreLongMemoryRetriever {
 	 * Semantic search for memories (actor-scoped, searches all sessions).
 	 */
 	public List<MemoryRecord> searchMemories(String strategyId, String actorId, String query, int topK) {
-		return searchMemories(strategyId, actorId, null, query, topK, AgentCoreLongMemoryScope.ACTOR);
+		return searchMemories(strategyId, actorId, null, query, topK, AgentCoreLongTermMemoryScope.ACTOR);
 	}
 
 	/**
@@ -79,7 +79,7 @@ public class AgentCoreLongMemoryRetriever {
 	 * needed (SESSION scope includes it, ACTOR scope ignores it).
 	 */
 	public List<MemoryRecord> searchSummaries(String strategyId, String actorId, String sessionId, String query,
-			int topK, AgentCoreLongMemoryScope scope) {
+			int topK, AgentCoreLongTermMemoryScope scope) {
 		String namespace = scope.buildNamespace(strategyId, actorId, sessionId);
 		return doSearch(namespace, strategyId, query, topK);
 	}
@@ -88,7 +88,7 @@ public class AgentCoreLongMemoryRetriever {
 	 * List all memories for an actor (no semantic search). Used for preferences.
 	 */
 	public List<MemoryRecord> listMemories(String strategyId, String actorId) {
-		String namespace = AgentCoreLongMemoryScope.ACTOR.buildNamespace(strategyId, actorId);
+		String namespace = AgentCoreLongTermMemoryScope.ACTOR.buildNamespace(strategyId, actorId);
 		logger.debug("Listing memories: namespace={}", namespace);
 
 		try {
@@ -108,8 +108,9 @@ public class AgentCoreLongMemoryRetriever {
 		}
 	}
 
-	private String buildNamespace(AgentCoreLongMemoryScope scope, String strategyId, String actorId, String sessionId) {
-		// Validation now handled by AgentCoreLongMemoryScope.buildNamespace()
+	private String buildNamespace(AgentCoreLongTermMemoryScope scope, String strategyId, String actorId,
+			String sessionId) {
+		// Validation now handled by AgentCoreLongTermMemoryScope.buildNamespace()
 		return scope.buildNamespace(strategyId, actorId, sessionId);
 	}
 

@@ -23,7 +23,7 @@ import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryRetriever.MemoryRecord;
+import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryRetriever.MemoryRecord;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
@@ -54,11 +54,11 @@ import reactor.core.publisher.Flux;
  *
  * @author Yuriy Bezsonov
  */
-public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
+public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
-	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongMemoryAdvisor.class);
+	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryAdvisor.class);
 
-	private final AgentCoreLongMemoryRetriever retriever;
+	private final AgentCoreLongTermMemoryRetriever retriever;
 
 	private final String strategyId;
 
@@ -74,7 +74,7 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
 	private final int reflectionsTopK;
 
-	private final AgentCoreLongMemoryScope scope;
+	private final AgentCoreLongTermMemoryScope scope;
 
 	public enum MemoryStrategy {
 
@@ -92,7 +92,7 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
 	}
 
-	private AgentCoreLongMemoryAdvisor(Builder builder) {
+	private AgentCoreLongTermMemoryAdvisor(Builder builder) {
 		this.retriever = builder.retriever;
 		this.strategyId = builder.strategyId;
 		this.reflectionsStrategyId = builder.reflectionsStrategyId;
@@ -103,17 +103,17 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 		this.reflectionsTopK = builder.reflectionsTopK;
 		this.scope = builder.scope;
 		logger.info(
-				"AgentCoreLongMemoryAdvisor initialized: mode={}, strategyId={}, reflectionsStrategyId={}, scope={}",
+				"AgentCoreLongTermMemoryAdvisor initialized: mode={}, strategyId={}, reflectionsStrategyId={}, scope={}",
 				this.memoryStrategy, this.strategyId, this.reflectionsStrategyId, this.scope);
 	}
 
-	public static Builder builder(AgentCoreLongMemoryRetriever retriever, MemoryStrategy mode) {
+	public static Builder builder(AgentCoreLongTermMemoryRetriever retriever, MemoryStrategy mode) {
 		return new Builder(retriever, mode);
 	}
 
 	public static class Builder {
 
-		private final AgentCoreLongMemoryRetriever retriever;
+		private final AgentCoreLongTermMemoryRetriever retriever;
 
 		private final MemoryStrategy mode;
 
@@ -129,9 +129,9 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
 		private int reflectionsTopK = 2;
 
-		private AgentCoreLongMemoryScope scope = AgentCoreLongMemoryScope.ACTOR;
+		private AgentCoreLongTermMemoryScope scope = AgentCoreLongTermMemoryScope.ACTOR;
 
-		private Builder(AgentCoreLongMemoryRetriever retriever, MemoryStrategy mode) {
+		private Builder(AgentCoreLongTermMemoryRetriever retriever, MemoryStrategy mode) {
 			Objects.requireNonNull(retriever, "AgentCore Long-Term memory retriever is required");
 			Objects.requireNonNull(mode, "mode is required");
 			this.retriever = retriever;
@@ -168,16 +168,16 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 			return this;
 		}
 
-		public Builder scope(AgentCoreLongMemoryScope scope) {
-			this.scope = scope != null ? scope : AgentCoreLongMemoryScope.ACTOR;
+		public Builder scope(AgentCoreLongTermMemoryScope scope) {
+			this.scope = scope != null ? scope : AgentCoreLongTermMemoryScope.ACTOR;
 			return this;
 		}
 
-		public AgentCoreLongMemoryAdvisor build() {
+		public AgentCoreLongTermMemoryAdvisor build() {
 			if (this.strategyId == null || this.strategyId.isEmpty()) {
 				throw new IllegalArgumentException("strategyId is required");
 			}
-			return new AgentCoreLongMemoryAdvisor(this);
+			return new AgentCoreLongTermMemoryAdvisor(this);
 		}
 
 	}
@@ -366,7 +366,7 @@ public class AgentCoreLongMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
 	@Override
 	public String getName() {
-		return "AgentCoreLongMemoryAdvisor-" + this.memoryStrategy;
+		return "AgentCoreLongTermMemoryAdvisor-" + this.memoryStrategy;
 	}
 
 	@Override

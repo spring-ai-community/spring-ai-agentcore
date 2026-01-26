@@ -18,8 +18,8 @@ package org.springaicommunity.agentcore.memory;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(AgentCoreLongMemoryProperties.CONFIG_PREFIX)
-public class AgentCoreLongMemoryProperties {
+@ConfigurationProperties(AgentCoreLongTermMemoryProperties.CONFIG_PREFIX)
+public class AgentCoreLongTermMemoryProperties {
 
 	public static final String CONFIG_PREFIX = "agentcore.memory.long-term";
 
@@ -31,7 +31,7 @@ public class AgentCoreLongMemoryProperties {
 
 	private final UserPreference userPreference;
 
-	public AgentCoreLongMemoryProperties(Episodic episodic, Semantic semantic, Summary summary,
+	public AgentCoreLongTermMemoryProperties(Episodic episodic, Semantic semantic, Summary summary,
 			UserPreference userPreference) {
 		this.episodic = episodic;
 		this.semantic = semantic;
@@ -56,14 +56,14 @@ public class AgentCoreLongMemoryProperties {
 	}
 
 	public record Episodic(String strategyId, String reflectionsStrategyId, int episodesTopK, int reflectionsTopK,
-			AgentCoreLongMemoryScope scope) implements AgentCoreLongMemoryStrategy {
+			AgentCoreLongTermMemoryScope scope) implements AgentCoreLongTermMemoryStrategy {
 
-		public static final String CONFIG_PREFIX = AgentCoreLongMemoryProperties.CONFIG_PREFIX + ".episodic";
+		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".episodic";
 
 		public Episodic {
 			episodesTopK = episodesTopK > 0 ? episodesTopK : 3;
 			reflectionsTopK = reflectionsTopK > 0 ? reflectionsTopK : 2;
-			scope = scope != null ? scope : AgentCoreLongMemoryScope.ACTOR;
+			scope = scope != null ? scope : AgentCoreLongTermMemoryScope.ACTOR;
 		}
 
 		/**
@@ -76,36 +76,36 @@ public class AgentCoreLongMemoryProperties {
 	}
 
 	public record Semantic(String strategyId, int topK,
-			AgentCoreLongMemoryScope scope) implements AgentCoreLongMemoryStrategy {
+			AgentCoreLongTermMemoryScope scope) implements AgentCoreLongTermMemoryStrategy {
 
-		public static final String CONFIG_PREFIX = AgentCoreLongMemoryProperties.CONFIG_PREFIX + ".semantic";
+		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".semantic";
 
 		public Semantic {
 			topK = topK > 0 ? topK : 3;
-			scope = scope != null ? scope : AgentCoreLongMemoryScope.ACTOR;
+			scope = scope != null ? scope : AgentCoreLongTermMemoryScope.ACTOR;
 		}
 
 	}
 
 	public record Summary(String strategyId, int topK,
-			AgentCoreLongMemoryScope scope) implements AgentCoreLongMemoryStrategy {
+			AgentCoreLongTermMemoryScope scope) implements AgentCoreLongTermMemoryStrategy {
 
-		public static final String CONFIG_PREFIX = AgentCoreLongMemoryProperties.CONFIG_PREFIX + ".summary";
+		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".summary";
 
 		public Summary {
 			topK = topK > 0 ? topK : 3;
-			scope = scope != null ? scope : AgentCoreLongMemoryScope.SESSION;
+			scope = scope != null ? scope : AgentCoreLongTermMemoryScope.SESSION;
 		}
 
 	}
 
 	public record UserPreference(String strategyId,
-			AgentCoreLongMemoryScope scope) implements AgentCoreLongMemoryStrategy {
+			AgentCoreLongTermMemoryScope scope) implements AgentCoreLongTermMemoryStrategy {
 
-		public static final String CONFIG_PREFIX = AgentCoreLongMemoryProperties.CONFIG_PREFIX + ".user-preference";
+		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".user-preference";
 
 		public UserPreference {
-			scope = scope != null ? scope : AgentCoreLongMemoryScope.ACTOR;
+			scope = scope != null ? scope : AgentCoreLongTermMemoryScope.ACTOR;
 		}
 
 	}

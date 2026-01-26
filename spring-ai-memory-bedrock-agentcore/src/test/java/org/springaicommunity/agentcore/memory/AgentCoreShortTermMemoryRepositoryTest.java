@@ -28,16 +28,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class AgentCoreShortMemoryRepositoryTest {
+public class AgentCoreShortTermMemoryRepositoryTest {
 
 	@Mock
 	private BedrockAgentCoreClient client;
 
-	private AgentCoreShortMemoryRepository memoryRepository;
+	private AgentCoreShortTermMemoryRepository memoryRepository;
 
 	@BeforeEach
 	void setUp() {
-		memoryRepository = new AgentCoreShortMemoryRepository("testMemoryId", client, null, "default-session", 100,
+		memoryRepository = new AgentCoreShortTermMemoryRepository("testMemoryId", client, null, "default-session", 100,
 				false);
 	}
 
@@ -156,8 +156,8 @@ public class AgentCoreShortMemoryRepositoryTest {
 
 	@Test
 	void shouldRespectTotalLimitWhenConfigured() {
-		var memoryRepositoryWithLimit = new AgentCoreShortMemoryRepository("testMemoryId", client, 1, "default-session",
-				100, false);
+		var memoryRepositoryWithLimit = new AgentCoreShortTermMemoryRepository("testMemoryId", client, 1,
+				"default-session", 100, false);
 
 		ListEventsResponse listEventsResponse = ListEventsResponse.builder()
 			.events(Event.builder()
@@ -193,7 +193,7 @@ public class AgentCoreShortMemoryRepositoryTest {
 			"1, 1" // very small limit -> limit
 	})
 	void shouldUseCorrectPageSize(Integer totalEventsLimit, int expectedPageSize) {
-		var memoryRepository = new AgentCoreShortMemoryRepository("testMemoryId", client, totalEventsLimit,
+		var memoryRepository = new AgentCoreShortTermMemoryRepository("testMemoryId", client, totalEventsLimit,
 				"default-session", 100, false);
 
 		// Create events to return
@@ -235,13 +235,13 @@ public class AgentCoreShortMemoryRepositoryTest {
 	@Test
 	void shouldThrowExceptionForNullMemoryId() {
 		assertThat(org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
-				() -> new AgentCoreShortMemoryRepository(null, client, null, "default-session", 100, false)))
+				() -> new AgentCoreShortTermMemoryRepository(null, client, null, "default-session", 100, false)))
 			.hasMessage("MemoryId cannot be null or empty");
 	}
 
 	@Test
 	void shouldIgnoreUnknownRolesWhenConfigured() {
-		var memoryRepositoryWithIgnore = new AgentCoreShortMemoryRepository("testMemoryId", client, null,
+		var memoryRepositoryWithIgnore = new AgentCoreShortTermMemoryRepository("testMemoryId", client, null,
 				"default-session", 100, true);
 
 		ListEventsResponse listEventsResponse = ListEventsResponse.builder()
@@ -264,9 +264,9 @@ public class AgentCoreShortMemoryRepositoryTest {
 
 	@Test
 	void shouldHaveCorrectIgnoreUnknownRolesConfiguration() {
-		var memoryRepositoryIgnoreTrue = new AgentCoreShortMemoryRepository("testMemoryId", client, null,
+		var memoryRepositoryIgnoreTrue = new AgentCoreShortTermMemoryRepository("testMemoryId", client, null,
 				"default-session", 100, true);
-		var memoryRepositoryIgnoreFalse = new AgentCoreShortMemoryRepository("testMemoryId", client, null,
+		var memoryRepositoryIgnoreFalse = new AgentCoreShortTermMemoryRepository("testMemoryId", client, null,
 				"default-session", 100, false);
 
 		// We can't directly test the field, but we can verify the constructor accepts the
@@ -278,7 +278,7 @@ public class AgentCoreShortMemoryRepositoryTest {
 
 	@Test
 	void shouldIgnoreUnknownMessageTypesWhenSaving() {
-		var memoryRepositoryWithIgnore = new AgentCoreShortMemoryRepository("testMemoryId", client, null,
+		var memoryRepositoryWithIgnore = new AgentCoreShortTermMemoryRepository("testMemoryId", client, null,
 				"default-session", 100, true);
 
 		CreateEventResponse response = CreateEventResponse.builder()
@@ -320,7 +320,7 @@ public class AgentCoreShortMemoryRepositoryTest {
 	void shouldOnlySaveMessagesWithoutEventId() {
 		// Given: Mix of messages - some with eventId (already saved), some without (new)
 		Map<String, Object> existingMetadata = new HashMap<>();
-		existingMetadata.put(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
+		existingMetadata.put(AgentCoreShortTermMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
 
 		List<Message> messages = List.of(UserMessage.builder().text("old message 1").metadata(existingMetadata).build(),
 				AssistantMessage.builder().content("old message 2").properties(existingMetadata).build(),
@@ -353,7 +353,7 @@ public class AgentCoreShortMemoryRepositoryTest {
 	void shouldNotCallCreateEventWhenAllMessagesAlreadySaved() {
 		// Given: All messages have eventId (already saved)
 		Map<String, Object> existingMetadata = new HashMap<>();
-		existingMetadata.put(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
+		existingMetadata.put(AgentCoreShortTermMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
 
 		List<Message> messages = List.of(UserMessage.builder().text("old message 1").metadata(existingMetadata).build(),
 				AssistantMessage.builder().content("old message 2").properties(existingMetadata).build());
@@ -384,9 +384,9 @@ public class AgentCoreShortMemoryRepositoryTest {
 		memoryRepository.saveAll("testActorId:testSessionId", messages);
 
 		// Then: Messages should be marked with the returned eventId
-		assertThat(userMessage.getMetadata().get(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY))
+		assertThat(userMessage.getMetadata().get(AgentCoreShortTermMemoryRepository.EVENT_ID_METADATA_KEY))
 			.isEqualTo(returnedEventId);
-		assertThat(assistantMessage.getMetadata().get(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY))
+		assertThat(assistantMessage.getMetadata().get(AgentCoreShortTermMemoryRepository.EVENT_ID_METADATA_KEY))
 			.isEqualTo(returnedEventId);
 	}
 
@@ -415,7 +415,7 @@ public class AgentCoreShortMemoryRepositoryTest {
 
 		// Then: Messages should have eventId in metadata
 		assertThat(messages).hasSize(1);
-		assertThat(messages.get(0).getMetadata().get(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY))
+		assertThat(messages.get(0).getMetadata().get(AgentCoreShortTermMemoryRepository.EVENT_ID_METADATA_KEY))
 			.isEqualTo(eventId);
 	}
 
@@ -502,7 +502,7 @@ public class AgentCoreShortMemoryRepositoryTest {
 	void shouldPreserveMessageOrderInDelta() {
 		// Given: Messages in specific order, some with eventId
 		Map<String, Object> existingMetadata = new HashMap<>();
-		existingMetadata.put(AgentCoreShortMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
+		existingMetadata.put(AgentCoreShortTermMemoryRepository.EVENT_ID_METADATA_KEY, "existing-event-id");
 
 		List<Message> messages = List.of(UserMessage.builder().text("old 1").metadata(existingMetadata).build(),
 				UserMessage.builder().text("new 1").build(),

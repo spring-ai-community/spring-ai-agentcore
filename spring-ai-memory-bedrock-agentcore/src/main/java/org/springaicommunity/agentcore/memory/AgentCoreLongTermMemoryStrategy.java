@@ -21,7 +21,7 @@ package org.springaicommunity.agentcore.memory;
  *
  * @author Yuriy Bezsonov
  */
-public interface AgentCoreLongMemoryStrategy {
+public interface AgentCoreLongTermMemoryStrategy {
 
 	String strategyId();
 

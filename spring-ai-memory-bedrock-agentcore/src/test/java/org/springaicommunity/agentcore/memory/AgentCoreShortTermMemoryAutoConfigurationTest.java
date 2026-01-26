@@ -30,15 +30,15 @@ import org.springframework.context.annotation.Configuration;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
 /**
- * Unit tests for {@link AgentCoreShortMemoryRepositoryAutoConfiguration}.
+ * Unit tests for {@link AgentCoreShortTermMemoryRepositoryAutoConfiguration}.
  *
  * @author Yuriy Bezsonov
  */
-@DisplayName("AgentCore Short Memory Auto-Configuration Tests")
-class AgentCoreShortMemoryAutoConfigurationTest {
+@DisplayName("AgentCore Short-Term Memory Auto-Configuration Tests")
+class AgentCoreShortTermMemoryAutoConfigurationTest {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-		.withConfiguration(AutoConfigurations.of(AgentCoreShortMemoryRepositoryAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(AgentCoreShortTermMemoryRepositoryAutoConfiguration.class));
 
 	@Test
 	@DisabledIfEnvironmentVariable(named = "AGENTCORE_MEMORY_MEMORY_ID", matches = ".+",
@@ -46,7 +46,7 @@ class AgentCoreShortMemoryAutoConfigurationTest {
 	@DisplayName("Should not create beans when memory-id is not set")
 	void shouldNotCreateBeansWhenMemoryIdNotSet() {
 		contextRunner.run(context -> {
-			assertThat(context).doesNotHaveBean(AgentCoreShortMemoryRepository.class);
+			assertThat(context).doesNotHaveBean(AgentCoreShortTermMemoryRepository.class);
 			assertThat(context).doesNotHaveBean(BedrockAgentCoreClient.class);
 		});
 	}
@@ -57,8 +57,9 @@ class AgentCoreShortMemoryAutoConfigurationTest {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues("agentcore.memory.memory-id=test-memory-123")
 			.run(context -> {
-				assertThat(context).hasSingleBean(AgentCoreShortMemoryRepository.class);
-				AgentCoreShortMemoryRepository repository = context.getBean(AgentCoreShortMemoryRepository.class);
+				assertThat(context).hasSingleBean(AgentCoreShortTermMemoryRepository.class);
+				AgentCoreShortTermMemoryRepository repository = context
+					.getBean(AgentCoreShortTermMemoryRepository.class);
 				assertThat(repository).isNotNull();
 			});
 	}
@@ -88,7 +89,7 @@ class AgentCoreShortMemoryAutoConfigurationTest {
 			.withPropertyValues("agentcore.memory.memory-id=test-memory")
 			.run(context -> {
 				assertThat(context).hasSingleBean(BedrockAgentCoreClient.class);
-				assertThat(context).hasSingleBean(AgentCoreShortMemoryRepository.class);
+				assertThat(context).hasSingleBean(AgentCoreShortTermMemoryRepository.class);
 			});
 	}
 

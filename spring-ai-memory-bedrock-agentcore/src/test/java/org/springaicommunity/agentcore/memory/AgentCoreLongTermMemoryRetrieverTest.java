@@ -13,7 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryRetriever.MemoryRecord;
+import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryRetriever.MemoryRecord;
 
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListMemoryRecordsRequest;
@@ -24,21 +24,21 @@ import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryReco
 import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryRecordsResponse;
 
 /**
- * Unit tests for {@link AgentCoreLongMemoryRetriever}.
+ * Unit tests for {@link AgentCoreLongTermMemoryRetriever}.
  *
  * @author Yuriy Bezsonov
  */
 @ExtendWith(MockitoExtension.class)
-class AgentCoreLongMemoryRetrieverTest {
+class AgentCoreLongTermMemoryRetrieverTest {
 
 	@Mock
 	private BedrockAgentCoreClient client;
 
-	private AgentCoreLongMemoryRetriever retriever;
+	private AgentCoreLongTermMemoryRetriever retriever;
 
 	@BeforeEach
 	void setUp() {
-		retriever = new AgentCoreLongMemoryRetriever(client, "test-memory-id");
+		retriever = new AgentCoreLongTermMemoryRetriever(client, "test-memory-id");
 	}
 
 	@Test
@@ -67,7 +67,7 @@ class AgentCoreLongMemoryRetrieverTest {
 		verify(client).retrieveMemoryRecords(captor.capture());
 
 		assertThat(captor.getValue().memoryId()).isEqualTo("test-memory-id");
-		assertThat(captor.getValue().namespace()).isEqualTo("/strategy/strategy-123/actors/user-456");
+		assertThat(captor.getValue().namespace()).isEqualTo("/strategies/strategy-123/actors/user-456");
 		assertThat(captor.getValue().searchCriteria().searchQuery()).isEqualTo("coffee preferences");
 		assertThat(captor.getValue().searchCriteria().topK()).isEqualTo(5);
 	}
@@ -86,7 +86,7 @@ class AgentCoreLongMemoryRetrieverTest {
 
 		// When
 		List<MemoryRecord> records = retriever.searchSummaries("strategy-123", "user-456", "session-789", "travel", 3,
-				AgentCoreLongMemoryScope.SESSION);
+				AgentCoreLongTermMemoryScope.SESSION);
 
 		// Then
 		assertThat(records).hasSize(1);
@@ -97,7 +97,7 @@ class AgentCoreLongMemoryRetrieverTest {
 		verify(client).retrieveMemoryRecords(captor.capture());
 
 		assertThat(captor.getValue().namespace())
-			.isEqualTo("/strategy/strategy-123/actors/user-456/sessions/session-789");
+			.isEqualTo("/strategies/strategy-123/actors/user-456/sessions/session-789");
 	}
 
 	@Test
@@ -127,7 +127,7 @@ class AgentCoreLongMemoryRetrieverTest {
 		verify(client).listMemoryRecords(captor.capture());
 
 		assertThat(captor.getValue().memoryId()).isEqualTo("test-memory-id");
-		assertThat(captor.getValue().namespace()).isEqualTo("/strategy/strategy-123/actors/user-456");
+		assertThat(captor.getValue().namespace()).isEqualTo("/strategies/strategy-123/actors/user-456");
 	}
 
 	@Test

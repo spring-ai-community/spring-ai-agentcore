@@ -370,7 +370,7 @@ For detailed configuration options and API reference, see [spring-ai-memory-bedr
 
 ## Development
 
-See [DEV.md](DEV.md) for testing, building, and contributing.
+See [AGENTS.md](AGENTS.md) for build commands, testing, and project structure.
 
 ## License
 

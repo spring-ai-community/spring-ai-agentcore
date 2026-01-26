@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryAdvisor.MemoryStrategy;
+import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryAdvisor.MemoryStrategy;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
@@ -43,13 +43,13 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreC
  *
  * @author Yuriy Bezsonov
  */
-@AutoConfiguration(after = AgentCoreShortMemoryRepositoryAutoConfiguration.class)
+@AutoConfiguration(after = AgentCoreShortTermMemoryRepositoryAutoConfiguration.class)
 @ConditionalOnBean({ BedrockAgentCoreClient.class, AgentCoreMemoryProperties.class })
-@EnableConfigurationProperties(AgentCoreLongMemoryProperties.class)
-public class AgentCoreLongMemoryAutoConfiguration {
+@EnableConfigurationProperties(AgentCoreLongTermMemoryProperties.class)
+public class AgentCoreLongTermMemoryAutoConfiguration {
 
-	// This is used for the construction of the AgentCoreLongMemoryRetriever and the
-	// actual AgentCoreLongMemoryAdvisor's depend on that.
+	// This is used for the construction of the AgentCoreLongTermMemoryRetriever and the
+	// actual AgentCoreLongTermMemoryAdvisor's depend on that.
 	// So we have to use an aggregate config
 	// Also, there doesn't seem to be a way to just check for agentcore.memory.long-term
 	// (any child)
@@ -59,23 +59,23 @@ public class AgentCoreLongMemoryAutoConfiguration {
 			super(ConfigurationPhase.REGISTER_BEAN);
 		}
 
-		@ConditionalOnProperty(prefix = AgentCoreLongMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
 		static class SemanticCondition {
 
 		}
 
-		@ConditionalOnProperty(prefix = AgentCoreLongMemoryProperties.UserPreference.CONFIG_PREFIX,
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.UserPreference.CONFIG_PREFIX,
 				name = "strategy-id")
 		static class UserPreferenceCondition {
 
 		}
 
-		@ConditionalOnProperty(prefix = AgentCoreLongMemoryProperties.Summary.CONFIG_PREFIX, name = "strategy-id")
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Summary.CONFIG_PREFIX, name = "strategy-id")
 		static class SummaryCondition {
 
 		}
 
-		@ConditionalOnProperty(prefix = AgentCoreLongMemoryProperties.Episodic.CONFIG_PREFIX, name = "strategy-id")
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX, name = "strategy-id")
 		static class EpisodicCondition {
 
 		}
@@ -99,16 +99,16 @@ public class AgentCoreLongMemoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
-	ChatMemoryRepository chatMemoryRepository(AgentCoreShortMemoryRepository shortMemoryRepository) {
-		return shortMemoryRepository;
+	ChatMemoryRepository chatMemoryRepository(AgentCoreShortTermMemoryRepository shortTermMemoryRepository) {
+		return shortTermMemoryRepository;
 	}
 
 	@Bean
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
-	ChatMemory chatMemory(AgentCoreShortMemoryRepository shortMemoryRepository) {
+	ChatMemory chatMemory(AgentCoreShortTermMemoryRepository shortTermMemoryRepository) {
 		return MessageWindowChatMemory.builder()
-			.chatMemoryRepository(shortMemoryRepository)
+			.chatMemoryRepository(shortTermMemoryRepository)
 			// todo: make this configurable?
 			// .maxMessages(10)
 			.build();
@@ -117,7 +117,7 @@ public class AgentCoreLongMemoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
-	AgentCoreMemory agentCoreLongMemory(List<AgentCoreLongMemoryAdvisor> ltmAdvisors, ChatMemory chatMemory) {
+	AgentCoreMemory agentCoreLongTermMemory(List<AgentCoreLongTermMemoryAdvisor> ltmAdvisors, ChatMemory chatMemory) {
 		var stmAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
 
 		return new AgentCoreMemory(stmAdvisor, ltmAdvisors);
@@ -126,27 +126,27 @@ public class AgentCoreLongMemoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
-	AgentCoreLongMemoryRetriever agentCoreLongMemoryRetriever(BedrockAgentCoreClient client,
-			AgentCoreMemoryProperties memoryConfig, AgentCoreLongMemoryProperties longMemoryProperties,
+	AgentCoreLongTermMemoryRetriever agentCoreLongTermMemoryRetriever(BedrockAgentCoreClient client,
+			AgentCoreMemoryProperties memoryConfig, AgentCoreLongTermMemoryProperties longTermMemoryProperties,
 			Supplier<BedrockAgentCoreControlClient> controlClientFactory) {
 		String memoryId = memoryConfig.memoryId();
 
 		// Validate namespaces at startup to fail fast on misconfiguration
 		// ControlClient is only needed for validation, so create/use/close inline
-		Map<String, AgentCoreLongMemoryScope> strategyConfigs = buildStrategyConfigs(longMemoryProperties);
+		Map<String, AgentCoreLongTermMemoryScope> strategyConfigs = buildStrategyConfigs(longTermMemoryProperties);
 		if (!strategyConfigs.isEmpty()) {
 			try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
-				AgentCoreLongMemoryNamespaceValidator validator = new AgentCoreLongMemoryNamespaceValidator(
+				AgentCoreLongTermMemoryNamespaceValidator validator = new AgentCoreLongTermMemoryNamespaceValidator(
 						controlClient);
 				validator.validateNamespaces(memoryId, strategyConfigs);
 			}
 		}
 
-		return new AgentCoreLongMemoryRetriever(client, memoryId);
+		return new AgentCoreLongTermMemoryRetriever(client, memoryId);
 	}
 
-	private Map<String, AgentCoreLongMemoryScope> buildStrategyConfigs(AgentCoreLongMemoryProperties config) {
-		Map<String, AgentCoreLongMemoryScope> configs = new HashMap<>();
+	private Map<String, AgentCoreLongTermMemoryScope> buildStrategyConfigs(AgentCoreLongTermMemoryProperties config) {
+		Map<String, AgentCoreLongTermMemoryScope> configs = new HashMap<>();
 		if (config.semantic() != null) {
 			configs.put(config.semantic().strategyId(), config.semantic().scope());
 		}
@@ -167,11 +167,11 @@ public class AgentCoreLongMemoryAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(name = "semanticAdvisor")
-	@ConditionalOnProperty(prefix = AgentCoreLongMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
-	AgentCoreLongMemoryAdvisor semanticAdvisor(AgentCoreLongMemoryRetriever retriever,
-			AgentCoreLongMemoryProperties config) {
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
+	AgentCoreLongTermMemoryAdvisor semanticAdvisor(AgentCoreLongTermMemoryRetriever retriever,
+			AgentCoreLongTermMemoryProperties config) {
 		var semanticConfig = config.semantic();
-		return AgentCoreLongMemoryAdvisor.builder(retriever, MemoryStrategy.SEMANTIC)
+		return AgentCoreLongTermMemoryAdvisor.builder(retriever, MemoryStrategy.SEMANTIC)
 			.strategyId(semanticConfig.strategyId())
 			.contextLabel("Known facts about the user (use naturally in conversation)")
 			.topK(semanticConfig.topK())
@@ -181,11 +181,12 @@ public class AgentCoreLongMemoryAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(name = "userPreferenceAdvisor")
-	@ConditionalOnProperty(prefix = AgentCoreLongMemoryProperties.UserPreference.CONFIG_PREFIX, name = "strategy-id")
-	AgentCoreLongMemoryAdvisor userPreferenceAdvisor(AgentCoreLongMemoryRetriever retriever,
-			AgentCoreLongMemoryProperties config) {
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.UserPreference.CONFIG_PREFIX,
+			name = "strategy-id")
+	AgentCoreLongTermMemoryAdvisor userPreferenceAdvisor(AgentCoreLongTermMemoryRetriever retriever,
+			AgentCoreLongTermMemoryProperties config) {
 		var prefConfig = config.userPreference();
-		return AgentCoreLongMemoryAdvisor.builder(retriever, MemoryStrategy.USER_PREFERENCE)
+		return AgentCoreLongTermMemoryAdvisor.builder(retriever, MemoryStrategy.USER_PREFERENCE)
 			.strategyId(prefConfig.strategyId())
 			.contextLabel("User preferences (apply when relevant)")
 			.scope(prefConfig.scope())
@@ -194,11 +195,11 @@ public class AgentCoreLongMemoryAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(name = "summaryAdvisor")
-	@ConditionalOnProperty(prefix = AgentCoreLongMemoryProperties.Summary.CONFIG_PREFIX, name = "strategy-id")
-	AgentCoreLongMemoryAdvisor summaryAdvisor(AgentCoreLongMemoryRetriever retriever,
-			AgentCoreLongMemoryProperties config) {
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Summary.CONFIG_PREFIX, name = "strategy-id")
+	AgentCoreLongTermMemoryAdvisor summaryAdvisor(AgentCoreLongTermMemoryRetriever retriever,
+			AgentCoreLongTermMemoryProperties config) {
 		var summaryConfig = config.summary();
-		return AgentCoreLongMemoryAdvisor.builder(retriever, MemoryStrategy.SUMMARY)
+		return AgentCoreLongTermMemoryAdvisor.builder(retriever, MemoryStrategy.SUMMARY)
 			.strategyId(summaryConfig.strategyId())
 			.contextLabel("Previous conversation summaries (use for continuity)")
 			.topK(summaryConfig.topK())
@@ -208,11 +209,11 @@ public class AgentCoreLongMemoryAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean(name = "episodicAdvisor")
-	@ConditionalOnProperty(prefix = AgentCoreLongMemoryProperties.Episodic.CONFIG_PREFIX, name = "strategy-id")
-	AgentCoreLongMemoryAdvisor episodicAdvisor(AgentCoreLongMemoryRetriever retriever,
-			AgentCoreLongMemoryProperties config) {
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX, name = "strategy-id")
+	AgentCoreLongTermMemoryAdvisor episodicAdvisor(AgentCoreLongTermMemoryRetriever retriever,
+			AgentCoreLongTermMemoryProperties config) {
 		var episodicConfig = config.episodic();
-		return AgentCoreLongMemoryAdvisor.builder(retriever, MemoryStrategy.EPISODIC)
+		return AgentCoreLongTermMemoryAdvisor.builder(retriever, MemoryStrategy.EPISODIC)
 			.strategyId(episodicConfig.strategyId())
 			.reflectionsStrategyId(episodicConfig.reflectionsStrategyId())
 			.contextLabel("Past interactions and reflections (reference when relevant)")

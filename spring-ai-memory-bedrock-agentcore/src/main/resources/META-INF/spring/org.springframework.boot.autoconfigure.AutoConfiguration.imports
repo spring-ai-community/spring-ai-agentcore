@@ -1,2 +1,2 @@
-org.springaicommunity.agentcore.memory.AgentCoreShortMemoryRepositoryAutoConfiguration
-org.springaicommunity.agentcore.memory.AgentCoreLongMemoryAutoConfiguration
+org.springaicommunity.agentcore.memory.AgentCoreShortTermMemoryRepositoryAutoConfiguration
+org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryAutoConfiguration

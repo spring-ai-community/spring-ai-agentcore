@@ -24,15 +24,15 @@ import java.util.List;
 
 public class AgentCoreMemory {
 
-	public final MessageChatMemoryAdvisor shortMemoryAdvisor;
+	public final MessageChatMemoryAdvisor shortTermMemoryAdvisor;
 
-	public final List<AgentCoreLongMemoryAdvisor> longMemoryAdvisors;
+	public final List<AgentCoreLongTermMemoryAdvisor> longTermMemoryAdvisors;
 
 	public final List<Advisor> advisors;
 
-	AgentCoreMemory(MessageChatMemoryAdvisor stmAdvisor, List<AgentCoreLongMemoryAdvisor> ltmAdvisors) {
-		this.shortMemoryAdvisor = stmAdvisor;
-		this.longMemoryAdvisors = ltmAdvisors;
+	AgentCoreMemory(MessageChatMemoryAdvisor stmAdvisor, List<AgentCoreLongTermMemoryAdvisor> ltmAdvisors) {
+		this.shortTermMemoryAdvisor = stmAdvisor;
+		this.longTermMemoryAdvisors = ltmAdvisors;
 
 		this.advisors = new ArrayList<>(ltmAdvisors);
 		this.advisors.add(stmAdvisor);

@@ -71,7 +71,7 @@ public class SetupTeardown {
                                                     .summaryMemoryStrategy(SummaryMemoryStrategyInput.builder()
                                                             .name("test_memory_stategy_" + System.currentTimeMillis())
                                                             .namespaces(
-                                                                    List.of("/strategy/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
+                                                                    List.of("/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
                                                             .build())
                                                     .build())
                                     .build())

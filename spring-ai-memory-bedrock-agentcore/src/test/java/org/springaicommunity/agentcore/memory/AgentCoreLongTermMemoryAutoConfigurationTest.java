@@ -27,7 +27,6 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
-import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryScope;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -41,20 +40,20 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
 
 /**
- * Unit tests for {@link AgentCoreLongMemoryAutoConfiguration}.
+ * Unit tests for {@link AgentCoreLongTermMemoryAutoConfiguration}.
  *
  * @author Yuriy Bezsonov
  */
-@DisplayName("AgentCore Long Memory Auto-Configuration Tests")
-class AgentCoreLongMemoryAutoConfigurationTest {
+@DisplayName("AgentCore Long-Term Memory Auto-Configuration Tests")
+class AgentCoreLongTermMemoryAutoConfigurationTest {
 
 	private static final String MEMORY_ID_PROP = "agentcore.memory.memory-id=test-memory";
 
 	private static final String SEMANTIC_STRATEGY_PROP = "agentcore.memory.long-term.semantic.strategy-id=semantic-123";
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-		.withConfiguration(AutoConfigurations.of(AgentCoreShortMemoryRepositoryAutoConfiguration.class,
-				AgentCoreLongMemoryAutoConfiguration.class));
+		.withConfiguration(AutoConfigurations.of(AgentCoreShortTermMemoryRepositoryAutoConfiguration.class,
+				AgentCoreLongTermMemoryAutoConfiguration.class));
 
 	@Test
 	@DisabledIfEnvironmentVariable(named = "AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_STRATEGY_ID", matches = ".+",
@@ -64,8 +63,8 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP)
 			.run(context -> {
-				assertThat(context).doesNotHaveBean(AgentCoreLongMemoryRetriever.class);
-				assertThat(context).doesNotHaveBean(AgentCoreLongMemoryAdvisor.class);
+				assertThat(context).doesNotHaveBean(AgentCoreLongTermMemoryRetriever.class);
+				assertThat(context).doesNotHaveBean(AgentCoreLongTermMemoryAdvisor.class);
 			});
 	}
 
@@ -75,12 +74,12 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP)
 			.run(context -> {
-				assertThat(context).hasSingleBean(AgentCoreLongMemoryRetriever.class);
+				assertThat(context).hasSingleBean(AgentCoreLongTermMemoryRetriever.class);
 				assertThat(context).hasBean("semanticAdvisor");
-				AgentCoreLongMemoryAdvisor advisor = context.getBean("semanticAdvisor",
-						AgentCoreLongMemoryAdvisor.class);
+				AgentCoreLongTermMemoryAdvisor advisor = context.getBean("semanticAdvisor",
+						AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-SEMANTIC");
+				assertThat(advisor.getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-SEMANTIC");
 			});
 	}
 
@@ -92,10 +91,10 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 					"agentcore.memory.long-term.user-preference.strategy-id=prefs-456")
 			.run(context -> {
 				assertThat(context).hasBean("userPreferenceAdvisor");
-				AgentCoreLongMemoryAdvisor advisor = context.getBean("userPreferenceAdvisor",
-						AgentCoreLongMemoryAdvisor.class);
+				AgentCoreLongTermMemoryAdvisor advisor = context.getBean("userPreferenceAdvisor",
+						AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-USER_PREFERENCE");
+				assertThat(advisor.getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-USER_PREFERENCE");
 			});
 	}
 
@@ -107,10 +106,10 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 					"agentcore.memory.long-term.summary.strategy-id=summary-789")
 			.run(context -> {
 				assertThat(context).hasBean("summaryAdvisor");
-				AgentCoreLongMemoryAdvisor advisor = context.getBean("summaryAdvisor",
-						AgentCoreLongMemoryAdvisor.class);
+				AgentCoreLongTermMemoryAdvisor advisor = context.getBean("summaryAdvisor",
+						AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-SUMMARY");
+				assertThat(advisor.getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-SUMMARY");
 			});
 	}
 
@@ -122,10 +121,10 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 					"agentcore.memory.long-term.episodic.strategy-id=episodic-abc")
 			.run(context -> {
 				assertThat(context).hasBean("episodicAdvisor");
-				AgentCoreLongMemoryAdvisor advisor = context.getBean("episodicAdvisor",
-						AgentCoreLongMemoryAdvisor.class);
+				AgentCoreLongTermMemoryAdvisor advisor = context.getBean("episodicAdvisor",
+						AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongMemoryAdvisor-EPISODIC");
+				assertThat(advisor.getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-EPISODIC");
 			});
 	}
 
@@ -138,15 +137,15 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 					"agentcore.memory.long-term.summary.strategy-id=summary-789",
 					"agentcore.memory.long-term.episodic.strategy-id=episodic-abc")
 			.run(context -> {
-				assertThat(context).hasSingleBean(AgentCoreLongMemoryRetriever.class);
+				assertThat(context).hasSingleBean(AgentCoreLongTermMemoryRetriever.class);
 				assertThat(context).hasBean("semanticAdvisor");
 				assertThat(context).hasBean("userPreferenceAdvisor");
 				assertThat(context).hasBean("summaryAdvisor");
 				assertThat(context).hasBean("episodicAdvisor");
 
-				// Verify all are AgentCoreLongMemoryAdvisor instances
-				java.util.Map<String, AgentCoreLongMemoryAdvisor> advisors = context
-					.getBeansOfType(AgentCoreLongMemoryAdvisor.class);
+				// Verify all are AgentCoreLongTermMemoryAdvisor instances
+				java.util.Map<String, AgentCoreLongTermMemoryAdvisor> advisors = context
+					.getBeansOfType(AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisors).hasSize(4);
 			});
 	}
@@ -160,7 +159,7 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 					"agentcore.memory.long-term.episodic.episodes-top-k=5",
 					"agentcore.memory.long-term.episodic.reflections-top-k=3")
 			.run(context -> {
-				var config = context.getBean(AgentCoreLongMemoryProperties.class);
+				var config = context.getBean(AgentCoreLongTermMemoryProperties.class);
 				assertThat(config.semantic().topK()).isEqualTo(10);
 				assertThat(config.episodic().episodesTopK()).isEqualTo(5);
 				assertThat(config.episodic().reflectionsTopK()).isEqualTo(3);
@@ -177,14 +176,14 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 					"agentcore.memory.long-term.episodic.strategy-id=episodic-abc")
 			.run(context -> {
 				// This is how the real app injects advisors
-				java.util.Collection<AgentCoreLongMemoryAdvisor> advisors = context
-					.getBeansOfType(AgentCoreLongMemoryAdvisor.class)
+				java.util.Collection<AgentCoreLongTermMemoryAdvisor> advisors = context
+					.getBeansOfType(AgentCoreLongTermMemoryAdvisor.class)
 					.values();
 				assertThat(advisors).hasSize(4);
-				assertThat(advisors).extracting(AgentCoreLongMemoryAdvisor::getName)
-					.containsExactlyInAnyOrder("AgentCoreLongMemoryAdvisor-SEMANTIC",
-							"AgentCoreLongMemoryAdvisor-USER_PREFERENCE", "AgentCoreLongMemoryAdvisor-SUMMARY",
-							"AgentCoreLongMemoryAdvisor-EPISODIC");
+				assertThat(advisors).extracting(AgentCoreLongTermMemoryAdvisor::getName)
+					.containsExactlyInAnyOrder("AgentCoreLongTermMemoryAdvisor-SEMANTIC",
+							"AgentCoreLongTermMemoryAdvisor-USER_PREFERENCE", "AgentCoreLongTermMemoryAdvisor-SUMMARY",
+							"AgentCoreLongTermMemoryAdvisor-EPISODIC");
 			});
 	}
 
@@ -206,19 +205,19 @@ class AgentCoreLongMemoryAutoConfigurationTest {
 					.strategies(List.of(
 							MemoryStrategy.builder()
 								.strategyId("semantic-123")
-								.namespaces(List.of(AgentCoreLongMemoryScope.ACTOR.getPattern()))
+								.namespaces(List.of(AgentCoreLongTermMemoryScope.ACTOR.getPattern()))
 								.build(),
 							MemoryStrategy.builder()
 								.strategyId("prefs-456")
-								.namespaces(List.of(AgentCoreLongMemoryScope.ACTOR.getPattern()))
+								.namespaces(List.of(AgentCoreLongTermMemoryScope.ACTOR.getPattern()))
 								.build(),
 							MemoryStrategy.builder()
 								.strategyId("summary-789")
-								.namespaces(List.of(AgentCoreLongMemoryScope.SESSION.getPattern()))
+								.namespaces(List.of(AgentCoreLongTermMemoryScope.SESSION.getPattern()))
 								.build(),
 							MemoryStrategy.builder()
 								.strategyId("episodic-abc")
-								.namespaces(List.of(AgentCoreLongMemoryScope.ACTOR.getPattern()))
+								.namespaces(List.of(AgentCoreLongTermMemoryScope.ACTOR.getPattern()))
 								.build()))
 					.build())
 				.build();

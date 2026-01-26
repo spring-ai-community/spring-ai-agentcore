@@ -51,9 +51,9 @@ import java.util.Objects;
  * <li>After save: Marks saved messages with the returned eventId</li>
  * </ul>
  */
-public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
+public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository {
 
-	private static final Logger logger = LoggerFactory.getLogger(AgentCoreShortMemoryRepository.class);
+	private static final Logger logger = LoggerFactory.getLogger(AgentCoreShortTermMemoryRepository.class);
 
 	/**
 	 * Metadata key for storing the AgentCore eventId in message metadata. Used for delta
@@ -73,7 +73,7 @@ public class AgentCoreShortMemoryRepository implements ChatMemoryRepository {
 
 	private final boolean ignoreUnknownRoles;
 
-	public AgentCoreShortMemoryRepository(String memoryId, BedrockAgentCoreClient client, Integer totalEventsLimit,
+	public AgentCoreShortTermMemoryRepository(String memoryId, BedrockAgentCoreClient client, Integer totalEventsLimit,
 			String defaultSession, int pageSize, boolean ignoreUnknownRoles) {
 		this.memoryId = validateMemoryId(memoryId);
 		this.client = client;

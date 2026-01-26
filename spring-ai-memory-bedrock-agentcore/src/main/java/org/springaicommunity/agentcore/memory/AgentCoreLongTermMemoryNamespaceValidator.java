@@ -29,7 +29,7 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrat
 
 /**
  * Validates that memory strategy namespaces match the expected format required by
- * {@link AgentCoreLongMemoryRetriever}.
+ * {@link AgentCoreLongTermMemoryRetriever}.
  *
  * <p>
  * AgentCore Memory stores long-term memories under namespaces defined during memory
@@ -41,20 +41,20 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrat
  * Expected namespace formats:
  * <ul>
  * <li>Actor-scoped (semantic, user-preference, episodic):
- * {@code /strategy/{memoryStrategyId}/actors/{actorId}}</li>
+ * {@code /strategies/{memoryStrategyId}/actors/{actorId}}</li>
  * <li>Session-scoped (summary):
- * {@code /strategy/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}}</li>
+ * {@code /strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}}</li>
  * </ul>
  *
  * @author Yuriy Bezsonov
  */
-public class AgentCoreLongMemoryNamespaceValidator {
+public class AgentCoreLongTermMemoryNamespaceValidator {
 
-	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongMemoryNamespaceValidator.class);
+	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryNamespaceValidator.class);
 
 	private final BedrockAgentCoreControlClient controlClient;
 
-	public AgentCoreLongMemoryNamespaceValidator(BedrockAgentCoreControlClient controlClient) {
+	public AgentCoreLongTermMemoryNamespaceValidator(BedrockAgentCoreControlClient controlClient) {
 		this.controlClient = controlClient;
 	}
 
@@ -65,7 +65,7 @@ public class AgentCoreLongMemoryNamespaceValidator {
 	 * @throws AgentCoreMemoryException.ConfigurationException if any namespace doesn't
 	 * match expected format
 	 */
-	public void validateNamespaces(String memoryId, Map<String, AgentCoreLongMemoryScope> strategyConfigs) {
+	public void validateNamespaces(String memoryId, Map<String, AgentCoreLongTermMemoryScope> strategyConfigs) {
 		if (strategyConfigs.isEmpty()) {
 			return;
 		}
@@ -81,9 +81,9 @@ public class AgentCoreLongMemoryNamespaceValidator {
 					"Memory '" + memoryId + "' has no strategies configured. " + "LTM requires at least one strategy.");
 		}
 
-		for (Map.Entry<String, AgentCoreLongMemoryScope> entry : strategyConfigs.entrySet()) {
+		for (Map.Entry<String, AgentCoreLongTermMemoryScope> entry : strategyConfigs.entrySet()) {
 			String strategyId = entry.getKey();
-			AgentCoreLongMemoryScope scope = entry.getValue();
+			AgentCoreLongTermMemoryScope scope = entry.getValue();
 			validateStrategy(memoryId, strategies, strategyId, scope);
 		}
 
@@ -91,7 +91,7 @@ public class AgentCoreLongMemoryNamespaceValidator {
 	}
 
 	private void validateStrategy(String memoryId, List<MemoryStrategy> strategies, String strategyId,
-			AgentCoreLongMemoryScope scope) {
+			AgentCoreLongTermMemoryScope scope) {
 		MemoryStrategy strategy = strategies.stream()
 			.filter(s -> strategyId.equals(s.strategyId()))
 			.findFirst()
@@ -145,8 +145,8 @@ public class AgentCoreLongMemoryNamespaceValidator {
 						+ "The memory was created with a different namespace format than this library expects.%n"
 						+ "To fix this, recreate the memory with the correct namespace pattern:%n"
 						+ "  - For semantic/user-preference/episodic: %s%n" + "  - For summary: %s",
-				strategyId, actual, expected, AgentCoreLongMemoryScope.ACTOR.getPattern(),
-				AgentCoreLongMemoryScope.SESSION.getPattern());
+				strategyId, actual, expected, AgentCoreLongTermMemoryScope.ACTOR.getPattern(),
+				AgentCoreLongTermMemoryScope.SESSION.getPattern());
 	}
 
 }

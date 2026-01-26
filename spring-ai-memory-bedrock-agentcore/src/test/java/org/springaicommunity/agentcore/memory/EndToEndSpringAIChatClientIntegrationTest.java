@@ -88,7 +88,7 @@ class EndToEndSpringAIChatClientIntegrationTest {
 	}
 
 	@Autowired
-	private AgentCoreShortMemoryRepository chatMemoryRepository;
+	private AgentCoreShortTermMemoryRepository chatMemoryRepository;
 
 	@Autowired
 	private ChatModel chatModel;

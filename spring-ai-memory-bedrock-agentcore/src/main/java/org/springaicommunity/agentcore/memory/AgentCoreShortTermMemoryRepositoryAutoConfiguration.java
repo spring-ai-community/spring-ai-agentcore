@@ -29,9 +29,10 @@ import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 @AutoConfiguration
 @ConfigurationPropertiesScan
 @EnableConfigurationProperties(AgentCoreMemoryProperties.class)
-public class AgentCoreShortMemoryRepositoryAutoConfiguration {
+public class AgentCoreShortTermMemoryRepositoryAutoConfiguration {
 
-	private static final Logger logger = LoggerFactory.getLogger(AgentCoreShortMemoryRepositoryAutoConfiguration.class);
+	private static final Logger logger = LoggerFactory
+		.getLogger(AgentCoreShortTermMemoryRepositoryAutoConfiguration.class);
 
 	@Bean
 	@ConditionalOnMissingBean
@@ -44,11 +45,12 @@ public class AgentCoreShortMemoryRepositoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	@ConditionalOnProperty(prefix = AgentCoreMemoryProperties.CONFIG_PREFIX, name = "memory-id")
-	AgentCoreShortMemoryRepository memoryRepository(AgentCoreMemoryProperties configuration,
+	AgentCoreShortTermMemoryRepository memoryRepository(AgentCoreMemoryProperties configuration,
 			BedrockAgentCoreClient client) {
-		logger.info("Creating AgentCoreShortMemoryRepository bean with memoryId: {}", configuration.memoryId());
-		return new AgentCoreShortMemoryRepository(configuration.memoryId(), client, configuration.totalEventsLimit(),
-				configuration.defaultSession(), configuration.pageSize(), configuration.ignoreUnknownRoles());
+		logger.info("Creating AgentCoreShortTermMemoryRepository bean with memoryId: {}", configuration.memoryId());
+		return new AgentCoreShortTermMemoryRepository(configuration.memoryId(), client,
+				configuration.totalEventsLimit(), configuration.defaultSession(), configuration.pageSize(),
+				configuration.ignoreUnknownRoles());
 	}
 
 }

@@ -28,7 +28,7 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
-import org.springaicommunity.agentcore.memory.AgentCoreLongMemoryRetriever.MemoryRecord;
+import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryRetriever.MemoryRecord;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -142,7 +142,8 @@ public abstract class AgentCoreMemoryIT {
 	@Order(1)
 	@DisplayName("Should have conversation with ChatClient and STM")
 	void shouldHaveConversationWithMemory() {
-		var stmRepository = new AgentCoreShortMemoryRepository(memoryId, agentCoreClient, null, sessionId, 100, true);
+		var stmRepository = new AgentCoreShortTermMemoryRepository(memoryId, agentCoreClient, null, sessionId, 100,
+				true);
 
 		// Use Integer.MAX_VALUE for unlimited window - actual limit controlled by
 		// agentcore.memory.total-events-limit property
@@ -175,7 +176,7 @@ public abstract class AgentCoreMemoryIT {
 	@Order(2)
 	@DisplayName("Should consolidate to LTM with semantic facts, preferences, summary, and episodic")
 	void shouldConsolidateToLTM() {
-		var ltmRetriever = new AgentCoreLongMemoryRetriever(agentCoreClient, memoryId);
+		var ltmRetriever = new AgentCoreLongTermMemoryRetriever(agentCoreClient, memoryId);
 
 		// Wait for consolidation (max 3 minutes)
 		long consolidationStartTime = System.currentTimeMillis();
@@ -183,7 +184,7 @@ public abstract class AgentCoreMemoryIT {
 			var semantic = ltmRetriever.searchMemories(semanticStrategyId, actorId, "Alex engineer", 5);
 			var prefs = ltmRetriever.listMemories(preferencesStrategyId, actorId);
 			var summary = ltmRetriever.searchSummaries(summaryStrategyId, actorId, sessionId, "conversation", 3,
-					AgentCoreLongMemoryScope.SESSION);
+					AgentCoreLongTermMemoryScope.SESSION);
 
 			long elapsed = (System.currentTimeMillis() - consolidationStartTime) / 1000;
 			System.out.printf("Consolidation: semantic=%b prefs=%b summary=%b (elapsed: %d:%02d)%n",
@@ -209,7 +210,7 @@ public abstract class AgentCoreMemoryIT {
 
 		// Verify summary
 		List<MemoryRecord> summaries = ltmRetriever.searchSummaries(summaryStrategyId, actorId, sessionId,
-				"conversation", 3, AgentCoreLongMemoryScope.SESSION);
+				"conversation", 3, AgentCoreLongTermMemoryScope.SESSION);
 		assertThat(summaries).isNotEmpty();
 		assertThat(summaries.get(0).content()).isNotBlank();
 		printMemoryRecords("Summary", summaries);

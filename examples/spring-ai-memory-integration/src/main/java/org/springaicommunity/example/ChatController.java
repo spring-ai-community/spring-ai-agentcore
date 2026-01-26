@@ -15,16 +15,16 @@ public class ChatController {
 	private final ChatClient longTermChatClient;
 	private final ChatMemory chatMemory;
 	private final AgentCoreMemory agentCoreMemory;
-	private final AgentCoreLongMemoryRetriever retriever;
-	private final AgentCoreLongMemoryProperties config;
+	private final AgentCoreLongTermMemoryRetriever retriever;
+	private final AgentCoreLongTermMemoryProperties config;
 
 	private static final String CONVERSATION_ID = "testActor:testSession";
 
 	public ChatController(
-            ChatClient.Builder chatClientBuilder,
-            AgentCoreMemory agentCoreMemory, ChatMemory chatMemory,
-			AgentCoreLongMemoryRetriever retriever, AgentCoreLongMemoryProperties config,
-			AgentCoreShortMemoryRepository memoryRepository) {
+			ChatClient.Builder chatClientBuilder,
+			AgentCoreMemory agentCoreMemory, ChatMemory chatMemory,
+			AgentCoreLongTermMemoryRetriever retriever, AgentCoreLongTermMemoryProperties config,
+			AgentCoreShortTermMemoryRepository memoryRepository) {
 		this.agentCoreMemory = agentCoreMemory;
         this.chatMemory = chatMemory;
 		this.retriever = retriever;
@@ -41,7 +41,7 @@ public class ChatController {
 	public ChatResponse shortChat(@RequestBody ChatRequest request) {
 		String response = shortTermChatClient.prompt()
 				.user(request.message())
-				.advisors(agentCoreMemory.shortMemoryAdvisor)
+				.advisors(agentCoreMemory.shortTermMemoryAdvisor)
 				.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, CONVERSATION_ID))
 				.call()
 				.content();
@@ -72,7 +72,7 @@ public class ChatController {
 	}
 
 	@GetMapping("/api/memories")
-	public List<AgentCoreLongMemoryRetriever.MemoryRecord> getMemories() {
+	public List<AgentCoreLongTermMemoryRetriever.MemoryRecord> getMemories() {
 		return retriever.listMemories(config.summary().strategyId(), "testActor");
 	}
 

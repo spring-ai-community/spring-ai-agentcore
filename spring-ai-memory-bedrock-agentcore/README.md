@@ -91,8 +91,8 @@ agentcore:
 
 | Scope | Namespace Pattern | Use Case |
 |-------|-------------------|----------|
-| `ACTOR` | `/strategy/{memoryStrategyId}/actors/{actorId}` | Search across all sessions for the user |
-| `SESSION` | `/strategy/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}` | Search only current session |
+| `ACTOR` | `/strategies/{memoryStrategyId}/actors/{actorId}` | Search across all sessions for the user |
+| `SESSION` | `/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}` | Search only current session |
 
 #### Defaults Summary
 

@@ -25,24 +25,24 @@ package org.springaicommunity.agentcore.memory;
  *
  * @author Yuriy Bezsonov
  */
-public enum AgentCoreLongMemoryScope {
+public enum AgentCoreLongTermMemoryScope {
 
 	/**
-	 * Actor-scoped namespace: /strategy/{memoryStrategyId}/actors/{actorId}. Searches
+	 * Actor-scoped namespace: /strategies/{memoryStrategyId}/actors/{actorId}. Searches
 	 * across all sessions for the user.
 	 */
-	ACTOR("/strategy/{memoryStrategyId}/actors/{actorId}"),
+	ACTOR("/strategies/{memoryStrategyId}/actors/{actorId}"),
 
 	/**
 	 * Session-scoped namespace:
-	 * /strategy/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}. Searches only
+	 * /strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}. Searches only
 	 * the current session.
 	 */
-	SESSION("/strategy/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}");
+	SESSION("/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}");
 
 	private final String pattern;
 
-	AgentCoreLongMemoryScope(String pattern) {
+	AgentCoreLongTermMemoryScope(String pattern) {
 		this.pattern = pattern;
 	}
 
