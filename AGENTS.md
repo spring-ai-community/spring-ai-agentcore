@@ -25,12 +25,12 @@ spring-ai-bedrock-agentcore/
 
 ### Memory Module Classes
 
-| Class | Purpose |
-|-------|---------|
+| Class                                | Purpose |
+|--------------------------------------|---------|
 | `AgentCoreShortTermMemoryRepository` | STM - implements `ChatMemoryRepository` |
-| `AgentCoreLongMemoryAdvisor` | LTM - Spring AI advisor for prompt augmentation |
-| `AgentCoreLongMemoryRetriever` | LTM - retrieves memories from AgentCore |
-| `AgentCoreMemory` | Combines STM + LTM advisors |
+| `AgentCoreLongTermMemoryAdvisor`     | LTM - Spring AI advisor for prompt augmentation |
+| `AgentCoreLongTermMemoryRetriever`   | LTM - retrieves memories from AgentCore |
+| `AgentCoreMemory`                    | Combines STM + LTM advisors |
 
 ## Build & Test
 
