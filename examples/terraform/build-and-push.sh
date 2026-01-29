@@ -7,7 +7,7 @@ AWS_REGION=$(grep 'region' terraform.tfvars | cut -d'"' -f2)
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 # Available examples
-VALID_APPS=("simple-spring-boot-app" "spring-ai-sse-chat-client" "spring-ai-simple-chat-client")
+VALID_APPS=("simple-spring-boot-app" "spring-ai-sse-chat-client" "spring-ai-simple-chat-client" "spring-ai-mcp-client")
 
 # Interactive selection if no argument provided
 if [ $# -eq 0 ]; then
@@ -54,12 +54,7 @@ echo "📦 Creating ECR repository if needed..."
 aws ecr create-repository --repository-name "$ECR_REPO_NAME" --region "$AWS_REGION" 2>/dev/null || echo "Repository already exists"
 
 echo "🔨 Building application..."
-# Check if we're in the monorepo (starter source available)
-if [ -f "../../pom.xml" ] && grep -q "spring-ai-bedrock-agentcore-starter" "../../pom.xml"; then
-    echo "📦 Building starter from source..."
-    cd ../.. && mvn clean install -DskipTests -q && cd examples/terraform
-fi
-
+cd ../.. && mvn clean install -DskipTests -q && cd examples/terraform
 cd "../$EXAMPLE_APP" && mvn clean package -DskipTests -q && cd ../terraform
 
 echo "🐳 Building container image..."

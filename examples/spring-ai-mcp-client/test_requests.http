@@ -1,0 +1,58 @@
+### Ask about AWS service
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+
+{ "prompt" : "What is Amazon S3?"}
+
+
+### Ask about specific feature
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+
+{ "prompt" : "How do I configure S3 bucket versioning?"}
+
+
+### Ask about best practices
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+
+{ "prompt" : "What are the best practices for Lambda function configuration?"}
+
+
+### Compare AWS services
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+
+{ "prompt" : "What is the difference between ECS and EKS?"}
+
+
+### Ask about pricing
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+
+{ "prompt" : "How does S3 pricing work?"}
+
+
+### Ask about security
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+
+{ "prompt" : "What are the security best practices for S3 buckets?"}
+
+
+### Ping endpoint
+
+GET http://localhost:8080/ping
+Content-Type: application/json
+
+
+### Actuator health endpoint
+
+GET http://localhost:8080/actuator/health
+Content-Type: application/json
