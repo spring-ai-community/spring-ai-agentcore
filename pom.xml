@@ -13,6 +13,7 @@
     <modules>
         <module>spring-ai-bedrock-agentcore-runtime-starter</module>
         <module>spring-ai-bedrock-agentcore-memory</module>
+        <module>spring-ai-bedrock-agentcore-browser</module>
     </modules>
 
     <scm>
