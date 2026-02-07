@@ -35,13 +35,13 @@
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-memory-bedrock-agentcore</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>1.0.0-RC5</version>
         </dependency>
 
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-bedrock-agentcore-starter</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>1.0.0-RC5</version>
         </dependency>
 
         <dependency>
