@@ -11,8 +11,8 @@
     <packaging>pom</packaging>
     <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore</url>
     <modules>
-        <module>spring-ai-bedrock-agentcore-starter</module>
-        <module>spring-ai-memory-bedrock-agentcore</module>
+        <module>spring-ai-bedrock-agentcore-runtime-starter</module>
+        <module>spring-ai-bedrock-agentcore-memory</module>
     </modules>
 
     <scm>

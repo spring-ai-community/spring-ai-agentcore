@@ -10,8 +10,8 @@ Spring Boot starter that enables Spring Boot applications to conform to the Amaz
 
 ```
 spring-ai-bedrock-agentcore/
-├── spring-ai-bedrock-agentcore-starter/   # Runtime starter (invocations, ping, SSE)
-├── spring-ai-memory-bedrock-agentcore/    # Memory integration (STM + LTM)
+├── spring-ai-bedrock-agentcore-runtime-starter/   # Runtime starter (invocations, ping, SSE)
+├── spring-ai-bedrock-agentcore-memory/    # Memory integration (STM + LTM)
 ├── examples/                               # Working examples
 └── scripts/                                # Helper scripts
 ```
@@ -42,7 +42,7 @@ mvn clean install
 mvn test
 
 # Full test suite (requires AWS credentials)
-AGENTCORE_IT=true mvn clean verify -pl spring-ai-memory-bedrock-agentcore
+AGENTCORE_IT=true mvn clean verify -pl spring-ai-bedrock-agentcore-memory
 
 # Format code (required before commit)
 mvn spring-javaformat:apply

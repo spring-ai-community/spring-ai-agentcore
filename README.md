@@ -30,7 +30,7 @@ See the `examples/` directory for complete working examples:
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-bedrock-agentcore-starter</artifactId>
+    <artifactId>spring-ai-bedrock-agentcore-runtime-starter</artifactId>
     <version>1.0.0-RC2</version>
 </dependency>
 ```
@@ -261,14 +261,14 @@ See `examples/spring-ai-override-invocations/` for a complete working example.
 
 ## AgentCore Memory
 
-The `spring-ai-memory-bedrock-agentcore` module provides Spring AI ChatMemory integration with Amazon Bedrock AgentCore Memory service, supporting both Short-Term Memory (STM) and Long-Term Memory (LTM) with 4 consolidation strategies.
+The `spring-ai-bedrock-agentcore-memory` module provides Spring AI ChatMemory integration with Amazon Bedrock AgentCore Memory service, supporting both Short-Term Memory (STM) and Long-Term Memory (LTM) with 4 consolidation strategies.
 
 ### Add Dependency
 
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-memory-bedrock-agentcore</artifactId>
+    <artifactId>spring-ai-bedrock-agentcore-memory</artifactId>
     <version>1.0.0-RC2</version>
 </dependency>
 ```
@@ -366,7 +366,7 @@ public class ChatService {
 
 The `AgentCoreMemory` bean is auto-configured when you set the required properties.
 
-For detailed configuration options and API reference, see [spring-ai-memory-bedrock-agentcore/README.md](spring-ai-memory-bedrock-agentcore/README.md).
+For detailed configuration options and API reference, see [spring-ai-bedrock-agentcore-memory/README.md](spring-ai-bedrock-agentcore-memory/README.md).
 
 ## Development
 

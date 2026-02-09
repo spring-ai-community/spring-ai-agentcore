@@ -17,11 +17,11 @@
         <developerConnection>git@github.com/spring-ai-community/spring-ai-bedrock-agentcore.git</developerConnection>
     </scm>
 
-    <artifactId>spring-ai-memory-bedrock-agentcore</artifactId>
+    <artifactId>spring-ai-bedrock-agentcore-runtime-starter</artifactId>
     <packaging>jar</packaging>
 
-    <name>Spring AI Chat Memory Repository Bedrock AgentCore</name>
-    <description>Starter for Spring AI AgentCore Memory</description>
+    <name>Spring AI Bedrock AgentCore Starter</name>
+    <description>Spring Boot starter for Amazon Bedrock AgentCore runtime support</description>
 
     <organization>
         <name>Spring AI Community</name>
@@ -37,12 +37,8 @@
 
     <developers>
         <developer>
-            <name>James Ward</name>
-            <email>james@jamesward.com</email>
-        </developer>
-        <developer>
-            <name>Andrei Shakirin</name>
-            <email>andrei.shakirin@gmail.com</email>
+            <name>Maximilian Schellhorn</name>
+            <email>maschnetwork@pm.me</email>
         </developer>
     </developers>
 
@@ -58,28 +54,32 @@
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
-
         <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-model</artifactId>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>${bucket4j-core.version}</version>
         </dependency>
 
+        <!-- Optional Dependencies -->
         <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-client-chat</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
             <optional>true</optional>
-        </dependency>
-
-        <dependency>
-            <groupId>software.amazon.awssdk</groupId>
-            <artifactId>bedrockagentcore</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>software.amazon.awssdk</groupId>
-            <artifactId>bedrockagentcorecontrol</artifactId>
         </dependency>
 
         <!-- Test Dependencies -->
@@ -89,13 +89,8 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-model-bedrock-converse</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.awaitility</groupId>
-            <artifactId>awaitility</artifactId>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -118,29 +113,6 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <excludes>
-                        <exclude>**/*IT.java</exclude>
-                    </excludes>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <version>3.5.4</version>
-                <configuration>
-                    <excludes>
-                        <exclude>**/*EnvIT.java</exclude>
-                    </excludes>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
     </build>

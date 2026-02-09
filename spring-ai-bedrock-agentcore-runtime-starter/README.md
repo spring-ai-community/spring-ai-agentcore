@@ -18,7 +18,7 @@ A Spring Boot starter that enables existing Spring Boot applications to conform 
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-bedrock-agentcore-starter</artifactId>
+    <artifactId>spring-ai-bedrock-agentcore-runtime-starter</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 </dependency>
 ```
