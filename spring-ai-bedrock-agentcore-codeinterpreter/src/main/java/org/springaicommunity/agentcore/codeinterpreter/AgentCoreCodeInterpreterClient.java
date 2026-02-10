@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.codeinterpreter;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -28,11 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreAsyncClient;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
-import software.amazon.awssdk.services.bedrockagentcore.model.InvokeCodeInterpreterRequest;
-import software.amazon.awssdk.services.bedrockagentcore.model.InvokeCodeInterpreterResponseHandler;
-import software.amazon.awssdk.services.bedrockagentcore.model.StartCodeInterpreterSessionRequest;
-import software.amazon.awssdk.services.bedrockagentcore.model.StopCodeInterpreterSessionRequest;
-import software.amazon.awssdk.services.bedrockagentcore.model.ToolArguments;
+import software.amazon.awssdk.services.bedrockagentcore.model.*;
 
 /**
  * Low-level client for AgentCore Code Interpreter. Manages sessions and executes code.
@@ -120,8 +117,8 @@ public class AgentCoreCodeInterpreterClient {
 	public CodeExecutionResult executeCode(String sessionId, String language, String code) {
 		logger.debug("Executing code: language={}, {} chars", language, code.length());
 
-		StringBuilder textOutput = new StringBuilder();
-		List<GeneratedFile> files = new ArrayList<>();
+		StringBuffer textOutput = new StringBuffer();
+		List<GeneratedFile> files = Collections.synchronizedList(new ArrayList<>());
 		AtomicBoolean isError = new AtomicBoolean(false);
 		AtomicReference<String> errorMessage = new AtomicReference<>();
 
@@ -134,18 +131,11 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().language(language).code(code).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream(publisher -> publisher.subscribe(event -> {
-							event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder().onResult(result -> {
-								if (result.isError() != null && result.isError()) {
-									isError.set(true);
-								}
-								if (result.content() != null) {
-									result.content().forEach(content -> {
-										processContent(content, textOutput, files);
-									});
-								}
-							}).onDefault(defaultEvent -> logger.trace("Default event: {}", defaultEvent)).build());
-						}))
+						.onEventStream(publisher -> publisher
+							.subscribe(event -> event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder()
+								.onResult(result -> processResult(result, isError, textOutput, files))
+								.onDefault(defaultEvent -> logger.trace("Default event: {}", defaultEvent))
+								.build())))
 						.onError(error -> {
 							logger.error("Stream error", error);
 							errorMessage.set(error.getMessage());
@@ -174,8 +164,18 @@ public class AgentCoreCodeInterpreterClient {
 		return new CodeExecutionResult(output, isError.get(), files);
 	}
 
+	private void processResult(CodeInterpreterResult result, AtomicBoolean isError, StringBuffer textOutput,
+			List<GeneratedFile> files) {
+		if (result.isError() != null && result.isError()) {
+			isError.set(true);
+		}
+		if (result.content() != null) {
+			result.content().forEach(content -> processContent(content, textOutput, files));
+		}
+	}
+
 	private void processContent(software.amazon.awssdk.services.bedrockagentcore.model.ContentBlock content,
-			StringBuilder textOutput, List<GeneratedFile> files) {
+			StringBuffer textOutput, List<GeneratedFile> files) {
 		// Handle text content
 		if (content.text() != null && !content.text().isEmpty()) {
 			textOutput.append(content.text());
@@ -255,9 +255,7 @@ public class AgentCoreCodeInterpreterClient {
 	 */
 	public List<String> listFiles(String sessionId, String directoryPath) {
 		logger.debug("Listing files in session {}, path: '{}'", sessionId, directoryPath);
-
-		List<String> filePaths = new ArrayList<>();
-		AtomicReference<String> errorMessage = new AtomicReference<>();
+		List<String> filePaths = Collections.synchronizedList(new ArrayList<>());
 
 		try {
 			CompletableFuture<Void> future = this.asyncClient.invokeCodeInterpreter(
@@ -268,8 +266,8 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().directoryPath(directoryPath).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream(publisher -> publisher.subscribe(event -> {
-							event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder().onResult(result -> {
+						.onEventStream(publisher -> publisher.subscribe(event -> event
+							.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder().onResult(result -> {
 								if (result.content() != null) {
 									result.content().forEach(content -> {
 										// Handle resource_link type - extract path from
@@ -282,11 +280,10 @@ public class AgentCoreCodeInterpreterClient {
 										}
 									});
 								}
-							}).build());
-						}))
+							}).build())))
 						.onError(error -> {
-							logger.error("listFiles error", error);
-							errorMessage.set(error.getMessage());
+							String errorMessage = "listFiles failed: " + error.getMessage();
+							logger.error(errorMessage, error);
 						})
 						.build());
 
@@ -322,10 +319,7 @@ public class AgentCoreCodeInterpreterClient {
 	 */
 	public List<GeneratedFile> readFiles(String sessionId, List<String> paths) {
 		logger.debug("Reading {} files from session {}", paths.size(), sessionId);
-
-		List<GeneratedFile> files = new ArrayList<>();
-		AtomicReference<String> errorMessage = new AtomicReference<>();
-
+		List<GeneratedFile> files = Collections.synchronizedList(new ArrayList<>());
 		try {
 			CompletableFuture<Void> future = this.asyncClient.invokeCodeInterpreter(
 					InvokeCodeInterpreterRequest.builder()
@@ -335,18 +329,13 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().paths(paths).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream(publisher -> publisher.subscribe(event -> {
-							event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder().onResult(result -> {
-								if (result.content() != null) {
-									result.content().forEach(content -> {
-										processReadFileContent(content, files, paths);
-									});
-								}
-							}).build());
-						}))
+						.onEventStream(publisher -> publisher
+							.subscribe(event -> event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder()
+								.onResult(result -> processResult(paths, result, files))
+								.build())))
 						.onError(error -> {
-							logger.error("readFiles error", error);
-							errorMessage.set(error.getMessage());
+							String errorMessage = "readFiles failed: " + error.getMessage();
+							logger.error(errorMessage, error);
 						})
 						.build());
 
@@ -358,6 +347,12 @@ public class AgentCoreCodeInterpreterClient {
 
 		logger.debug("Read {} files from session", files.size());
 		return files;
+	}
+
+	private void processResult(List<String> paths, CodeInterpreterResult result, List<GeneratedFile> files) {
+		if (result.content() != null) {
+			result.content().forEach(content -> processReadFileContent(content, files, paths));
+		}
 	}
 
 	private boolean isExcludedPath(String path) {
@@ -422,7 +417,10 @@ public class AgentCoreCodeInterpreterClient {
 		// If we have requested paths and index is within range, use that name
 		if (requestedPaths != null && index < requestedPaths.size()) {
 			String path = requestedPaths.get(index);
-			return extractFileNameFromUri(path);
+			String name = extractFileNameFromUri(path);
+			if (name != null && !name.isEmpty()) {
+				return name;
+			}
 		}
 		return generateFileName(mimeType, index);
 	}

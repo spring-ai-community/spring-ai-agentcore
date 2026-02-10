@@ -40,9 +40,6 @@ public class CodeInterpreterFileStore {
 
 	private static final Logger logger = LoggerFactory.getLogger(CodeInterpreterFileStore.class);
 
-	/** Key used in ToolContext to pass session ID to tools. */
-	public static final String SESSION_ID_KEY = "code_interpreter_session_id";
-
 	/** Default session ID for single-user environments (AgentCore). */
 	public static final String DEFAULT_SESSION_ID = "default";
 
