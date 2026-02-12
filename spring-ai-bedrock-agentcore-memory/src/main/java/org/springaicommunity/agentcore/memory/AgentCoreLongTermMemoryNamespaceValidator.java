@@ -105,7 +105,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 					"Strategy '" + strategyId + "' has no namespaces configured.");
 		}
 
-        String actualNamespace = namespaces.get(0);
+		String actualNamespace = namespaces.get(0);
 
 		if (!matchesPattern(actualNamespace, namespacePattern)) {
 			throw new AgentCoreMemoryException.ConfigurationException(

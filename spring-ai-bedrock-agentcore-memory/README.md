@@ -114,6 +114,8 @@ Available placeholders:
 - `{actorId}` - The user/actor ID  
 - `{sessionId}` - The session ID (required for session-scoped patterns)
 
+**Note**: Only these predefined placeholders are supported. Custom placeholders are not allowed.
+
 #### Defaults Summary
 
 | Strategy | top-k | scope |
