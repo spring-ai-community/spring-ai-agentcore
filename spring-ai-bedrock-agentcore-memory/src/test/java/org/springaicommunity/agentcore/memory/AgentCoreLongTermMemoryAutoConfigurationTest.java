@@ -167,6 +167,53 @@ class AgentCoreLongTermMemoryAutoConfigurationTest {
 	}
 
 	@Test
+	@DisplayName("Should use custom namespace pattern when configured")
+	void shouldUseCustomNamespacePattern() {
+		String customPattern = "/custom/{memoryStrategyId}/users/{actorId}";
+		contextRunner.withUserConfiguration(CustomNamespaceConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP,
+					"agentcore.memory.long-term.semantic.namespace-pattern=" + customPattern)
+			.run(context -> {
+				// Verify property binding
+				var config = context.getBean(AgentCoreLongTermMemoryProperties.class);
+				assertThat(config.semantic().namespacePattern()).isEqualTo(customPattern);
+				assertThat(config.semantic().resolveNamespacePattern()).isEqualTo(customPattern);
+				// Verify validation passed and beans created
+				assertThat(context).hasNotFailed();
+				assertThat(context).hasSingleBean(AgentCoreLongTermMemoryRetriever.class);
+				assertThat(context).hasBean("semanticAdvisor");
+			});
+	}
+
+	@Test
+	@DisplayName("Should use default namespace pattern when not configured")
+	void shouldUseDefaultNamespacePatternWhenNotConfigured() {
+		contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP)
+			.run(context -> {
+				var config = context.getBean(AgentCoreLongTermMemoryProperties.class);
+				assertThat(config.semantic().namespacePattern()).isNull();
+				assertThat(config.semantic().resolveNamespacePattern())
+					.isEqualTo(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
+			});
+	}
+
+	@Test
+	@DisplayName("Should fail startup when custom namespace in config but default in AWS")
+	void shouldFailStartupWhenNamespaceMismatch() {
+		String customPattern = "custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}";
+		contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP,
+					"agentcore.memory.long-term.semantic.namespace-pattern=" + customPattern)
+			.run(context -> {
+				assertThat(context).hasFailed();
+				assertThat(context.getStartupFailure())
+					.hasRootCauseInstanceOf(AgentCoreMemoryException.ConfigurationException.class);
+				assertThat(context.getStartupFailure().getMessage()).contains("Namespace mismatch");
+			});
+	}
+
+	@Test
 	@DisplayName("Should collect all advisors via List injection")
 	void shouldCollectAllAdvisorsViaListInjection() {
 		contextRunner.withUserConfiguration(MockClientConfiguration.class)
@@ -205,20 +252,48 @@ class AgentCoreLongTermMemoryAutoConfigurationTest {
 					.strategies(List.of(
 							MemoryStrategy.builder()
 								.strategyId("semantic-123")
-								.namespaces(List.of(AgentCoreLongTermMemoryScope.ACTOR.getPattern()))
+								.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
 								.build(),
 							MemoryStrategy.builder()
 								.strategyId("prefs-456")
-								.namespaces(List.of(AgentCoreLongTermMemoryScope.ACTOR.getPattern()))
+								.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
 								.build(),
 							MemoryStrategy.builder()
 								.strategyId("summary-789")
-								.namespaces(List.of(AgentCoreLongTermMemoryScope.SESSION.getPattern()))
+								.namespaces(List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern()))
 								.build(),
 							MemoryStrategy.builder()
 								.strategyId("episodic-abc")
-								.namespaces(List.of(AgentCoreLongTermMemoryScope.ACTOR.getPattern()))
+								.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
 								.build()))
+					.build())
+				.build();
+
+			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class CustomNamespaceConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			// Mock GetMemory response with custom namespace pattern
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder()
+					.strategies(List.of(MemoryStrategy.builder()
+						.strategyId("semantic-123")
+						.namespaces(List.of("/custom/{memoryStrategyId}/users/{actorId}"))
+						.build()))
 					.build())
 				.build();
 

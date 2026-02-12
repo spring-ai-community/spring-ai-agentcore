@@ -94,6 +94,26 @@ agentcore:
 | `ACTOR` | `/strategies/{memoryStrategyId}/actors/{actorId}` | Search across all sessions for the user |
 | `SESSION` | `/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}` | Search only current session |
 
+#### Custom Namespace Patterns
+
+You can override the default namespace patterns with custom ones using the `namespace-pattern` property:
+
+```yaml
+agentcore:
+  memory:
+    long-term:
+      summary:
+        strategy-id: ${SUMMARY_STRATEGY_ID}
+        namespace-pattern: custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}
+```
+
+**Important**: The custom namespace pattern must match the namespace configured in your AgentCore Memory strategy. At startup, the library validates that the configured pattern matches what's in AWS. If there's a mismatch, the application will fail to start with a clear error message.
+
+Available placeholders:
+- `{memoryStrategyId}` - The strategy ID
+- `{actorId}` - The user/actor ID  
+- `{sessionId}` - The session ID (required for session-scoped patterns)
+
 #### Defaults Summary
 
 | Strategy | top-k | scope |

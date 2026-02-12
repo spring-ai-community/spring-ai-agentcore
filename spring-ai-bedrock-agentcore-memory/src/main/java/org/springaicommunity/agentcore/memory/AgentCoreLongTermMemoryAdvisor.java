@@ -74,7 +74,7 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 
 	private final int reflectionsTopK;
 
-	private final AgentCoreLongTermMemoryScope scope;
+	private final String namespacePattern;
 
 	public enum MemoryStrategy {
 
@@ -101,10 +101,10 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 		this.order = builder.order != null ? builder.order : builder.mode.getOrder();
 		this.topK = builder.topK;
 		this.reflectionsTopK = builder.reflectionsTopK;
-		this.scope = builder.scope;
+		this.namespacePattern = builder.namespacePattern;
 		logger.info(
-				"AgentCoreLongTermMemoryAdvisor initialized: mode={}, strategyId={}, reflectionsStrategyId={}, scope={}",
-				this.memoryStrategy, this.strategyId, this.reflectionsStrategyId, this.scope);
+				"AgentCoreLongTermMemoryAdvisor initialized: mode={}, strategyId={}, reflectionsStrategyId={}, namespacePattern={}",
+				this.memoryStrategy, this.strategyId, this.reflectionsStrategyId, this.namespacePattern);
 	}
 
 	public static Builder builder(AgentCoreLongTermMemoryRetriever retriever, MemoryStrategy mode) {
@@ -129,7 +129,7 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 
 		private int reflectionsTopK = 2;
 
-		private AgentCoreLongTermMemoryScope scope = AgentCoreLongTermMemoryScope.ACTOR;
+		private String namespacePattern = AgentCoreLongTermMemoryNamespace.ACTOR.getPattern();
 
 		private Builder(AgentCoreLongTermMemoryRetriever retriever, MemoryStrategy mode) {
 			Objects.requireNonNull(retriever, "AgentCore Long-Term memory retriever is required");
@@ -168,8 +168,9 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 			return this;
 		}
 
-		public Builder scope(AgentCoreLongTermMemoryScope scope) {
-			this.scope = scope != null ? scope : AgentCoreLongTermMemoryScope.ACTOR;
+		public Builder namespacePattern(String namespacePattern) {
+			this.namespacePattern = namespacePattern != null ? namespacePattern
+					: AgentCoreLongTermMemoryNamespace.ACTOR.getPattern();
 			return this;
 		}
 
@@ -236,12 +237,12 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 		}
 
 		List<MemoryRecord> episodes = this.retriever.searchMemories(this.strategyId, userId, sessionId, userPrompt,
-				this.topK, this.scope);
+				this.topK, this.namespacePattern);
 
 		List<MemoryRecord> reflections;
 		if (this.reflectionsStrategyId != null && !this.reflectionsStrategyId.isEmpty()) {
 			reflections = this.retriever.searchMemories(this.reflectionsStrategyId, userId, sessionId, userPrompt,
-					this.reflectionsTopK, this.scope);
+					this.reflectionsTopK, this.namespacePattern);
 		}
 		else {
 			reflections = List.of();
@@ -264,8 +265,8 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 			return request;
 		}
 
-		List<MemoryRecord> summaries = this.retriever.searchSummaries(this.strategyId, userId, sessionId, userPrompt,
-				this.topK, this.scope);
+		List<MemoryRecord> summaries = this.retriever.searchMemories(this.strategyId, userId, sessionId, userPrompt,
+				this.topK, this.namespacePattern);
 		if (summaries.isEmpty()) {
 			logger.debug("No summaries found for user: {}, session: {}", userId, sessionId);
 			return request;
@@ -273,7 +274,7 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 
 		String augmentedPrompt = formatSummaryContext(userPrompt, summaries);
 		logger.debug("Enriched user prompt with {} summaries for user: {}", summaries.size(), userId);
-		return replaceUserMessage(request, augmentedPrompt);
+		return augmentUserMessage(request, augmentedPrompt);
 	}
 
 	private List<MemoryRecord> fetchMemories(ChatClientRequest request, String userId, String sessionId) {
@@ -282,10 +283,11 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 			if (userPrompt == null || userPrompt.isEmpty()) {
 				return List.of();
 			}
-			return this.retriever.searchMemories(this.strategyId, userId, sessionId, userPrompt, this.topK, this.scope);
+			return this.retriever.searchMemories(this.strategyId, userId, sessionId, userPrompt, this.topK,
+					this.namespacePattern);
 		}
 		else {
-			return this.retriever.listMemories(this.strategyId, userId);
+			return this.retriever.listMemories(this.strategyId, userId, this.namespacePattern);
 		}
 	}
 
@@ -307,7 +309,7 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 		return request.mutate().prompt(new Prompt(messages, request.prompt().getOptions())).build();
 	}
 
-	private ChatClientRequest replaceUserMessage(ChatClientRequest request, String newUserText) {
+	private ChatClientRequest augmentUserMessage(ChatClientRequest request, String newUserText) {
 		List<Message> messages = new ArrayList<>();
 		for (Message msg : request.prompt().getInstructions()) {
 			if (msg instanceof UserMessage) {

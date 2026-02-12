@@ -133,7 +133,7 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 
 		// Validate namespaces at startup to fail fast on misconfiguration
 		// ControlClient is only needed for validation, so create/use/close inline
-		Map<String, AgentCoreLongTermMemoryScope> strategyConfigs = buildStrategyConfigs(longTermMemoryProperties);
+		Map<String, String> strategyConfigs = buildStrategyConfigs(longTermMemoryProperties);
 		if (!strategyConfigs.isEmpty()) {
 			try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
 				AgentCoreLongTermMemoryNamespaceValidator validator = new AgentCoreLongTermMemoryNamespaceValidator(
@@ -145,21 +145,21 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 		return new AgentCoreLongTermMemoryRetriever(client, memoryId);
 	}
 
-	private Map<String, AgentCoreLongTermMemoryScope> buildStrategyConfigs(AgentCoreLongTermMemoryProperties config) {
-		Map<String, AgentCoreLongTermMemoryScope> configs = new HashMap<>();
+	private Map<String, String> buildStrategyConfigs(AgentCoreLongTermMemoryProperties config) {
+		Map<String, String> configs = new HashMap<>();
 		if (config.semantic() != null) {
-			configs.put(config.semantic().strategyId(), config.semantic().scope());
+			configs.put(config.semantic().strategyId(), config.semantic().resolveNamespacePattern());
 		}
 		if (config.userPreference() != null) {
-			configs.put(config.userPreference().strategyId(), config.userPreference().scope());
+			configs.put(config.userPreference().strategyId(), config.userPreference().resolveNamespacePattern());
 		}
 		if (config.summary() != null) {
-			configs.put(config.summary().strategyId(), config.summary().scope());
+			configs.put(config.summary().strategyId(), config.summary().resolveNamespacePattern());
 		}
 		if (config.episodic() != null) {
-			configs.put(config.episodic().strategyId(), config.episodic().scope());
+			configs.put(config.episodic().strategyId(), config.episodic().resolveNamespacePattern());
 			if (config.episodic().hasReflections()) {
-				configs.put(config.episodic().reflectionsStrategyId(), config.episodic().scope());
+				configs.put(config.episodic().reflectionsStrategyId(), config.episodic().resolveNamespacePattern());
 			}
 		}
 		return configs;
@@ -175,7 +175,7 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 			.strategyId(semanticConfig.strategyId())
 			.contextLabel("Known facts about the user (use naturally in conversation)")
 			.topK(semanticConfig.topK())
-			.scope(semanticConfig.scope())
+			.namespacePattern(semanticConfig.resolveNamespacePattern())
 			.build();
 	}
 
@@ -189,7 +189,7 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 		return AgentCoreLongTermMemoryAdvisor.builder(retriever, MemoryStrategy.USER_PREFERENCE)
 			.strategyId(prefConfig.strategyId())
 			.contextLabel("User preferences (apply when relevant)")
-			.scope(prefConfig.scope())
+			.namespacePattern(prefConfig.resolveNamespacePattern())
 			.build();
 	}
 
@@ -203,7 +203,7 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 			.strategyId(summaryConfig.strategyId())
 			.contextLabel("Previous conversation summaries (use for continuity)")
 			.topK(summaryConfig.topK())
-			.scope(summaryConfig.scope())
+			.namespacePattern(summaryConfig.resolveNamespacePattern())
 			.build();
 	}
 
@@ -219,7 +219,7 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 			.contextLabel("Past interactions and reflections (reference when relevant)")
 			.topK(episodicConfig.episodesTopK())
 			.reflectionsTopK(episodicConfig.reflectionsTopK())
-			.scope(episodicConfig.scope())
+			.namespacePattern(episodicConfig.resolveNamespacePattern())
 			.build();
 	}
 

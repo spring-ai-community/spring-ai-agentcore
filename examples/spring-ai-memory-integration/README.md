@@ -97,3 +97,19 @@ With the `AGENTCORE_MEMORY_ID` env var set, run:
 ```bash
 mvn spring-boot:test-run
 ```
+
+## Custom Namespace Pattern
+
+This example demonstrates using a custom namespace pattern for the Summary strategy. 
+
+In `application.properties`:
+```properties
+agentcore.memory.long-term.summary.namespace-pattern=custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}
+```
+
+The same pattern is configured in `SetupTeardown.java` when creating the memory strategy:
+```java
+.namespaces(List.of("custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
+```
+
+**Important**: The namespace pattern in your Spring configuration must match the namespace configured in your AgentCore Memory strategy. The library validates this at startup and will fail with a clear error if there's a mismatch.

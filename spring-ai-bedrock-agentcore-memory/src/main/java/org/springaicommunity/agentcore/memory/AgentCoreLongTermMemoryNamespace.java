@@ -17,15 +17,19 @@
 package org.springaicommunity.agentcore.memory;
 
 /**
- * Namespace scope determines the search scope for long-term memory strategies.
+ * Predefined namespace patterns for long-term memory strategies.
  *
  * <p>
- * ACTOR scope searches across all sessions for a user - richer context but slower.
- * SESSION scope searches only the current session - faster but limited context.
+ * ACTOR namespace searches across all sessions for a user - richer context but slower.
+ * SESSION namespace searches only the current session - faster but limited context.
+ *
+ * <p>
+ * Custom namespace patterns can be configured per strategy via
+ * {@code agentcore.memory.long-term.<strategy>.namespace-pattern}.
  *
  * @author Yuriy Bezsonov
  */
-public enum AgentCoreLongTermMemoryScope {
+public enum AgentCoreLongTermMemoryNamespace {
 
 	/**
 	 * Actor-scoped namespace: /strategies/{memoryStrategyId}/actors/{actorId}. Searches
@@ -42,7 +46,7 @@ public enum AgentCoreLongTermMemoryScope {
 
 	private final String pattern;
 
-	AgentCoreLongTermMemoryScope(String pattern) {
+	AgentCoreLongTermMemoryNamespace(String pattern) {
 		this.pattern = pattern;
 	}
 
@@ -52,37 +56,34 @@ public enum AgentCoreLongTermMemoryScope {
 
 	/**
 	 * Builds the resolved namespace by replacing template variables with actual values.
+	 * @param pattern the namespace pattern (use custom or {@link #getPattern()})
 	 * @param strategyId the memory strategy ID
 	 * @param actorId the actor ID
+	 * @param sessionId the session ID (optional, only used if pattern contains
+	 * {sessionId})
 	 * @return the resolved namespace string
-	 * @throws IllegalArgumentException if strategyId or actorId is null/empty
+	 * @throws IllegalArgumentException if required variables are missing
 	 */
-	public String buildNamespace(String strategyId, String actorId) {
+	public static String buildNamespace(String pattern, String strategyId, String actorId, String sessionId) {
+		if (pattern == null || pattern.isEmpty()) {
+			throw new IllegalArgumentException("namespace pattern is required");
+		}
 		if (strategyId == null || strategyId.isEmpty()) {
 			throw new IllegalArgumentException("strategyId is required");
 		}
 		if (actorId == null || actorId.isEmpty()) {
 			throw new IllegalArgumentException("actorId is required");
 		}
-		return this.pattern.replace("{memoryStrategyId}", strategyId).replace("{actorId}", actorId);
-	}
 
-	/**
-	 * Builds the resolved namespace including session ID.
-	 * @param strategyId the memory strategy ID
-	 * @param actorId the actor ID
-	 * @param sessionId the session ID (required for SESSION scope, ignored for ACTOR)
-	 * @return the resolved namespace string
-	 * @throws IllegalArgumentException if SESSION scope and sessionId is null/empty
-	 */
-	public String buildNamespace(String strategyId, String actorId, String sessionId) {
-		String namespace = buildNamespace(strategyId, actorId);
-		if (this == SESSION) {
+		String namespace = pattern.replace("{memoryStrategyId}", strategyId).replace("{actorId}", actorId);
+
+		if (namespace.contains("{sessionId}")) {
 			if (sessionId == null || sessionId.isEmpty()) {
-				throw new IllegalArgumentException("sessionId is required for SESSION scope");
+				throw new IllegalArgumentException("sessionId is required for namespace pattern: " + pattern);
 			}
 			namespace = namespace.replace("{sessionId}", sessionId);
 		}
+
 		return namespace;
 	}
 

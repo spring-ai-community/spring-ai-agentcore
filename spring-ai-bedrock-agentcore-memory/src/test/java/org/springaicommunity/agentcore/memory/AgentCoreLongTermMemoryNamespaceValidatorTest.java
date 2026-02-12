@@ -45,13 +45,14 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 		// Given
 		MemoryStrategy strategy = MemoryStrategy.builder()
 			.strategyId("semantic-123")
-			.namespaces(List.of(AgentCoreLongTermMemoryScope.ACTOR.getPattern()))
+			.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
 			.build();
 
 		mockGetMemoryResponse(List.of(strategy));
 
 		// When/Then - no exception
-		validator.validateNamespaces("test-memory", Map.of("semantic-123", AgentCoreLongTermMemoryScope.ACTOR));
+		validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()));
 	}
 
 	@Test
@@ -60,13 +61,14 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 		// Given
 		MemoryStrategy strategy = MemoryStrategy.builder()
 			.strategyId("summary-456")
-			.namespaces(List.of(AgentCoreLongTermMemoryScope.SESSION.getPattern()))
+			.namespaces(List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern()))
 			.build();
 
 		mockGetMemoryResponse(List.of(strategy));
 
 		// When/Then - no exception
-		validator.validateNamespaces("test-memory", Map.of("summary-456", AgentCoreLongTermMemoryScope.SESSION));
+		validator.validateNamespaces("test-memory",
+				Map.of("summary-456", AgentCoreLongTermMemoryNamespace.SESSION.getPattern()));
 	}
 
 	@Test
@@ -82,7 +84,7 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 
 		// When/Then
 		assertThatThrownBy(() -> validator.validateNamespaces("test-memory",
-				Map.of("semantic-123", AgentCoreLongTermMemoryScope.ACTOR)))
+				Map.of("semantic-123", AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
 			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
 			.hasMessageContaining("Namespace mismatch")
 			.hasMessageContaining("semantic-123")
@@ -97,7 +99,7 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 
 		// When/Then
 		assertThatThrownBy(() -> validator.validateNamespaces("test-memory",
-				Map.of("semantic-123", AgentCoreLongTermMemoryScope.ACTOR)))
+				Map.of("semantic-123", AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
 			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
 			.hasMessageContaining("no strategies configured");
 	}
@@ -108,14 +110,14 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 		// Given - different strategy ID
 		MemoryStrategy strategy = MemoryStrategy.builder()
 			.strategyId("other-strategy")
-			.namespaces(List.of(AgentCoreLongTermMemoryScope.ACTOR.getPattern()))
+			.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
 			.build();
 
 		mockGetMemoryResponse(List.of(strategy));
 
 		// When/Then
 		assertThatThrownBy(() -> validator.validateNamespaces("test-memory",
-				Map.of("semantic-123", AgentCoreLongTermMemoryScope.ACTOR)))
+				Map.of("semantic-123", AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
 			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
 			.hasMessageContaining("not found")
 			.hasMessageContaining("semantic-123");
@@ -131,7 +133,7 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 
 		// When/Then
 		assertThatThrownBy(() -> validator.validateNamespaces("test-memory",
-				Map.of("semantic-123", AgentCoreLongTermMemoryScope.ACTOR)))
+				Map.of("semantic-123", AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
 			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
 			.hasMessageContaining("no namespaces configured");
 	}
@@ -155,7 +157,8 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 		mockGetMemoryResponse(List.of(strategy));
 
 		// When/Then - should match ACTOR pattern despite having resolved strategyId
-		validator.validateNamespaces("test-memory", Map.of("semantic-123", AgentCoreLongTermMemoryScope.ACTOR));
+		validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()));
 	}
 
 	@Test
@@ -170,7 +173,44 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 		mockGetMemoryResponse(List.of(strategy));
 
 		// When/Then - should match SESSION pattern
-		validator.validateNamespaces("test-memory", Map.of("summary-456", AgentCoreLongTermMemoryScope.SESSION));
+		validator.validateNamespaces("test-memory",
+				Map.of("summary-456", AgentCoreLongTermMemoryNamespace.SESSION.getPattern()));
+	}
+
+	@Test
+	@DisplayName("Should pass validation for custom namespace pattern")
+	void shouldPassValidationForCustomNamespacePattern() {
+		// Given - custom namespace pattern in both AWS and config
+		String customPattern = "custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}";
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("summary-123")
+			.namespaces(List.of(customPattern))
+			.build();
+
+		mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - should pass when config matches AWS
+		validator.validateNamespaces("test-memory", Map.of("summary-123", customPattern));
+	}
+
+	@Test
+	@DisplayName("Should fail when custom namespace in AWS but default in config")
+	void shouldFailWhenCustomNamespaceInAwsButDefaultInConfig() {
+		// Given - custom namespace in AWS, but default pattern in Spring config
+		String customPattern = "custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}";
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("summary-123")
+			.namespaces(List.of(customPattern))
+			.build();
+
+		mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - should fail because patterns don't match
+		assertThatThrownBy(() -> validator.validateNamespaces("test-memory",
+				Map.of("summary-123", AgentCoreLongTermMemoryNamespace.SESSION.getPattern())))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("Namespace mismatch")
+			.hasMessageContaining("custom-namespace");
 	}
 
 	@Test
@@ -186,7 +226,7 @@ class AgentCoreLongTermMemoryNamespaceValidatorTest {
 
 		// When/Then - should fail because missing /sessions/{sessionId}
 		assertThatThrownBy(() -> validator.validateNamespaces("test-memory",
-				Map.of("summary-456", AgentCoreLongTermMemoryScope.SESSION)))
+				Map.of("summary-456", AgentCoreLongTermMemoryNamespace.SESSION.getPattern())))
 			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
 			.hasMessageContaining("Namespace mismatch");
 	}

@@ -85,8 +85,8 @@ class AgentCoreLongTermMemoryRetrieverTest {
 			.thenReturn(RetrieveMemoryRecordsResponse.builder().memoryRecordSummaries(summary).build());
 
 		// When
-		List<MemoryRecord> records = retriever.searchSummaries("strategy-123", "user-456", "session-789", "travel", 3,
-				AgentCoreLongTermMemoryScope.SESSION);
+		List<MemoryRecord> records = retriever.searchMemories("strategy-123", "user-456", "session-789", "travel", 3,
+				AgentCoreLongTermMemoryNamespace.SESSION.getPattern());
 
 		// Then
 		assertThat(records).hasSize(1);
@@ -116,7 +116,8 @@ class AgentCoreLongTermMemoryRetrieverTest {
 			.thenReturn(ListMemoryRecordsResponse.builder().memoryRecordSummaries(summary1, summary2).build());
 
 		// When
-		List<MemoryRecord> records = retriever.listMemories("strategy-123", "user-456");
+		List<MemoryRecord> records = retriever.listMemories("strategy-123", "user-456",
+				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
 
 		// Then
 		assertThat(records).hasSize(2);

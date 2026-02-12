@@ -56,14 +56,20 @@ public class AgentCoreLongTermMemoryProperties {
 	}
 
 	public record Episodic(String strategyId, String reflectionsStrategyId, int episodesTopK, int reflectionsTopK,
-			AgentCoreLongTermMemoryScope scope) implements AgentCoreLongTermMemoryStrategy {
+			AgentCoreLongTermMemoryNamespace namespace,
+			String namespacePattern) implements AgentCoreLongTermMemoryStrategy {
 
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".episodic";
 
 		public Episodic {
 			episodesTopK = episodesTopK > 0 ? episodesTopK : 3;
 			reflectionsTopK = reflectionsTopK > 0 ? reflectionsTopK : 2;
-			scope = scope != null ? scope : AgentCoreLongTermMemoryScope.ACTOR;
+			namespace = namespace != null ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
+		}
+
+		public String resolveNamespacePattern() {
+			return (namespacePattern != null && !namespacePattern.isEmpty()) ? namespacePattern
+					: namespace.getPattern();
 		}
 
 		/**
@@ -75,37 +81,52 @@ public class AgentCoreLongTermMemoryProperties {
 
 	}
 
-	public record Semantic(String strategyId, int topK,
-			AgentCoreLongTermMemoryScope scope) implements AgentCoreLongTermMemoryStrategy {
+	public record Semantic(String strategyId, int topK, AgentCoreLongTermMemoryNamespace namespace,
+			String namespacePattern) implements AgentCoreLongTermMemoryStrategy {
 
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".semantic";
 
 		public Semantic {
 			topK = topK > 0 ? topK : 3;
-			scope = scope != null ? scope : AgentCoreLongTermMemoryScope.ACTOR;
+			namespace = namespace != null ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
+		}
+
+		public String resolveNamespacePattern() {
+			return (namespacePattern != null && !namespacePattern.isEmpty()) ? namespacePattern
+					: namespace.getPattern();
 		}
 
 	}
 
-	public record Summary(String strategyId, int topK,
-			AgentCoreLongTermMemoryScope scope) implements AgentCoreLongTermMemoryStrategy {
+	public record Summary(String strategyId, int topK, AgentCoreLongTermMemoryNamespace namespace,
+			String namespacePattern) implements AgentCoreLongTermMemoryStrategy {
 
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".summary";
 
 		public Summary {
 			topK = topK > 0 ? topK : 3;
-			scope = scope != null ? scope : AgentCoreLongTermMemoryScope.SESSION;
+			namespace = namespace != null ? namespace : AgentCoreLongTermMemoryNamespace.SESSION;
+		}
+
+		public String resolveNamespacePattern() {
+			return (namespacePattern != null && !namespacePattern.isEmpty()) ? namespacePattern
+					: namespace.getPattern();
 		}
 
 	}
 
-	public record UserPreference(String strategyId,
-			AgentCoreLongTermMemoryScope scope) implements AgentCoreLongTermMemoryStrategy {
+	public record UserPreference(String strategyId, AgentCoreLongTermMemoryNamespace namespace,
+			String namespacePattern) implements AgentCoreLongTermMemoryStrategy {
 
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".user-preference";
 
 		public UserPreference {
-			scope = scope != null ? scope : AgentCoreLongTermMemoryScope.ACTOR;
+			namespace = namespace != null ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
+		}
+
+		public String resolveNamespacePattern() {
+			return (namespacePattern != null && !namespacePattern.isEmpty()) ? namespacePattern
+					: namespace.getPattern();
 		}
 
 	}

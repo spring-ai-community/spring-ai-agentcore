@@ -182,9 +182,10 @@ public abstract class AgentCoreMemoryIT {
 		long consolidationStartTime = System.currentTimeMillis();
 		await().atMost(Duration.ofMinutes(3)).pollInterval(Duration.ofSeconds(15)).until(() -> {
 			var semantic = ltmRetriever.searchMemories(semanticStrategyId, actorId, "Alex engineer", 5);
-			var prefs = ltmRetriever.listMemories(preferencesStrategyId, actorId);
-			var summary = ltmRetriever.searchSummaries(summaryStrategyId, actorId, sessionId, "conversation", 3,
-					AgentCoreLongTermMemoryScope.SESSION);
+			var prefs = ltmRetriever.listMemories(preferencesStrategyId, actorId,
+					AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
+			var summary = ltmRetriever.searchMemories(summaryStrategyId, actorId, sessionId, "conversation", 3,
+					AgentCoreLongTermMemoryNamespace.SESSION.getPattern());
 
 			long elapsed = (System.currentTimeMillis() - consolidationStartTime) / 1000;
 			System.out.printf("Consolidation: semantic=%b prefs=%b summary=%b (elapsed: %d:%02d)%n",
@@ -202,15 +203,16 @@ public abstract class AgentCoreMemoryIT {
 		printMemoryRecords("Semantic facts", semanticFacts);
 
 		// Verify preferences
-		List<MemoryRecord> preferences = ltmRetriever.listMemories(preferencesStrategyId, actorId);
+		List<MemoryRecord> preferences = ltmRetriever.listMemories(preferencesStrategyId, actorId,
+				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
 		assertThat(preferences).isNotEmpty();
 		String allPrefs = preferences.stream().map(MemoryRecord::content).reduce("", String::concat).toLowerCase();
 		assertThat(allPrefs).containsAnyOf("dark mode", "vim", "spring");
 		printMemoryRecords("Preferences", preferences);
 
 		// Verify summary
-		List<MemoryRecord> summaries = ltmRetriever.searchSummaries(summaryStrategyId, actorId, sessionId,
-				"conversation", 3, AgentCoreLongTermMemoryScope.SESSION);
+		List<MemoryRecord> summaries = ltmRetriever.searchMemories(summaryStrategyId, actorId, sessionId,
+				"conversation", 3, AgentCoreLongTermMemoryNamespace.SESSION.getPattern());
 		assertThat(summaries).isNotEmpty();
 		assertThat(summaries.get(0).content()).isNotBlank();
 		printMemoryRecords("Summary", summaries);

@@ -51,18 +51,19 @@ public class AgentCoreLongTermMemoryRetriever {
 	}
 
 	/**
-	 * Semantic search for memories with configurable scope.
+	 * Semantic search for memories with configurable namespace pattern.
 	 * @param strategyId the memory strategy ID
 	 * @param actorId the actor ID
-	 * @param sessionId the session ID (required if scope is SESSION, ignored if ACTOR)
+	 * @param sessionId the session ID (required if pattern contains {sessionId})
 	 * @param query the search query
 	 * @param topK maximum number of results
-	 * @param scope the namespace scope (ACTOR or SESSION)
+	 * @param namespacePattern the namespace pattern to use
 	 * @return list of matching memory records
 	 */
 	public List<MemoryRecord> searchMemories(String strategyId, String actorId, String sessionId, String query,
-			int topK, AgentCoreLongTermMemoryScope scope) {
-		String namespace = buildNamespace(scope, strategyId, actorId, sessionId);
+			int topK, String namespacePattern) {
+		String namespace = AgentCoreLongTermMemoryNamespace.buildNamespace(namespacePattern, strategyId, actorId,
+				sessionId);
 		return doSearch(namespace, strategyId, query, topK);
 	}
 
@@ -70,25 +71,15 @@ public class AgentCoreLongTermMemoryRetriever {
 	 * Semantic search for memories (actor-scoped, searches all sessions).
 	 */
 	public List<MemoryRecord> searchMemories(String strategyId, String actorId, String query, int topK) {
-		return searchMemories(strategyId, actorId, null, query, topK, AgentCoreLongTermMemoryScope.ACTOR);
-	}
-
-	/**
-	 * Search summaries with configurable scope. Unlike searchMemories(), this method
-	 * doesn't validate sessionId because the scope itself determines whether sessionId is
-	 * needed (SESSION scope includes it, ACTOR scope ignores it).
-	 */
-	public List<MemoryRecord> searchSummaries(String strategyId, String actorId, String sessionId, String query,
-			int topK, AgentCoreLongTermMemoryScope scope) {
-		String namespace = scope.buildNamespace(strategyId, actorId, sessionId);
-		return doSearch(namespace, strategyId, query, topK);
+		return searchMemories(strategyId, actorId, null, query, topK,
+				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
 	}
 
 	/**
 	 * List all memories for an actor (no semantic search). Used for preferences.
 	 */
-	public List<MemoryRecord> listMemories(String strategyId, String actorId) {
-		String namespace = AgentCoreLongTermMemoryScope.ACTOR.buildNamespace(strategyId, actorId);
+	public List<MemoryRecord> listMemories(String strategyId, String actorId, String namespacePattern) {
+		String namespace = AgentCoreLongTermMemoryNamespace.buildNamespace(namespacePattern, strategyId, actorId, null);
 		logger.debug("Listing memories: namespace={}", namespace);
 
 		try {
@@ -106,12 +97,6 @@ public class AgentCoreLongTermMemoryRetriever {
 		catch (Exception e) {
 			throw new AgentCoreMemoryException.RetrievalException("Failed to list memories: namespace=" + namespace, e);
 		}
-	}
-
-	private String buildNamespace(AgentCoreLongTermMemoryScope scope, String strategyId, String actorId,
-			String sessionId) {
-		// Validation now handled by AgentCoreLongTermMemoryScope.buildNamespace()
-		return scope.buildNamespace(strategyId, actorId, sessionId);
 	}
 
 	private List<MemoryRecord> doSearch(String namespace, String strategyId, String query, int topK) {

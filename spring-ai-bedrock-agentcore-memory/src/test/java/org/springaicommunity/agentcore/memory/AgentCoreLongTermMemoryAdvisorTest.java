@@ -77,7 +77,7 @@ class AgentCoreLongTermMemoryAdvisorTest {
 				new MemoryRecord("2", "User is from Seattle", 0.85));
 
 		when(retriever.searchMemories(eq("strategy-123"), eq("user-456"), anyString(), eq("What do I like?"), eq(3),
-				eq(AgentCoreLongTermMemoryScope.ACTOR)))
+				eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
 			.thenReturn(memories);
 
 		ChatClientRequest request = ChatClientRequest.builder()
@@ -90,7 +90,7 @@ class AgentCoreLongTermMemoryAdvisorTest {
 
 		// Then
 		verify(retriever).searchMemories(eq("strategy-123"), eq("user-456"), anyString(), eq("What do I like?"), eq(3),
-				eq(AgentCoreLongTermMemoryScope.ACTOR));
+				eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()));
 		verify(chain).nextCall(org.mockito.ArgumentMatchers.argThat(enrichedRequest -> {
 			List<?> messages = enrichedRequest.prompt().getInstructions();
 			assertThat(messages).hasSize(2);
@@ -108,7 +108,9 @@ class AgentCoreLongTermMemoryAdvisorTest {
 		List<MemoryRecord> preferences = List.of(new MemoryRecord("1", "Dark mode enabled", 0.0),
 				new MemoryRecord("2", "Metric units", 0.0));
 
-		when(retriever.listMemories(eq("strategy-456"), eq("user-456"))).thenReturn(preferences);
+		when(retriever.listMemories(eq("strategy-456"), eq("user-456"),
+				eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
+			.thenReturn(preferences);
 
 		ChatClientRequest request = ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new UserMessage("Show settings"))))
@@ -119,7 +121,7 @@ class AgentCoreLongTermMemoryAdvisorTest {
 		listAdvisor.adviseCall(request, chain);
 
 		// Then
-		verify(retriever).listMemories("strategy-456", "user-456");
+		verify(retriever).listMemories("strategy-456", "user-456", AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
 		verify(chain).nextCall(org.mockito.ArgumentMatchers.argThat(enrichedRequest -> {
 			List<?> messages = enrichedRequest.prompt().getInstructions();
 			assertThat(((SystemMessage) messages.get(0)).getText()).contains("User preferences");
@@ -131,8 +133,7 @@ class AgentCoreLongTermMemoryAdvisorTest {
 	@Test
 	void shouldNotEnrichWhenNoMemoriesFound() {
 		// Given
-		when(retriever.searchMemories(anyString(), anyString(), anyString(), anyString(), anyInt(),
-				any(AgentCoreLongTermMemoryScope.class)))
+		when(retriever.searchMemories(anyString(), anyString(), anyString(), anyString(), anyInt(), anyString()))
 			.thenReturn(List.of());
 
 		ChatClientRequest request = ChatClientRequest.builder()
@@ -167,17 +168,17 @@ class AgentCoreLongTermMemoryAdvisorTest {
 			.order(103)
 			.topK(3)
 			.reflectionsTopK(2)
-			.scope(AgentCoreLongTermMemoryScope.ACTOR)
+			.namespacePattern(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())
 			.build();
 
 		List<MemoryRecord> episodes = List.of(new MemoryRecord("1", "User asked about weather yesterday", 0.9));
 		List<MemoryRecord> reflections = List.of(new MemoryRecord("2", "User prefers detailed answers", 0.85));
 
 		when(retriever.searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), eq("How's the weather?"),
-				eq(3), eq(AgentCoreLongTermMemoryScope.ACTOR)))
+				eq(3), eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
 			.thenReturn(episodes);
 		when(retriever.searchMemories(eq("reflections-strategy"), eq("user-456"), anyString(), eq("How's the weather?"),
-				eq(2), eq(AgentCoreLongTermMemoryScope.ACTOR)))
+				eq(2), eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
 			.thenReturn(reflections);
 
 		ChatClientRequest request = ChatClientRequest.builder()
@@ -190,9 +191,9 @@ class AgentCoreLongTermMemoryAdvisorTest {
 
 		// Then - verify both strategies are called
 		verify(retriever).searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), eq("How's the weather?"),
-				eq(3), eq(AgentCoreLongTermMemoryScope.ACTOR));
+				eq(3), eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()));
 		verify(retriever).searchMemories(eq("reflections-strategy"), eq("user-456"), anyString(),
-				eq("How's the weather?"), eq(2), eq(AgentCoreLongTermMemoryScope.ACTOR));
+				eq("How's the weather?"), eq(2), eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()));
 		verify(chain).nextCall(org.mockito.ArgumentMatchers.argThat(enrichedRequest -> {
 			List<?> messages = enrichedRequest.prompt().getInstructions();
 			assertThat(((SystemMessage) messages.get(0)).getText()).contains("Relevant past interactions");
@@ -213,13 +214,13 @@ class AgentCoreLongTermMemoryAdvisorTest {
 			.order(103)
 			.topK(3)
 			.reflectionsTopK(2)
-			.scope(AgentCoreLongTermMemoryScope.ACTOR)
+			.namespacePattern(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())
 			.build();
 
 		List<MemoryRecord> episodes = List.of(new MemoryRecord("1", "Previous interaction", 0.9));
 
 		when(retriever.searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), eq("Hello"), eq(3),
-				eq(AgentCoreLongTermMemoryScope.ACTOR)))
+				eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())))
 			.thenReturn(episodes);
 
 		ChatClientRequest request = ChatClientRequest.builder()
@@ -232,13 +233,97 @@ class AgentCoreLongTermMemoryAdvisorTest {
 
 		// Then - only episodes strategy should be called
 		verify(retriever).searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), eq("Hello"), eq(3),
-				eq(AgentCoreLongTermMemoryScope.ACTOR));
+				eq(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()));
 		verify(chain).nextCall(org.mockito.ArgumentMatchers.argThat(enrichedRequest -> {
 			List<?> messages = enrichedRequest.prompt().getInstructions();
 			assertThat(((SystemMessage) messages.get(0)).getText()).contains("Relevant past interactions");
 			assertThat(((SystemMessage) messages.get(0)).getText()).doesNotContain("Lessons learned");
 			return true;
 		}));
+	}
+
+	@Test
+	void shouldUseCustomNamespacePatternForSemanticSearch() {
+		// Given - custom namespace pattern
+		String customPattern = "/custom/{memoryStrategyId}/users/{actorId}";
+		AgentCoreLongTermMemoryAdvisor advisor = AgentCoreLongTermMemoryAdvisor
+			.builder(retriever, MemoryStrategy.SEMANTIC)
+			.strategyId("semantic-123")
+			.contextLabel("Facts")
+			.namespacePattern(customPattern)
+			.build();
+
+		List<MemoryRecord> memories = List.of(new MemoryRecord("1", "Custom fact", 0.9));
+		when(retriever.searchMemories(eq("semantic-123"), eq("user-456"), anyString(), eq("Query"), eq(3),
+				eq(customPattern)))
+			.thenReturn(memories);
+
+		ChatClientRequest request = ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage("Query"))))
+			.context(Map.of(ChatMemory.CONVERSATION_ID, "user-456"))
+			.build();
+
+		// When
+		advisor.adviseCall(request, chain);
+
+		// Then - custom pattern should be passed to retriever
+		verify(retriever).searchMemories(eq("semantic-123"), eq("user-456"), anyString(), eq("Query"), eq(3),
+				eq(customPattern));
+	}
+
+	@Test
+	void shouldUseCustomNamespacePatternForListMemories() {
+		// Given - custom namespace pattern for user preferences
+		String customPattern = "/org/{memoryStrategyId}/actors/{actorId}/prefs";
+		AgentCoreLongTermMemoryAdvisor advisor = AgentCoreLongTermMemoryAdvisor
+			.builder(retriever, MemoryStrategy.USER_PREFERENCE)
+			.strategyId("prefs-456")
+			.contextLabel("Preferences")
+			.namespacePattern(customPattern)
+			.build();
+
+		List<MemoryRecord> prefs = List.of(new MemoryRecord("1", "Dark mode", 0.0));
+		when(retriever.listMemories(eq("prefs-456"), eq("user-789"), eq(customPattern))).thenReturn(prefs);
+
+		ChatClientRequest request = ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage("Settings"))))
+			.context(Map.of(ChatMemory.CONVERSATION_ID, "user-789"))
+			.build();
+
+		// When
+		advisor.adviseCall(request, chain);
+
+		// Then - custom pattern should be passed to retriever
+		verify(retriever).listMemories(eq("prefs-456"), eq("user-789"), eq(customPattern));
+	}
+
+	@Test
+	void shouldUseSessionNamespacePatternForSummary() {
+		// Given - session-scoped namespace for summary
+		String sessionPattern = AgentCoreLongTermMemoryNamespace.SESSION.getPattern();
+		AgentCoreLongTermMemoryAdvisor advisor = AgentCoreLongTermMemoryAdvisor
+			.builder(retriever, MemoryStrategy.SUMMARY)
+			.strategyId("summary-789")
+			.contextLabel("Summaries")
+			.namespacePattern(sessionPattern)
+			.build();
+
+		List<MemoryRecord> summaries = List.of(new MemoryRecord("1", "Previous summary", 0.9));
+		when(retriever.searchMemories(eq("summary-789"), eq("user-123"), eq("session-abc"), eq("Continue"), eq(3),
+				eq(sessionPattern)))
+			.thenReturn(summaries);
+
+		ChatClientRequest request = ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage("Continue"))))
+			.context(Map.of(ChatMemory.CONVERSATION_ID, "user-123:session-abc"))
+			.build();
+
+		// When
+		advisor.adviseCall(request, chain);
+
+		// Then - session pattern should be passed to retriever
+		verify(retriever).searchMemories(eq("summary-789"), eq("user-123"), eq("session-abc"), eq("Continue"), eq(3),
+				eq(sessionPattern));
 	}
 
 }

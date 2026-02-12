@@ -61,11 +61,11 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 	/**
 	 * Validates namespace configuration for all configured strategies.
 	 * @param memoryId the memory resource ID
-	 * @param strategyConfigs map of strategy ID to its expected namespace scope
+	 * @param strategyConfigs map of strategy ID to its expected namespace pattern
 	 * @throws AgentCoreMemoryException.ConfigurationException if any namespace doesn't
 	 * match expected format
 	 */
-	public void validateNamespaces(String memoryId, Map<String, AgentCoreLongTermMemoryScope> strategyConfigs) {
+	public void validateNamespaces(String memoryId, Map<String, String> strategyConfigs) {
 		if (strategyConfigs.isEmpty()) {
 			return;
 		}
@@ -81,17 +81,17 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 					"Memory '" + memoryId + "' has no strategies configured. " + "LTM requires at least one strategy.");
 		}
 
-		for (Map.Entry<String, AgentCoreLongTermMemoryScope> entry : strategyConfigs.entrySet()) {
+		for (Map.Entry<String, String> entry : strategyConfigs.entrySet()) {
 			String strategyId = entry.getKey();
-			AgentCoreLongTermMemoryScope scope = entry.getValue();
-			validateStrategy(memoryId, strategies, strategyId, scope);
+			String namespacePattern = entry.getValue();
+			validateStrategy(memoryId, strategies, strategyId, namespacePattern);
 		}
 
 		logger.info("Namespace validation passed for {} strategies", strategyConfigs.size());
 	}
 
 	private void validateStrategy(String memoryId, List<MemoryStrategy> strategies, String strategyId,
-			AgentCoreLongTermMemoryScope scope) {
+			String namespacePattern) {
 		MemoryStrategy strategy = strategies.stream()
 			.filter(s -> strategyId.equals(s.strategyId()))
 			.findFirst()
@@ -105,12 +105,11 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 					"Strategy '" + strategyId + "' has no namespaces configured.");
 		}
 
-		String expectedPattern = scope.getPattern();
-		String actualNamespace = namespaces.get(0);
+        String actualNamespace = namespaces.get(0);
 
-		if (!matchesPattern(actualNamespace, expectedPattern)) {
+		if (!matchesPattern(actualNamespace, namespacePattern)) {
 			throw new AgentCoreMemoryException.ConfigurationException(
-					buildErrorMessage(strategyId, actualNamespace, expectedPattern));
+					buildErrorMessage(strategyId, actualNamespace, namespacePattern));
 		}
 
 		logger.debug("Strategy '{}' namespace validated: {}", strategyId, actualNamespace);
@@ -140,13 +139,11 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 	}
 
 	private String buildErrorMessage(String strategyId, String actual, String expected) {
-		return String.format(
-				"Namespace mismatch for strategy '%s'.%n" + "  Configured: %s%n" + "  Expected:   %s%n%n"
-						+ "The memory was created with a different namespace format than this library expects.%n"
-						+ "To fix this, recreate the memory with the correct namespace pattern:%n"
-						+ "  - For semantic/user-preference/episodic: %s%n" + "  - For summary: %s",
-				strategyId, actual, expected, AgentCoreLongTermMemoryScope.ACTOR.getPattern(),
-				AgentCoreLongTermMemoryScope.SESSION.getPattern());
+		return String.format("Namespace mismatch for strategy '%s'.%n" + "  In AWS Memory:    %s%n"
+				+ "  In Spring Config: %s%n%n"
+				+ "The memory was created with a different namespace format than configured in Spring.%n"
+				+ "Either update the memory namespace or configure the matching pattern in application.properties:%n"
+				+ "  agentcore.memory.long-term.<strategy>.namespace-pattern=%s", strategyId, actual, expected, actual);
 	}
 
 }
