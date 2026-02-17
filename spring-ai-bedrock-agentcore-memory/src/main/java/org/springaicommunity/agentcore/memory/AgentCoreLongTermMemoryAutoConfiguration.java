@@ -21,7 +21,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryAdvisor.MemoryStrategy;
+import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
@@ -33,8 +36,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-
 import org.springframework.context.annotation.Conditional;
+
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 
@@ -48,15 +51,18 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreC
 @EnableConfigurationProperties(AgentCoreLongTermMemoryProperties.class)
 public class AgentCoreLongTermMemoryAutoConfiguration {
 
-	// This is used for the construction of the AgentCoreLongTermMemoryRetriever and the
-	// actual AgentCoreLongTermMemoryAdvisor's depend on that.
-	// So we have to use an aggregate config
-	// Also, there doesn't seem to be a way to just check for agentcore.memory.long-term
-	// (any child)
+	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryAutoConfiguration.class);
+
 	static class AnyStrategyConfiguredCondition extends AnyNestedCondition {
 
 		public AnyStrategyConfiguredCondition() {
 			super(ConfigurationPhase.REGISTER_BEAN);
+		}
+
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
+				havingValue = "true")
+		static class AutoDiscoveryCondition {
+
 		}
 
 		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
@@ -82,19 +88,12 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 
 	}
 
-	/**
-	 * Factory for creating ControlClient instances. Allows tests to provide a mock
-	 * factory while production uses the default SDK client creation.
-	 */
 	@Bean
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
 	Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
 		return BedrockAgentCoreControlClient::create;
 	}
-
-	// when long-term memory is configured, create the ChatMemoryRepository and ChatMemory
-	// beans
 
 	@Bean
 	@ConditionalOnMissingBean
@@ -107,11 +106,7 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
 	ChatMemory chatMemory(AgentCoreShortTermMemoryRepository shortTermMemoryRepository) {
-		return MessageWindowChatMemory.builder()
-			.chatMemoryRepository(shortTermMemoryRepository)
-			// todo: make this configurable?
-			// .maxMessages(10)
-			.build();
+		return MessageWindowChatMemory.builder().chatMemoryRepository(shortTermMemoryRepository).build();
 	}
 
 	@Bean
@@ -119,7 +114,6 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@Conditional(AnyStrategyConfiguredCondition.class)
 	AgentCoreMemory agentCoreLongTermMemory(List<AgentCoreLongTermMemoryAdvisor> ltmAdvisors, ChatMemory chatMemory) {
 		var stmAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
-
 		return new AgentCoreMemory(stmAdvisor, ltmAdvisors);
 	}
 
@@ -131,45 +125,61 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 			Supplier<BedrockAgentCoreControlClient> controlClientFactory) {
 		String memoryId = memoryConfig.memoryId();
 
-		// Validate namespaces at startup to fail fast on misconfiguration
-		// ControlClient is only needed for validation, so create/use/close inline
-		Map<String, String> strategyConfigs = buildStrategyConfigs(longTermMemoryProperties);
-		if (!strategyConfigs.isEmpty()) {
-			try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
-				AgentCoreLongTermMemoryNamespaceRegistrar registrar = new AgentCoreLongTermMemoryNamespaceRegistrar(
-						controlClient);
-				AgentCoreLongTermMemoryNamespaceValidator validator = new AgentCoreLongTermMemoryNamespaceValidator(
-						controlClient, registrar, longTermMemoryProperties.namespace().autoRegister());
-				validator.validateNamespaces(memoryId, strategyConfigs);
+		if (!longTermMemoryProperties.autoDiscovery()) {
+			Map<String, String> strategyConfigs = buildStrategyConfigs(longTermMemoryProperties);
+			if (!strategyConfigs.isEmpty()) {
+				try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
+					AgentCoreLongTermMemoryNamespaceRegistrar registrar = new AgentCoreLongTermMemoryNamespaceRegistrar(
+							controlClient);
+					AgentCoreLongTermMemoryNamespaceValidator validator = new AgentCoreLongTermMemoryNamespaceValidator(
+							controlClient, registrar, longTermMemoryProperties.namespace().autoRegister());
+					validator.validateNamespaces(memoryId, strategyConfigs);
+				}
 			}
 		}
 
 		return new AgentCoreLongTermMemoryRetriever(client, memoryId);
 	}
 
-	private Map<String, String> buildStrategyConfigs(AgentCoreLongTermMemoryProperties config) {
-		Map<String, String> configs = new HashMap<>();
-		if (config.semantic() != null) {
-			configs.put(config.semantic().strategyId(), config.semantic().resolveNamespacePattern());
+	// ==================== Autodiscovery Mode ====================
+
+	@Bean
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
+			havingValue = "true")
+	List<AgentCoreLongTermMemoryAdvisor> autoDiscoveredAdvisors(AgentCoreLongTermMemoryRetriever retriever,
+			AgentCoreMemoryProperties memoryConfig, AgentCoreLongTermMemoryProperties config,
+			Supplier<BedrockAgentCoreControlClient> controlClientFactory) {
+
+		String memoryId = memoryConfig.memoryId();
+
+		List<DiscoveredStrategy> discovered;
+		try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
+			var discovery = new AgentCoreLongTermMemoryStrategyDiscovery(controlClient);
+			discovered = discovery.discoverStrategies(memoryId);
 		}
-		if (config.userPreference() != null) {
-			configs.put(config.userPreference().strategyId(), config.userPreference().resolveNamespacePattern());
+
+		if (discovered.isEmpty()) {
+			logger.warn("Autodiscovery enabled but no strategies found in memory: {}", memoryId);
+			return List.of();
 		}
-		if (config.summary() != null) {
-			configs.put(config.summary().strategyId(), config.summary().resolveNamespacePattern());
+
+		try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
+			AgentCoreLongTermMemoryNamespaceRegistrar registrar = config.namespace().autoRegister()
+					? new AgentCoreLongTermMemoryNamespaceRegistrar(controlClient) : null;
+
+			var factory = new AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory(retriever, config, memoryId,
+					registrar);
+			return factory.createAdvisors(discovered);
 		}
-		if (config.episodic() != null) {
-			configs.put(config.episodic().strategyId(), config.episodic().resolveNamespacePattern());
-			if (config.episodic().hasReflections()) {
-				configs.put(config.episodic().reflectionsStrategyId(), config.episodic().resolveNamespacePattern());
-			}
-		}
-		return configs;
 	}
+
+	// ==================== Explicit Configuration Mode ====================
 
 	@Bean
 	@ConditionalOnMissingBean(name = "semanticAdvisor")
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
+			havingValue = "false", matchIfMissing = true)
 	AgentCoreLongTermMemoryAdvisor semanticAdvisor(AgentCoreLongTermMemoryRetriever retriever,
 			AgentCoreLongTermMemoryProperties config) {
 		var semanticConfig = config.semantic();
@@ -185,6 +195,8 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@ConditionalOnMissingBean(name = "userPreferenceAdvisor")
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.UserPreference.CONFIG_PREFIX,
 			name = "strategy-id")
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
+			havingValue = "false", matchIfMissing = true)
 	AgentCoreLongTermMemoryAdvisor userPreferenceAdvisor(AgentCoreLongTermMemoryRetriever retriever,
 			AgentCoreLongTermMemoryProperties config) {
 		var prefConfig = config.userPreference();
@@ -198,6 +210,8 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean(name = "summaryAdvisor")
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Summary.CONFIG_PREFIX, name = "strategy-id")
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
+			havingValue = "false", matchIfMissing = true)
 	AgentCoreLongTermMemoryAdvisor summaryAdvisor(AgentCoreLongTermMemoryRetriever retriever,
 			AgentCoreLongTermMemoryProperties config) {
 		var summaryConfig = config.summary();
@@ -212,6 +226,8 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean(name = "episodicAdvisor")
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX, name = "strategy-id")
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
+			havingValue = "false", matchIfMissing = true)
 	AgentCoreLongTermMemoryAdvisor episodicAdvisor(AgentCoreLongTermMemoryRetriever retriever,
 			AgentCoreLongTermMemoryProperties config) {
 		var episodicConfig = config.episodic();
@@ -223,6 +239,28 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 			.reflectionsTopK(episodicConfig.reflectionsTopK())
 			.namespacePattern(episodicConfig.resolveNamespacePattern())
 			.build();
+	}
+
+	// ==================== Helper Methods ====================
+
+	private Map<String, String> buildStrategyConfigs(AgentCoreLongTermMemoryProperties config) {
+		Map<String, String> configs = new HashMap<>();
+		if (config.semantic() != null && config.semantic().strategyId() != null) {
+			configs.put(config.semantic().strategyId(), config.semantic().resolveNamespacePattern());
+		}
+		if (config.userPreference() != null && config.userPreference().strategyId() != null) {
+			configs.put(config.userPreference().strategyId(), config.userPreference().resolveNamespacePattern());
+		}
+		if (config.summary() != null && config.summary().strategyId() != null) {
+			configs.put(config.summary().strategyId(), config.summary().resolveNamespacePattern());
+		}
+		if (config.episodic() != null && config.episodic().strategyId() != null) {
+			configs.put(config.episodic().strategyId(), config.episodic().resolveNamespacePattern());
+			if (config.episodic().hasReflections()) {
+				configs.put(config.episodic().reflectionsStrategyId(), config.episodic().resolveNamespacePattern());
+			}
+		}
+		return configs;
 	}
 
 }

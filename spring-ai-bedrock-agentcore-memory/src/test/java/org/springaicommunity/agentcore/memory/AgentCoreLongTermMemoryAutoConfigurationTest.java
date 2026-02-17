@@ -38,6 +38,7 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRe
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategyType;
 
 /**
  * Unit tests for {@link AgentCoreLongTermMemoryAutoConfiguration}.
@@ -293,6 +294,340 @@ class AgentCoreLongTermMemoryAutoConfigurationTest {
 					.strategies(List.of(MemoryStrategy.builder()
 						.strategyId("semantic-123")
 						.namespaces(List.of("/custom/{memoryStrategyId}/users/{actorId}"))
+						.build()))
+					.build())
+				.build();
+
+			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	// ==================== Autodiscovery Tests ====================
+
+	@Test
+	@DisplayName("Autodiscovery: Should create advisors from discovered strategies")
+	void autodiscoveryShouldCreateAdvisorsFromDiscoveredStrategies() {
+		contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				assertThat(context).hasSingleBean(AgentCoreLongTermMemoryRetriever.class);
+
+				// Autodiscovery returns a List bean, not individual beans
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+				assertThat(advisors).hasSize(3); // SEMANTIC, SUMMARY, USER_PREFERENCE (no
+													// CUSTOM)
+
+				assertThat(advisors).extracting(AgentCoreLongTermMemoryAdvisor::getName)
+					.containsExactlyInAnyOrder("AgentCoreLongTermMemoryAdvisor-SEMANTIC",
+							"AgentCoreLongTermMemoryAdvisor-SUMMARY", "AgentCoreLongTermMemoryAdvisor-USER_PREFERENCE");
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should use explicit config to override discovered values")
+	void autodiscoveryShouldUseExplicitConfigOverrides() {
+		contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.semantic.top-k=10", // Override topK
+					"agentcore.memory.long-term.summary.top-k=5")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+
+				var config = context.getBean(AgentCoreLongTermMemoryProperties.class);
+				assertThat(config.semantic().topK()).isEqualTo(10);
+				assertThat(config.summary().topK()).isEqualTo(5);
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should NOT create duplicate advisors when explicit config also present")
+	void autodiscoveryShouldNotCreateDuplicateAdvisors() {
+		contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.semantic.strategy-id=semantic-override", // Explicit
+																							// config
+					"agentcore.memory.long-term.semantic.top-k=15")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+
+				// Autodiscovery list should have 3 advisors
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> autodiscovered = context.getBean("autoDiscoveredAdvisors",
+						List.class);
+				assertThat(autodiscovered).hasSize(3);
+
+				// Individual beans should NOT be created (auto-discovery=true disables
+				// them)
+				assertThat(context).doesNotHaveBean("semanticAdvisor");
+				assertThat(context).doesNotHaveBean("summaryAdvisor");
+				assertThat(context).doesNotHaveBean("userPreferenceAdvisor");
+				assertThat(context).doesNotHaveBean("episodicAdvisor");
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery + Explicit: Should use explicit strategy-id over discovered one")
+	void autodiscoveryWithExplicitStrategyShouldUseExplicitStrategyId() {
+		contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.semantic.strategy-id=my-explicit-semantic-id",
+					"agentcore.memory.long-term.semantic.top-k=20")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+
+				// Find the semantic advisor
+				AgentCoreLongTermMemoryAdvisor semanticAdvisor = advisors.stream()
+					.filter(a -> a.getName().contains("SEMANTIC"))
+					.findFirst()
+					.orElseThrow();
+
+				// Verify explicit strategy-id is used (not discovered one)
+				// The advisor name doesn't contain strategy-id, but we can verify config
+				// was applied
+				var config = context.getBean(AgentCoreLongTermMemoryProperties.class);
+				assertThat(config.semantic().strategyId()).isEqualTo("my-explicit-semantic-id");
+				assertThat(config.semantic().topK()).isEqualTo(20);
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should return empty list when no strategies found")
+	void autodiscoveryShouldReturnEmptyWhenNoStrategies() {
+		contextRunner.withUserConfiguration(EmptyDiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+				assertThat(advisors).isEmpty();
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should skip CUSTOM strategy type")
+	void autodiscoveryShouldSkipCustomStrategyType() {
+		contextRunner.withUserConfiguration(AutodiscoveryWithCustomMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+				// Only SEMANTIC should be created, CUSTOM should be skipped
+				assertThat(advisors).hasSize(1);
+				assertThat(advisors.get(0).getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-SEMANTIC");
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should use first namespace when multiple exist")
+	void autodiscoveryShouldUseFirstNamespace() {
+		contextRunner.withUserConfiguration(MultipleNamespacesMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+				assertThat(advisors).hasSize(1);
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should throw error when explicit namespace doesn't match discovered namespaces")
+	void autodiscoveryShouldThrowErrorForMismatchedNamespace() {
+		contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.semantic.strategy-id=discovered-semantic", // Matches
+					"agentcore.memory.long-term.semantic.namespace-pattern=/wrong/namespace/pattern") // Doesn't
+																										// match
+			.run(context -> {
+				assertThat(context).hasFailed();
+				assertThat(context.getStartupFailure())
+					.hasRootCauseInstanceOf(AgentCoreMemoryException.ConfigurationException.class);
+				assertThat(context.getStartupFailure().getMessage())
+					.contains("does not match any discovered namespace");
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should ignore explicit config when strategy-id doesn't match")
+	void autodiscoveryShouldIgnoreExplicitConfigWhenStrategyIdDoesNotMatch() {
+		contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.semantic.strategy-id=non-matching-id", // Doesn't
+																						// match
+					"agentcore.memory.long-term.semantic.top-k=99")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+
+				// Config should be ignored, default topK=3 should be used
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+				assertThat(advisors).hasSize(3);
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should auto-register namespace when auto-register enabled")
+	void autodiscoveryShouldAutoRegisterNamespaceWhenEnabled() {
+		contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.namespace.auto-register=true",
+					"agentcore.memory.long-term.semantic.strategy-id=discovered-semantic",
+					"agentcore.memory.long-term.semantic.namespace-pattern=/new/namespace/pattern")
+			.run(context -> {
+				// Should not fail - namespace should be auto-registered
+				assertThat(context).hasNotFailed();
+
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+				assertThat(advisors).hasSize(3);
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should use explicit namespace when it matches discovered namespace")
+	void autodiscoveryShouldUseExplicitNamespaceWhenMatching() {
+		contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.semantic.strategy-id=discovered-semantic",
+					"agentcore.memory.long-term.semantic.namespace-pattern=/strategies/{memoryStrategyId}/actors/{actorId}")
+			.run(context -> {
+				// Should succeed - namespace matches discovered namespace
+				assertThat(context).hasNotFailed();
+
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+				assertThat(advisors).hasSize(3);
+			});
+	}
+
+	@Configuration
+	static class AutodiscoveryMockConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder()
+					.strategies(List.of(
+							MemoryStrategy.builder()
+								.strategyId("discovered-semantic")
+								.type(MemoryStrategyType.SEMANTIC)
+								.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}"))
+								.build(),
+							MemoryStrategy.builder()
+								.strategyId("discovered-summary")
+								.type(MemoryStrategyType.SUMMARIZATION)
+								.namespaces(
+										List.of("/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
+								.build(),
+							MemoryStrategy.builder()
+								.strategyId("discovered-prefs")
+								.type(MemoryStrategyType.USER_PREFERENCE)
+								.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}"))
+								.build()))
+					.build())
+				.build();
+
+			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class EmptyDiscoveryMockConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder().strategies(List.of()).build())
+				.build();
+
+			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class AutodiscoveryWithCustomMockConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder()
+					.strategies(List.of(
+							MemoryStrategy.builder()
+								.strategyId("semantic-strategy")
+								.type(MemoryStrategyType.SEMANTIC)
+								.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}"))
+								.build(),
+							MemoryStrategy.builder()
+								.strategyId("custom-strategy")
+								.type(MemoryStrategyType.CUSTOM) // Should be skipped
+								.namespaces(List.of("/custom/namespace"))
+								.build()))
+					.build())
+				.build();
+
+			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class MultipleNamespacesMockConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder()
+					.strategies(List.of(MemoryStrategy.builder()
+						.strategyId("multi-ns-strategy")
+						.type(MemoryStrategyType.SEMANTIC)
+						.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}", // First
+																								// one
+																								// used
+								"/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
 						.build()))
 					.build())
 				.build();

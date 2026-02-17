@@ -64,6 +64,71 @@ agentcore:
 
 ### LTM Configuration
 
+There are two ways to configure Long-Term Memory:
+
+#### Option 1: Autodiscovery (Recommended)
+
+Automatically discover all strategies from your AgentCore Memory:
+
+```yaml
+agentcore:
+  memory:
+    memory-id: ${MEMORY_ID}
+    long-term:
+      auto-discovery: true                        # Discovers strategies from AWS
+```
+
+**Autodiscovery behavior:**
+- Queries AWS to discover all strategies configured in your memory
+- Creates advisors only for supported types: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `EPISODIC`
+- Skips `CUSTOM` strategy types (not supported by autodiscovery)
+- Uses the first namespace if a strategy has multiple namespaces
+- Uses default `topK` values for each strategy type
+
+**Overriding discovered defaults:**
+
+You can override specific settings for discovered strategies by providing explicit configuration. The explicit config is applied only when the `strategy-id` matches the discovered one:
+
+```yaml
+agentcore:
+  memory:
+    memory-id: ${MEMORY_ID}
+    long-term:
+      auto-discovery: true
+      semantic:
+        strategy-id: discovered-semantic-id      # Must match discovered ID
+        top-k: 5                                  # Override default topK
+        namespace-pattern: /custom/namespace     # Override namespace (must exist in AWS)
+      summary:
+        strategy-id: discovered-summary-id
+        top-k: 3
+```
+
+**Override rules:**
+- `strategy-id` must match the discovered strategy ID for overrides to apply
+- If `strategy-id` doesn't match, the explicit config is ignored
+- `namespace-pattern` must match one of the namespaces discovered from AWS, or use `auto-register=true`
+
+**Namespace auto-registration:**
+
+If you want to use a namespace that doesn't exist in AWS yet:
+
+```yaml
+agentcore:
+  memory:
+    long-term:
+      auto-discovery: true
+      namespace:
+        auto-register: true                      # Register new namespaces in AWS
+      semantic:
+        strategy-id: discovered-semantic-id
+        namespace-pattern: /new/custom/namespace # Will be registered in AWS
+```
+
+#### Option 2: Explicit Configuration
+
+Manually specify each strategy:
+
 ```yaml
 agentcore:
   memory:

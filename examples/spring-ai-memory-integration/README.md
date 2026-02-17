@@ -123,3 +123,27 @@ agentcore.memory.long-term.namespace.auto-register=true
 ```
 
 This is useful during development when namespace patterns may change. Use with caution in production.
+
+## Autodiscovery Mode
+
+Instead of manually configuring each strategy, you can use autodiscovery to automatically detect strategies from your AgentCore Memory:
+
+```properties
+agentcore.memory.long-term.auto-discovery=true
+```
+
+**Autodiscovery behavior:**
+- Queries AWS to discover all strategies in your memory
+- Creates advisors for supported types: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `EPISODIC`
+- Uses discovered namespace and default `topK` values
+
+**Overriding discovered settings:**
+
+```properties
+agentcore.memory.long-term.auto-discovery=true
+# Override topK for a discovered strategy (strategy-id must match)
+agentcore.memory.long-term.summary.strategy-id=${SUMMARY_STRATEGY_ID}
+agentcore.memory.long-term.summary.top-k=5
+```
+
+The override only applies if `strategy-id` matches the discovered strategy ID.

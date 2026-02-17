@@ -25,4 +25,8 @@ public interface AgentCoreLongTermMemoryStrategy {
 
 	String strategyId();
 
+	String namespacePattern();
+
+	String resolveNamespacePattern();
+
 }
