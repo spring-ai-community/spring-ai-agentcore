@@ -19,7 +19,8 @@ package org.springaicommunity.agentcore.codeinterpreter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.artifacts.ArtifactStore;
-import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStore;
+import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
+import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStoreFactory;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -66,12 +67,20 @@ public class AgentCoreCodeInterpreterAutoConfiguration {
 	}
 
 	@Bean
+	@ConditionalOnMissingBean
+	ArtifactStoreFactory artifactStoreFactory() {
+		logger.debug("Creating ArtifactStoreFactory bean");
+		return new CaffeineArtifactStoreFactory();
+	}
+
+	@Bean
 	@ConditionalOnMissingBean(name = "codeInterpreterArtifactStore")
-	ArtifactStore<GeneratedFile> codeInterpreterArtifactStore(AgentCoreCodeInterpreterConfiguration config) {
+	ArtifactStore<GeneratedFile> codeInterpreterArtifactStore(ArtifactStoreFactory factory,
+			AgentCoreCodeInterpreterConfiguration config) {
 		logger.debug("Creating codeInterpreterArtifactStore bean: ttl={}s, maxSize={}", config.fileStoreTtlSeconds(),
 				config.artifactStoreMaxSize());
-		return new CaffeineArtifactStore<>(config.fileStoreTtlSeconds(), config.artifactStoreMaxSize(),
-				"CodeInterpreterArtifactStore");
+		return factory.create("CodeInterpreterArtifactStore", config.fileStoreTtlSeconds(),
+				config.artifactStoreMaxSize());
 	}
 
 	@Bean

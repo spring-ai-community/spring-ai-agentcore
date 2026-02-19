@@ -9,7 +9,9 @@ Shared session-scoped artifact storage used by browser and code interpreter modu
 | Class | Purpose |
 |-------|---------|
 | `ArtifactStore<T>` | Interface for session-scoped storage |
+| `ArtifactStoreFactory` | Factory interface for creating artifact stores |
 | `CaffeineArtifactStore<T>` | Caffeine-backed implementation with TTL |
+| `CaffeineArtifactStoreFactory` | Factory for creating Caffeine-backed stores |
 | `GeneratedFile` | Immutable artifact record |
 | `ArtifactMetadata` | Metadata extraction utility |
 | `SessionConstants` | Session ID constants for Reactor context |

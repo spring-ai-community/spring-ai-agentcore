@@ -16,7 +16,7 @@
 
 package org.springaicommunity.agentcore.browser;
 
-import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStore;
+import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -91,7 +91,7 @@ public record AgentCoreBrowserConfiguration(String mode, Integer sessionTimeoutS
 			screenshotTtlSeconds = DEFAULT_SCREENSHOT_TTL_SECONDS;
 		}
 		if (artifactStoreMaxSize == null || artifactStoreMaxSize <= 0) {
-			artifactStoreMaxSize = CaffeineArtifactStore.DEFAULT_MAX_SIZE;
+			artifactStoreMaxSize = ArtifactStoreFactory.DEFAULT_MAX_SIZE;
 		}
 		// Tool descriptions can be null - will use defaults from BrowserTools
 	}

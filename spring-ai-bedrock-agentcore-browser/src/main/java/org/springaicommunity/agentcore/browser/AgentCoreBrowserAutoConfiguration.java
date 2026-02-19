@@ -20,7 +20,8 @@ import com.microsoft.playwright.Playwright;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.artifacts.ArtifactStore;
-import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStore;
+import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
+import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStoreFactory;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -112,12 +113,19 @@ public class AgentCoreBrowserAutoConfiguration {
 	// ========== Shared beans ==========
 
 	@Bean
+	@ConditionalOnMissingBean
+	ArtifactStoreFactory artifactStoreFactory() {
+		logger.debug("Creating ArtifactStoreFactory bean");
+		return new CaffeineArtifactStoreFactory();
+	}
+
+	@Bean
 	@ConditionalOnMissingBean(name = "browserArtifactStore")
-	ArtifactStore<GeneratedFile> browserArtifactStore(AgentCoreBrowserConfiguration config) {
+	ArtifactStore<GeneratedFile> browserArtifactStore(ArtifactStoreFactory factory,
+			AgentCoreBrowserConfiguration config) {
 		logger.debug("Creating browserArtifactStore bean: ttl={}s, maxSize={}", config.screenshotTtlSeconds(),
 				config.artifactStoreMaxSize());
-		return new CaffeineArtifactStore<>(config.screenshotTtlSeconds(), config.artifactStoreMaxSize(),
-				"BrowserArtifactStore");
+		return factory.create("BrowserArtifactStore", config.screenshotTtlSeconds(), config.artifactStoreMaxSize());
 	}
 
 	@Bean

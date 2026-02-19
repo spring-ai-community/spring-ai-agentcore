@@ -16,7 +16,7 @@
 
 package org.springaicommunity.agentcore.codeinterpreter;
 
-import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStore;
+import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -50,7 +50,7 @@ public record AgentCoreCodeInterpreterConfiguration(Integer sessionTimeoutSecond
 			asyncTimeoutSeconds = 300; // 5 minutes default
 		}
 		if (artifactStoreMaxSize == null || artifactStoreMaxSize <= 0) {
-			artifactStoreMaxSize = CaffeineArtifactStore.DEFAULT_MAX_SIZE;
+			artifactStoreMaxSize = ArtifactStoreFactory.DEFAULT_MAX_SIZE;
 		}
 		// toolDescription can be null - will use DEFAULT_TOOL_DESCRIPTION
 	}
