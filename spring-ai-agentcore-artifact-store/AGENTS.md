@@ -74,5 +74,5 @@ Configured via consumer modules (browser, codeinterpreter):
 ## Tests
 
 ```bash
-mvn test -pl spring-ai-bedrock-agentcore-artifact-store
+mvn test -pl spring-ai-agentcore-artifact-store
 ```

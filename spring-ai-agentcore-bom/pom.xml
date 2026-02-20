@@ -6,22 +6,22 @@
 
     <parent>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-bedrock-agentcore-parent</artifactId>
+        <artifactId>spring-ai-agentcore-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore</url>
+    <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
     <scm>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore</url>
-        <connection>git://github.com/spring-ai-community/spring-ai-bedrock-agentcore.git</connection>
-        <developerConnection>git@github.com/spring-ai-community/spring-ai-bedrock-agentcore.git</developerConnection>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
+        <connection>git://github.com/spring-ai-community/spring-ai-agentcore.git</connection>
+        <developerConnection>git@github.com/spring-ai-community/spring-ai-agentcore.git</developerConnection>
     </scm>
 
-    <artifactId>spring-ai-bedrock-agentcore-bom</artifactId>
+    <artifactId>spring-ai-agentcore-bom</artifactId>
     <packaging>pom</packaging>
 
-    <name>Spring AI Community - Bedrock AgentCore BOM</name>
-    <description>Bill of Materials for Spring AI Bedrock AgentCore modules</description>
+    <name>Spring AI Community - AgentCore BOM</name>
+    <description>Bill of Materials for Spring AI AgentCore modules</description>
 
     <organization>
         <name>Spring AI Community</name>
@@ -44,38 +44,38 @@
 
     <issueManagement>
         <system>Github Issues</system>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore/issues</url>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore/issues</url>
     </issueManagement>
     <ciManagement>
         <system>Github Actions</system>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore/actions</url>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore/actions</url>
     </ciManagement>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
                 <groupId>org.springaicommunity</groupId>
-                <artifactId>spring-ai-bedrock-agentcore-artifact-store</artifactId>
+                <artifactId>spring-ai-agentcore-artifact-store</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springaicommunity</groupId>
-                <artifactId>spring-ai-bedrock-agentcore-runtime-starter</artifactId>
+                <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springaicommunity</groupId>
-                <artifactId>spring-ai-bedrock-agentcore-memory</artifactId>
+                <artifactId>spring-ai-agentcore-memory</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springaicommunity</groupId>
-                <artifactId>spring-ai-bedrock-agentcore-browser</artifactId>
+                <artifactId>spring-ai-agentcore-browser</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springaicommunity</groupId>
-                <artifactId>spring-ai-bedrock-agentcore-codeinterpreter</artifactId>
+                <artifactId>spring-ai-agentcore-codeinterpreter</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

@@ -1,6 +1,6 @@
-# Spring AI Bedrock AgentCore
+# Spring AI AgentCore
 
-A Spring Boot starter that enables existing Spring Boot applications to conform to the Amazon Bedrock AgentCore Runtime contract with minimal configuration.
+A Spring Boot starter that enables existing Spring Boot applications to conform to the Amazon AgentCore Runtime contract with minimal configuration.
 
 ## Features
 
@@ -10,7 +10,7 @@ A Spring Boot starter that enables existing Spring Boot applications to conform 
 - **Smart health checks**: Built-in `/ping` endpoint with Spring Boot Actuator integration
 - **Async task tracking**: Convenient methods for background task tracking
 - **Rate limiting**: Built-in Bucket4j throttling for invocations and ping endpoints
-- **AgentCore Memory integration**: Spring AI integration with Amazon Bedrock AgentCore Memory service
+- **AgentCore Memory integration**: Spring AI integration with Amazon AgentCore Memory service
 - **Browser automation**: Headless browser tools for web navigation, screenshots, and page interaction
 - **Code interpreter**: Execute Python, JavaScript, and TypeScript code in a secure sandbox
 
@@ -23,8 +23,8 @@ See the `examples/` directory for complete working examples:
 - **`spring-ai-sse-chat-client/`** - SSE streaming with Spring AI and Amazon Bedrock
 - **`spring-ai-simple-chat-client/`** - Traditional Spring AI integration (without AgentCore starter)
 - **`spring-ai-override-invocations/`** - Custom controller override using marker interfaces
-- **`spring-ai-memory-integration/`** - Spring AI ChatMemory integration with Amazon Bedrock AgentCore Memory service
-- **`spring-ai-extended-chat-client/`** - Spring AI chat client with OAuth authentication and per-user memory isolation, deployable to Amazon Bedrock AgentCore Runtime.
+- **`spring-ai-memory-integration/`** - Spring AI ChatMemory integration with Amazon AgentCore Memory service
+- **`spring-ai-extended-chat-client/`** - Spring AI chat client with OAuth authentication and per-user memory isolation, deployable to Amazon AgentCore Runtime.
 
 ## Quick Start
 
@@ -35,7 +35,7 @@ See the `examples/` directory for complete working examples:
     <dependencies>
         <dependency>
             <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-bedrock-agentcore-bom</artifactId>
+            <artifactId>spring-ai-agentcore-bom</artifactId>
             <version>${version}</version>  <!-- Use latest: 1.0.0-RC2, 1.0.0-RC3, etc. -->
             <type>pom</type>
             <scope>import</scope>
@@ -46,7 +46,7 @@ See the `examples/` directory for complete working examples:
 <dependencies>
     <dependency>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-bedrock-agentcore-runtime-starter</artifactId>
+        <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -152,7 +152,7 @@ The `/ping` endpoint provides intelligent health monitoring:
 
 ### Background Task Tracking
 
-Amazon Bedrock AgentCore Runtime monitors agent health and may shut down agents that appear idle. When your agent starts long-running background tasks (like file processing, data analysis, or calling other long-running agents), the runtime needs to know the agent is still actively working to avoid premature termination.
+Amazon AgentCore Runtime monitors agent health and may shut down agents that appear idle. When your agent starts long-running background tasks (like file processing, data analysis, or calling other long-running agents), the runtime needs to know the agent is still actively working to avoid premature termination.
 
 The starter includes `AgentCoreTaskTracker` to communicate this state to the runtime:
 
@@ -277,14 +277,14 @@ See `examples/spring-ai-override-invocations/` for a complete working example.
 
 ## AgentCore Memory
 
-The `spring-ai-bedrock-agentcore-memory` module provides Spring AI ChatMemory integration with Amazon Bedrock AgentCore Memory service, supporting both Short-Term Memory (STM) and Long-Term Memory (LTM) with 4 consolidation strategies.
+The `spring-ai-agentcore-memory` module provides Spring AI ChatMemory integration with Amazon AgentCore Memory service, supporting both Short-Term Memory (STM) and Long-Term Memory (LTM) with 4 consolidation strategies.
 
 ### Add Dependency
 
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-bedrock-agentcore-memory</artifactId>
+    <artifactId>spring-ai-agentcore-memory</artifactId>
 </dependency>
 ```
 
@@ -327,7 +327,7 @@ public class ChatService {
 
 ### Long-Term Memory (LTM)
 
-Long-term memory (LTM) is derived from short-term memory (STM) and is automatically consolidated by Bedrock AgentCore through an asynchronous process. For more details, see the [Long-Term Memory documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/long-term-memory-long-term.html).
+Long-term memory (LTM) is derived from short-term memory (STM) and is automatically consolidated by AgentCore through an asynchronous process. For more details, see the [Long-Term Memory documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/long-term-memory-long-term.html).
 
 LTM provides persistent knowledge across sessions with 4 consolidation strategies:
 
@@ -385,18 +385,18 @@ public class ChatService {
 
 The `AgentCoreMemory` bean is auto-configured when you set the required properties.
 
-For detailed configuration options and API reference, see [spring-ai-bedrock-agentcore-memory/README.md](spring-ai-bedrock-agentcore-memory/README.md).
+For detailed configuration options and API reference, see [spring-ai-agentcore-memory/README.md](spring-ai-agentcore-memory/README.md).
 
 ## Browser Automation
 
-The `spring-ai-bedrock-agentcore-browser` module provides headless browser tools for web navigation, content extraction, screenshots, and page interaction using Playwright over CDP.
+The `spring-ai-agentcore-browser` module provides headless browser tools for web navigation, content extraction, screenshots, and page interaction using Playwright over CDP.
 
 ### Add Dependency
 
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-bedrock-agentcore-browser</artifactId>
+    <artifactId>spring-ai-agentcore-browser</artifactId>
 </dependency>
 ```
 
@@ -419,18 +419,18 @@ The `spring-ai-bedrock-agentcore-browser` module provides headless browser tools
 agentcore.browser.mode=local  # for local development
 ```
 
-For detailed configuration and usage, see [spring-ai-bedrock-agentcore-browser/README.md](spring-ai-bedrock-agentcore-browser/README.md).
+For detailed configuration and usage, see [spring-ai-agentcore-browser/README.md](spring-ai-agentcore-browser/README.md).
 
 ## Code Interpreter
 
-The `spring-ai-bedrock-agentcore-codeinterpreter` module provides secure code execution in Python, JavaScript, and TypeScript with automatic file retrieval.
+The `spring-ai-agentcore-codeinterpreter` module provides secure code execution in Python, JavaScript, and TypeScript with automatic file retrieval.
 
 ### Add Dependency
 
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-bedrock-agentcore-codeinterpreter</artifactId>
+    <artifactId>spring-ai-agentcore-codeinterpreter</artifactId>
 </dependency>
 ```
 
@@ -441,11 +441,11 @@ The `spring-ai-bedrock-agentcore-codeinterpreter` module provides secure code ex
 - Automatic file retrieval (charts, CSVs, PDFs)
 - Session-scoped artifact storage
 
-For detailed configuration and usage, see [spring-ai-bedrock-agentcore-codeinterpreter/README.md](spring-ai-bedrock-agentcore-codeinterpreter/README.md).
+For detailed configuration and usage, see [spring-ai-agentcore-codeinterpreter/README.md](spring-ai-agentcore-codeinterpreter/README.md).
 
 ## Artifact Store
 
-Both browser and code interpreter modules use the shared `spring-ai-bedrock-agentcore-artifact-store` module for session-scoped artifact storage. The store provides:
+Both browser and code interpreter modules use the shared `spring-ai-agentcore-artifact-store` module for session-scoped artifact storage. The store provides:
 
 - Thread-safe multi-session support
 - TTL-based automatic cleanup

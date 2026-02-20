@@ -1,6 +1,6 @@
 # Spring AI Override Invocations
 
-This example demonstrates how to override `AgentCoreInvocationsController` from the `spring-ai-bedrock-agentcore-runtime-starter` while still benefiting from the ping endpoint functionality.
+This example demonstrates how to override `AgentCoreInvocationsController` from the `spring-ai-agentcore-runtime-starter` while still benefiting from the ping endpoint functionality.
 
 ## Features
 

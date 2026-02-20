@@ -1,4 +1,4 @@
-# Spring AI Bedrock AgentCore Artifact Store
+# Spring AI AgentCore Artifact Store
 
 Shared session-scoped artifact storage for AgentCore modules. Provides thread-safe, TTL-based caching for generated files like screenshots, charts, and documents.
 
@@ -19,7 +19,7 @@ Add the BOM and dependency:
     <dependencies>
         <dependency>
             <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-bedrock-agentcore-bom</artifactId>
+            <artifactId>spring-ai-agentcore-bom</artifactId>
             <version>${version}</version>  <!-- Use latest: 1.0.0-RC2, 1.0.0-RC3, etc. -->
             <type>pom</type>
             <scope>import</scope>
@@ -30,7 +30,7 @@ Add the BOM and dependency:
 <dependencies>
     <dependency>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-bedrock-agentcore-artifact-store</artifactId>
+        <artifactId>spring-ai-agentcore-artifact-store</artifactId>
     </dependency>
 </dependencies>
 ```

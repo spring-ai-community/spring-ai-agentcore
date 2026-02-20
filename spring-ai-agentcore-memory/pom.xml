@@ -6,22 +6,22 @@
 
     <parent>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-bedrock-agentcore-parent</artifactId>
+        <artifactId>spring-ai-agentcore-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore</url>
+    <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
     <scm>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore</url>
-        <connection>git://github.com/spring-ai-community/spring-ai-bedrock-agentcore.git</connection>
-        <developerConnection>git@github.com/spring-ai-community/spring-ai-bedrock-agentcore.git</developerConnection>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
+        <connection>git://github.com/spring-ai-community/spring-ai-agentcore.git</connection>
+        <developerConnection>git@github.com/spring-ai-community/spring-ai-agentcore.git</developerConnection>
     </scm>
 
-    <artifactId>spring-ai-bedrock-agentcore-browser</artifactId>
+    <artifactId>spring-ai-agentcore-memory</artifactId>
     <packaging>jar</packaging>
 
-    <name>Spring AI Bedrock AgentCore Browser</name>
-    <description>Spring AI integration with Amazon Bedrock AgentCore Browser</description>
+    <name>Spring AI Chat Memory Repository AgentCore</name>
+    <description>Starter for Spring AI AgentCore Memory</description>
 
     <organization>
         <name>Spring AI Community</name>
@@ -37,18 +37,22 @@
 
     <developers>
         <developer>
-            <name>Yuriy Bezsonov</name>
-            <email>ybezsonov@gmail.com</email>
+            <name>James Ward</name>
+            <email>james@jamesward.com</email>
+        </developer>
+        <developer>
+            <name>Andrei Shakirin</name>
+            <email>andrei.shakirin@gmail.com</email>
         </developer>
     </developers>
 
     <issueManagement>
         <system>Github Issues</system>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore/issues</url>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore/issues</url>
     </issueManagement>
     <ciManagement>
         <system>Github Actions</system>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore/actions</url>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore/actions</url>
     </ciManagement>
 
     <dependencies>
@@ -74,25 +78,8 @@
         </dependency>
 
         <dependency>
-            <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-bedrock-agentcore-artifact-store</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-annotations</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.microsoft.playwright</groupId>
-            <artifactId>playwright</artifactId>
-            <version>1.52.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>jakarta.annotation</groupId>
-            <artifactId>jakarta.annotation-api</artifactId>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>bedrockagentcorecontrol</artifactId>
         </dependency>
 
         <!-- Test Dependencies -->
@@ -101,10 +88,14 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-bedrock-converse</artifactId>
+            <artifactId>spring-ai-starter-model-bedrock-converse</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -137,6 +128,11 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <version>3.5.4</version>
+                <configuration>
+                    <excludes>
+                        <exclude>**/*EnvIT.java</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>

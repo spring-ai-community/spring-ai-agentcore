@@ -17,7 +17,7 @@
     <packaging>jar</packaging>
 
     <name>Spring AI Memory Integration Example</name>
-    <description>Example showing how to integrate Bedrock AgentCore Memory into existing Spring Boot applications</description>
+    <description>Example showing how to integrate AgentCore Memory into existing Spring Boot applications</description>
 
     <properties>
         <java.version>17</java.version>
@@ -32,7 +32,7 @@
 
         <dependency>
             <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-bedrock-agentcore-memory</artifactId>
+            <artifactId>spring-ai-agentcore-memory</artifactId>
             <version>1.0.0-SNAPSHOT</version>
         </dependency>
 

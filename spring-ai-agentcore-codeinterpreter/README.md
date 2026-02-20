@@ -1,6 +1,6 @@
-# Spring AI Bedrock AgentCore Code Interpreter
+# Spring AI AgentCore Code Interpreter
 
-Spring AI integration with Amazon Bedrock AgentCore Code Interpreter. Execute Python, JavaScript, and TypeScript code in a secure sandbox with automatic file retrieval.
+Spring AI integration with Amazon AgentCore Code Interpreter. Execute Python, JavaScript, and TypeScript code in a secure sandbox with automatic file retrieval.
 
 ## Features
 
@@ -21,7 +21,7 @@ Add the BOM and dependency:
     <dependencies>
         <dependency>
             <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-bedrock-agentcore-bom</artifactId>
+            <artifactId>spring-ai-agentcore-bom</artifactId>
             <version>${version}</version>  <!-- Use latest: 1.0.0-RC2, 1.0.0-RC3, etc. -->
             <type>pom</type>
             <scope>import</scope>
@@ -32,7 +32,7 @@ Add the BOM and dependency:
 <dependencies>
     <dependency>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-bedrock-agentcore-codeinterpreter</artifactId>
+        <artifactId>spring-ai-agentcore-codeinterpreter</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -103,7 +103,7 @@ Session ID is propagated via `ToolCallReactiveContextHolder` (not `@RequestScope
 
 ## Artifact Store
 
-Generated files are stored in a session-scoped `ArtifactStore<GeneratedFile>` from the [artifact-store module](../spring-ai-bedrock-agentcore-artifact-store/README.md).
+Generated files are stored in a session-scoped `ArtifactStore<GeneratedFile>` from the [artifact-store module](../spring-ai-agentcore-artifact-store/README.md).
 
 Helper methods in `CodeInterpreterArtifacts`:
 - `CodeInterpreterArtifacts.sourcePath(file)` - Extract source path from metadata
@@ -128,7 +128,7 @@ agentcore.code-interpreter.tool-description=Custom tool description...
 ## Integration Test
 
 ```bash
-AGENTCORE_IT=true mvn verify -pl spring-ai-bedrock-agentcore-codeinterpreter
+AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-codeinterpreter
 ```
 
 ## License

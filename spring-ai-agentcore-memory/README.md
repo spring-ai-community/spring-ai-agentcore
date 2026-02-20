@@ -1,6 +1,6 @@
-# Spring AI Bedrock AgentCore Memory
+# Spring AI AgentCore Memory
 
-Spring AI ChatMemory integration with Amazon Bedrock AgentCore Memory service.
+Spring AI ChatMemory integration with Amazon AgentCore Memory service.
 
 For quick start and usage examples, see the [main README](../README.md#agentcore-memory).
 
