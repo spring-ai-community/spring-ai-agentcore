@@ -4,17 +4,17 @@ This file provides context for AI coding assistants working on this project.
 
 ## Project Overview
 
-Spring Boot starter that enables Spring Boot applications to conform to the Amazon Bedrock AgentCore Runtime contract. Provides auto-configuration for AgentCore endpoints and Spring AI integration with AgentCore Memory service.
+Spring Boot starter that enables Spring Boot applications to conform to the Amazon AgentCore Runtime contract. Provides auto-configuration for AgentCore endpoints and Spring AI integration with AgentCore Memory service.
 
 ## Architecture
 
 ```
-spring-ai-bedrock-agentcore/
-├── spring-ai-bedrock-agentcore-artifact-store/    # Shared artifact storage
-├── spring-ai-bedrock-agentcore-runtime-starter/   # Runtime starter (invocations, ping, SSE)
-├── spring-ai-bedrock-agentcore-memory/            # Memory integration (STM + LTM)
-├── spring-ai-bedrock-agentcore-browser/           # Browser automation tools
-├── spring-ai-bedrock-agentcore-codeinterpreter/   # Code interpreter tools
+spring-ai-agentcore/
+├── spring-ai-agentcore-artifact-store/    # Shared artifact storage
+├── spring-ai-agentcore-runtime-starter/   # Runtime starter (invocations, ping, SSE)
+├── spring-ai-agentcore-memory/            # Memory integration (STM + LTM)
+├── spring-ai-agentcore-browser/           # Browser automation tools
+├── spring-ai-agentcore-codeinterpreter/   # Code interpreter tools
 ├── examples/                                       # Working examples
 └── scripts/                                        # Helper scripts
 ```
@@ -60,7 +60,7 @@ mvn clean install
 mvn test
 
 # Full test suite (requires AWS credentials)
-AGENTCORE_IT=true mvn clean verify -pl spring-ai-bedrock-agentcore-memory
+AGENTCORE_IT=true mvn clean verify -pl spring-ai-agentcore-memory
 
 # Format code (required before commit)
 mvn spring-javaformat:apply

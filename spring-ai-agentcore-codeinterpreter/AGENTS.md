@@ -4,7 +4,7 @@ Context for AI coding assistants working on this module.
 
 ## Module Overview
 
-Spring AI integration with Amazon Bedrock AgentCore Code Interpreter. Executes Python, JavaScript, and TypeScript code in a secure sandbox with automatic file retrieval.
+Spring AI integration with Amazon AgentCore Code Interpreter. Executes Python, JavaScript, and TypeScript code in a secure sandbox with automatic file retrieval.
 
 ## Architecture
 
@@ -134,13 +134,13 @@ agentcore.code-interpreter.tool-description=Custom tool description...
 
 ```bash
 # Compile
-mvn compile -pl spring-ai-bedrock-agentcore-codeinterpreter
+mvn compile -pl spring-ai-agentcore-codeinterpreter
 
 # Format (required before commit)
-mvn spring-javaformat:apply -pl spring-ai-bedrock-agentcore-codeinterpreter
+mvn spring-javaformat:apply -pl spring-ai-agentcore-codeinterpreter
 
 # Integration test (requires AWS credentials)
-AGENTCORE_IT=true mvn verify -pl spring-ai-bedrock-agentcore-codeinterpreter
+AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-codeinterpreter
 ```
 
 ## Integration Tests

@@ -49,4 +49,4 @@ echo ""
 echo "🧪 Running AgentCore Memory integration tests..."
 echo ""
 
-mvn test -pl spring-ai-bedrock-agentcore-memory -Dtest=AgentCoreMemoryEnvIT
+mvn test -pl spring-ai-agentcore-memory -Dtest=AgentCoreMemoryEnvIT

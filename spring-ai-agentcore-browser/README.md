@@ -1,6 +1,6 @@
-# Spring AI Bedrock AgentCore Browser
+# Spring AI AgentCore Browser
 
-Spring AI integration with Amazon Bedrock AgentCore Browser. Headless browser automation for web page navigation, content extraction, screenshots, and page interaction using Playwright over CDP.
+Spring AI integration with Amazon AgentCore Browser. Headless browser automation for web page navigation, content extraction, screenshots, and page interaction using Playwright over CDP.
 
 Supports two modes:
 - **agentcore** (default) — uses AgentCore Browser managed service
@@ -24,7 +24,7 @@ Add the BOM and dependency:
     <dependencies>
         <dependency>
             <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-bedrock-agentcore-bom</artifactId>
+            <artifactId>spring-ai-agentcore-bom</artifactId>
             <version>${version}</version>  <!-- Use latest: 1.0.0-RC2, 1.0.0-RC3, etc. -->
             <type>pom</type>
             <scope>import</scope>
@@ -35,7 +35,7 @@ Add the BOM and dependency:
 <dependencies>
     <dependency>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-bedrock-agentcore-browser</artifactId>
+        <artifactId>spring-ai-agentcore-browser</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -135,7 +135,7 @@ agentcore.browser.evaluate-description=...
 
 ## Artifact Store
 
-Screenshots are stored in a session-scoped `ArtifactStore<GeneratedFile>` from the [artifact-store module](../spring-ai-bedrock-agentcore-artifact-store/README.md).
+Screenshots are stored in a session-scoped `ArtifactStore<GeneratedFile>` from the [artifact-store module](../spring-ai-agentcore-artifact-store/README.md).
 
 Helper methods in `BrowserArtifacts`:
 - `BrowserArtifacts.url(file)` - Extract URL from screenshot metadata
@@ -159,10 +159,10 @@ See [`examples/spring-ai-browser`](../examples/spring-ai-browser) for a minimal 
 
 ```bash
 # AgentCore mode (requires AWS credentials)
-AGENTCORE_IT=true mvn verify -pl spring-ai-bedrock-agentcore-browser
+AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-browser
 
 # Local mode (no AWS credentials needed)
-mvn test -pl spring-ai-bedrock-agentcore-browser
+mvn test -pl spring-ai-agentcore-browser
 ```
 
 ## License

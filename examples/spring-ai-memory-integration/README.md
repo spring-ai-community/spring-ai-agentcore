@@ -1,6 +1,6 @@
 # Spring AI AgentCore Memory Example
 
-A complete example demonstrating Amazon Bedrock AgentCore Short-Term & Long-Term Memory integration with Spring AI for persistent conversation history.
+A complete example demonstrating Amazon AgentCore Short-Term & Long-Term Memory integration with Spring AI for persistent conversation history.
 
 This example creates and uses the AgentCore Long-Term Memory Summary Strategy.
 

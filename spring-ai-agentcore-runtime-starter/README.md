@@ -1,6 +1,6 @@
-# Spring AI Bedrock AgentCore Starter
+# Spring AI AgentCore Starter
 
-A Spring Boot starter that enables existing Spring Boot applications to conform to the Amazon Bedrock AgentCore Runtime contract with minimal configuration.
+A Spring Boot starter that enables existing Spring Boot applications to conform to the Amazon AgentCore Runtime contract with minimal configuration.
 
 ## Features
 
@@ -20,7 +20,7 @@ A Spring Boot starter that enables existing Spring Boot applications to conform 
     <dependencies>
         <dependency>
             <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-bedrock-agentcore-bom</artifactId>
+            <artifactId>spring-ai-agentcore-bom</artifactId>
             <version>${version}</version>  <!-- Use latest: 1.0.0-RC2, 1.0.0-RC3, etc. -->
             <type>pom</type>
             <scope>import</scope>
@@ -31,7 +31,7 @@ A Spring Boot starter that enables existing Spring Boot applications to conform 
 <dependencies>
     <dependency>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-bedrock-agentcore-runtime-starter</artifactId>
+        <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -177,7 +177,7 @@ The `/ping` endpoint provides intelligent health monitoring:
 
 ### Background Task Tracking
 
-Amazon Bedrock AgentCore Runtime monitors agent health and may shut down agents that appear idle. When your agent starts long-running background tasks (like file processing, data analysis, or calling other long-running agents), the runtime needs to know the agent is still actively working to avoid premature termination.
+Amazon AgentCore Runtime monitors agent health and may shut down agents that appear idle. When your agent starts long-running background tasks (like file processing, data analysis, or calling other long-running agents), the runtime needs to know the agent is still actively working to avoid premature termination.
 
 The starter includes `AgentCoreTaskTracker` to communicate this state to the runtime:
 

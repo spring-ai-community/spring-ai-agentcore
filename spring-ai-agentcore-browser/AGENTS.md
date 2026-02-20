@@ -4,7 +4,7 @@ Context for AI coding assistants working on this module.
 
 ## Module Overview
 
-Spring AI integration with Amazon Bedrock AgentCore Browser. Provides headless browser automation for web page navigation, content extraction, screenshots, and page interaction using Playwright over CDP (Chrome DevTools Protocol).
+Spring AI integration with Amazon AgentCore Browser. Provides headless browser automation for web page navigation, content extraction, screenshots, and page interaction using Playwright over CDP (Chrome DevTools Protocol).
 
 ## Architecture
 
@@ -121,16 +121,16 @@ agentcore.browser.evaluate-description=...
 
 ```bash
 # Compile
-mvn compile -pl spring-ai-bedrock-agentcore-browser
+mvn compile -pl spring-ai-agentcore-browser
 
 # Format (required before commit)
-mvn spring-javaformat:apply -pl spring-ai-bedrock-agentcore-browser
+mvn spring-javaformat:apply -pl spring-ai-agentcore-browser
 
 # Local browser tests (no AWS credentials needed)
-mvn test -pl spring-ai-bedrock-agentcore-browser
+mvn test -pl spring-ai-agentcore-browser
 
 # Full integration test (requires AWS credentials)
-AGENTCORE_IT=true mvn verify -pl spring-ai-bedrock-agentcore-browser
+AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-browser
 ```
 
 ## Integration Tests

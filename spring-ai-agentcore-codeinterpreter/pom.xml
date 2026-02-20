@@ -6,22 +6,22 @@
 
     <parent>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-bedrock-agentcore-parent</artifactId>
+        <artifactId>spring-ai-agentcore-parent</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
-    <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore</url>
+    <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
     <scm>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore</url>
-        <connection>git://github.com/spring-ai-community/spring-ai-bedrock-agentcore.git</connection>
-        <developerConnection>git@github.com/spring-ai-community/spring-ai-bedrock-agentcore.git</developerConnection>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
+        <connection>git://github.com/spring-ai-community/spring-ai-agentcore.git</connection>
+        <developerConnection>git@github.com/spring-ai-community/spring-ai-agentcore.git</developerConnection>
     </scm>
 
-    <artifactId>spring-ai-bedrock-agentcore-runtime-starter</artifactId>
+    <artifactId>spring-ai-agentcore-codeinterpreter</artifactId>
     <packaging>jar</packaging>
 
-    <name>Spring AI Bedrock AgentCore Starter</name>
-    <description>Spring Boot starter for Amazon Bedrock AgentCore runtime support</description>
+    <name>Spring AI AgentCore Code Interpreter</name>
+    <description>Spring AI integration with Amazon AgentCore Code Interpreter</description>
 
     <organization>
         <name>Spring AI Community</name>
@@ -37,49 +37,51 @@
 
     <developers>
         <developer>
-            <name>Maximilian Schellhorn</name>
-            <email>maschnetwork@pm.me</email>
+            <name>Yuriy Bezsonov</name>
+            <email>ybezsonov@gmail.com</email>
         </developer>
     </developers>
 
     <issueManagement>
         <system>Github Issues</system>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore/issues</url>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore/issues</url>
     </issueManagement>
     <ciManagement>
         <system>Github Actions</system>
-        <url>https://github.com/spring-ai-community/spring-ai-bedrock-agentcore/actions</url>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore/actions</url>
     </ciManagement>
 
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-autoconfigure</artifactId>
         </dependency>
+
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>com.bucket4j</groupId>
-            <artifactId>bucket4j-core</artifactId>
-            <version>${bucket4j-core.version}</version>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-model</artifactId>
         </dependency>
 
-        <!-- Optional Dependencies -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-client-chat</artifactId>
             <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>bedrockagentcore</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springaicommunity</groupId>
+            <artifactId>spring-ai-agentcore-artifact-store</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
         </dependency>
 
         <!-- Test Dependencies -->
@@ -88,9 +90,10 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
         <dependency>
-            <groupId>io.projectreactor</groupId>
-            <artifactId>reactor-test</artifactId>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-bedrock-converse</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -113,6 +116,24 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/*IT.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.4</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
