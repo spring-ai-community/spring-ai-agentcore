@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.longterm;
 
 /**
  * Common interface for all long-term memory strategy configurations.

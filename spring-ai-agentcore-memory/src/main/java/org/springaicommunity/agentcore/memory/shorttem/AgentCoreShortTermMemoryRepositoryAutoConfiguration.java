@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.shorttem;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

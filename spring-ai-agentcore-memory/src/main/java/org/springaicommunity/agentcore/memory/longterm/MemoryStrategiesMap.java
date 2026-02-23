@@ -1,9 +1,9 @@
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.Map;
 
-import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryAdvisor.MemoryStrategy;
-import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryStrategyDiscovery.StrategyType;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryAdvisor.MemoryStrategy;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyDiscovery.StrategyType;
 
 /**
  * Shared configuration for memory strategy types and their context labels.

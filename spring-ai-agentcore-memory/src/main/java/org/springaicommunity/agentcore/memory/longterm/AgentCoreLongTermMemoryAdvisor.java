@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +23,8 @@ import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryRetriever.MemoryRecord;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever.MemoryRecord;
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisor;

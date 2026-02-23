@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ModifyMemoryStrategies;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ModifyMemoryStrategyInput;

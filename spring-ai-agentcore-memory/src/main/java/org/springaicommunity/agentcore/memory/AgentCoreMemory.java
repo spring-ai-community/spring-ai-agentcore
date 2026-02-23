@@ -16,6 +16,7 @@
 
 package org.springaicommunity.agentcore.memory;
 
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 
@@ -30,7 +31,7 @@ public class AgentCoreMemory {
 
 	public final List<Advisor> advisors;
 
-	AgentCoreMemory(MessageChatMemoryAdvisor stmAdvisor, List<AgentCoreLongTermMemoryAdvisor> ltmAdvisors) {
+	public AgentCoreMemory(MessageChatMemoryAdvisor stmAdvisor, List<AgentCoreLongTermMemoryAdvisor> ltmAdvisors) {
 		this.shortTermMemoryAdvisor = stmAdvisor;
 		this.longTermMemoryAdvisors = ltmAdvisors;
 

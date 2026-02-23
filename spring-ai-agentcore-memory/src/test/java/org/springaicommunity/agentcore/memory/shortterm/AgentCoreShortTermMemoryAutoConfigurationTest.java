@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.shortterm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -22,6 +22,9 @@ import static org.mockito.Mockito.mock;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
+import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
+import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;

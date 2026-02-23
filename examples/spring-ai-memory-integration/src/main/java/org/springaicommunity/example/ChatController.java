@@ -1,6 +1,9 @@
 package org.springaicommunity.example;
 
 import org.springaicommunity.agentcore.memory.*;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryProperties;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever;
+import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;

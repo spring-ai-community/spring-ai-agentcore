@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.longterm;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -1,4 +1,4 @@
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.shortterm;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -8,6 +8,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser;
+import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;

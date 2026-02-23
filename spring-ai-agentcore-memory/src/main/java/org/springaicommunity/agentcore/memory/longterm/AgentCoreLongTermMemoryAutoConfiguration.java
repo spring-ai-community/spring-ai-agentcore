@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springaicommunity.agentcore.memory;
+package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.HashMap;
 import java.util.List;
@@ -23,9 +23,12 @@ import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryAdvisor.MemoryStrategy;
-import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
-import org.springaicommunity.agentcore.memory.AgentCoreLongTermMemoryStrategyDiscovery.StrategyType;
+import org.springaicommunity.agentcore.memory.*;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryAdvisor.MemoryStrategy;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyDiscovery.StrategyType;
+import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
+import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
