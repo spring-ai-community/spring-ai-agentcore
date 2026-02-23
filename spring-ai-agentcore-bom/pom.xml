@@ -75,7 +75,7 @@
             </dependency>
             <dependency>
                 <groupId>org.springaicommunity</groupId>
-                <artifactId>spring-ai-agentcore-codeinterpreter</artifactId>
+                <artifactId>spring-ai-agentcore-code-interpreter</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

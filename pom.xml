@@ -15,7 +15,7 @@
         <module>spring-ai-agentcore-artifact-store</module>
         <module>spring-ai-agentcore-runtime-starter</module>
         <module>spring-ai-agentcore-memory</module>
-        <module>spring-ai-agentcore-codeinterpreter</module>
+        <module>spring-ai-agentcore-code-interpreter</module>
         <module>spring-ai-agentcore-browser</module>
     </modules>
 

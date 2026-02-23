@@ -14,7 +14,7 @@ spring-ai-agentcore/
 ├── spring-ai-agentcore-runtime-starter/   # Runtime starter (invocations, ping, SSE)
 ├── spring-ai-agentcore-memory/            # Memory integration (STM + LTM)
 ├── spring-ai-agentcore-browser/           # Browser automation tools
-├── spring-ai-agentcore-codeinterpreter/   # Code interpreter tools
+├── spring-ai-agentcore-code-interpreter/  # Code interpreter tools
 ├── examples/                                       # Working examples
 └── scripts/                                        # Helper scripts
 ```

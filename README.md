@@ -423,14 +423,14 @@ For detailed configuration and usage, see [spring-ai-agentcore-browser/README.md
 
 ## Code Interpreter
 
-The `spring-ai-agentcore-codeinterpreter` module provides secure code execution in Python, JavaScript, and TypeScript with automatic file retrieval.
+The `spring-ai-agentcore-code-interpreter` module provides secure code execution in Python, JavaScript, and TypeScript with automatic file retrieval.
 
 ### Add Dependency
 
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-agentcore-codeinterpreter</artifactId>
+    <artifactId>spring-ai-agentcore-code-interpreter</artifactId>
 </dependency>
 ```
 
@@ -441,7 +441,7 @@ The `spring-ai-agentcore-codeinterpreter` module provides secure code execution 
 - Automatic file retrieval (charts, CSVs, PDFs)
 - Session-scoped artifact storage
 
-For detailed configuration and usage, see [spring-ai-agentcore-codeinterpreter/README.md](spring-ai-agentcore-codeinterpreter/README.md).
+For detailed configuration and usage, see [spring-ai-agentcore-code-interpreter/README.md](spring-ai-agentcore-code-interpreter/README.md).
 
 ## Artifact Store
 

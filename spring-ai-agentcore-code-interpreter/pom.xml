@@ -17,7 +17,7 @@
         <developerConnection>git@github.com/spring-ai-community/spring-ai-agentcore.git</developerConnection>
     </scm>
 
-    <artifactId>spring-ai-agentcore-codeinterpreter</artifactId>
+    <artifactId>spring-ai-agentcore-code-interpreter</artifactId>
     <packaging>jar</packaging>
 
     <name>Spring AI AgentCore Code Interpreter</name>

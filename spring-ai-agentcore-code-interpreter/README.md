@@ -32,7 +32,7 @@ Add the BOM and dependency:
 <dependencies>
     <dependency>
         <groupId>org.springaicommunity</groupId>
-        <artifactId>spring-ai-agentcore-codeinterpreter</artifactId>
+        <artifactId>spring-ai-agentcore-code-interpreter</artifactId>
     </dependency>
 </dependencies>
 ```
@@ -128,7 +128,7 @@ agentcore.code-interpreter.tool-description=Custom tool description...
 ## Integration Test
 
 ```bash
-AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-codeinterpreter
+AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-code-interpreter
 ```
 
 ## License

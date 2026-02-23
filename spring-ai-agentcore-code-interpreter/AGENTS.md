@@ -134,13 +134,13 @@ agentcore.code-interpreter.tool-description=Custom tool description...
 
 ```bash
 # Compile
-mvn compile -pl spring-ai-agentcore-codeinterpreter
+mvn compile -pl spring-ai-agentcore-code-interpreter
 
 # Format (required before commit)
-mvn spring-javaformat:apply -pl spring-ai-agentcore-codeinterpreter
+mvn spring-javaformat:apply -pl spring-ai-agentcore-code-interpreter
 
 # Integration test (requires AWS credentials)
-AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-codeinterpreter
+AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-code-interpreter
 ```
 
 ## Integration Tests
