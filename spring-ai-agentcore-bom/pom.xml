@@ -40,6 +40,10 @@
             <name>Yuriy Bezsonov</name>
             <email>ybezsonov@gmail.com</email>
         </developer>
+        <developer>
+            <name>Andrei Shakirin</name>
+            <email>andrei.shakirin@gmail.com</email>
+        </developer>
     </developers>
 
     <issueManagement>
@@ -80,5 +84,29 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                        <configuration>
+                            <flattenMode>ossrh</flattenMode>
+                            <pomElements>
+                                <dependencyManagement>keep</dependencyManagement>
+                            </pomElements>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
