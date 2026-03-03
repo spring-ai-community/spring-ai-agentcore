@@ -6,7 +6,7 @@
 
     <groupId>org.springaicommunity</groupId>
     <artifactId>spring-ai-agentcore-parent</artifactId>
-    <version>1.0.0-RC9</version>
+    <version>1.0.0-SNAPSHOT</version>
 
     <packaging>pom</packaging>
     <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
