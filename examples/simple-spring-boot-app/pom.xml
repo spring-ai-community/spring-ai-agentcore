@@ -6,7 +6,7 @@
 
     <groupId>com.example</groupId>
     <artifactId>simple-agent-app</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>Simple Agent App</name>
@@ -34,7 +34,7 @@
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>1.0.1-SNAPSHOT</version>
         </dependency>
     </dependencies>
 

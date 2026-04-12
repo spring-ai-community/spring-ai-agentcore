@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.unicorn</groupId>
 	<artifactId>browser-example</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
+	<version>1.0.1-SNAPSHOT</version>
 	<name>browser-example</name>
 	<description>AgentCore Browser example — local by default, switchable to remote</description>
 	<properties>
@@ -21,7 +21,7 @@
 		<dependency>
 			<groupId>org.springaicommunity</groupId>
 			<artifactId>spring-ai-agentcore-browser</artifactId>
-			<version>1.0.0-SNAPSHOT</version>
+			<version>1.0.1-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.ai</groupId>

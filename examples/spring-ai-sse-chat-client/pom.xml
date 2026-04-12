@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.unicorn</groupId>
 	<artifactId>sse-agents</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
+	<version>1.0.1-SNAPSHOT</version>
 	<name>sse-agents</name>
 	<description>SSE Streaming Bedrock Chat Client for Spring AI</description>
 	<properties>
@@ -31,7 +31,7 @@
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>1.0.1-SNAPSHOT</version>
         </dependency>
 
 		<dependency>

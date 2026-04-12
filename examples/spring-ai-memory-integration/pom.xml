@@ -13,7 +13,7 @@
 
     <groupId>org.springaicommunity.examples</groupId>
     <artifactId>spring-ai-memory-integration</artifactId>
-    <version>v1.0.0-SNAPSHOT</version>
+    <version>1.0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>Spring AI Memory Integration Example</name>
@@ -33,7 +33,7 @@
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-memory</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>1.0.1-SNAPSHOT</version>
         </dependency>
 
         <dependency>

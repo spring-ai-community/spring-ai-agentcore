@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.unicorn</groupId>
 	<artifactId>spring-ai-override-invocations</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
+	<version>1.0.1-SNAPSHOT</version>
 	<name>spring-ai-override-invocations</name>
 	<description>Spring AI AgentCore Controller Override Example</description>
 	<properties>
@@ -31,7 +31,7 @@
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>1.0.1-SNAPSHOT</version>
         </dependency>
 
 		<dependency>
