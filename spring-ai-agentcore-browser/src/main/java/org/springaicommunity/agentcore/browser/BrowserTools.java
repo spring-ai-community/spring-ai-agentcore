@@ -73,6 +73,8 @@ public class BrowserTools {
 
 	private final String category;
 
+	private final BrowserUrlValidator urlValidator;
+
 	/**
 	 * Create BrowserTools with default category (artifacts stored without category).
 	 * @param client the browser client
@@ -97,7 +99,8 @@ public class BrowserTools {
 		this.artifactStore = artifactStore;
 		this.config = config;
 		this.category = category;
-		logger.debug("BrowserTools initialized with category: {}",
+		this.urlValidator = new BrowserUrlValidator(config.allowedUrlPatterns(), config.blockedUrlPatterns());
+		logger.debug("BrowserTools initialized with category: {} and URL validation enabled",
 				category != null ? category : ArtifactStore.DEFAULT_CATEGORY);
 	}
 
@@ -108,6 +111,7 @@ public class BrowserTools {
 	 */
 	public String browseUrl(String url) {
 		logger.debug("browseUrl: {}", url);
+		urlValidator.validate(url);
 		try {
 			return client.browseAndExtract(url);
 		}
@@ -124,6 +128,7 @@ public class BrowserTools {
 	 */
 	public String takeScreenshot(String url) {
 		logger.debug("takeScreenshot: {}", url);
+		urlValidator.validate(url);
 
 		try {
 			byte[] screenshotBytes = client.screenshotBytes(url);
@@ -162,6 +167,7 @@ public class BrowserTools {
 	 */
 	public String clickElement(String url, String selector) {
 		logger.debug("clickElement: {} -> {}", url, selector);
+		urlValidator.validate(url);
 		try {
 			return client.click(url, selector);
 		}
@@ -180,6 +186,7 @@ public class BrowserTools {
 	 */
 	public String fillForm(String url, String selector, String value) {
 		logger.debug("fillForm: {} -> {} = {}", url, selector, value);
+		urlValidator.validate(url);
 		try {
 			return client.fill(url, selector, value);
 		}
@@ -197,6 +204,7 @@ public class BrowserTools {
 	 */
 	public String evaluateScript(String url, String script) {
 		logger.debug("evaluateScript: {} -> {}", url, script);
+		urlValidator.validate(url);
 		try {
 			return client.evaluate(url, script);
 		}

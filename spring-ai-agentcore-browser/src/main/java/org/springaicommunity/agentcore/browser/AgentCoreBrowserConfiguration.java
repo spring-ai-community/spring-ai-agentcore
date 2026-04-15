@@ -16,6 +16,8 @@
 
 package org.springaicommunity.agentcore.browser;
 
+import java.util.List;
+
 import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -36,13 +38,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param clickDescription custom description for clickElement tool (optional)
  * @param fillDescription custom description for fillForm tool (optional)
  * @param evaluateDescription custom description for evaluateScript tool (optional)
+ * @param allowedUrlPatterns glob patterns for URL allowlist — if set, only matching URLs
+ * are allowed (optional)
+ * @param blockedUrlPatterns glob patterns for additional blocked URLs beyond built-in
+ * SSRF protections (optional)
  * @author Yuriy Bezsonov
  */
 @ConfigurationProperties(prefix = "agentcore.browser")
 public record AgentCoreBrowserConfiguration(String mode, Integer sessionTimeoutSeconds, String browserIdentifier,
 		Integer viewportWidth, Integer viewportHeight, Integer maxContentLength, Integer screenshotTtlSeconds,
 		Integer artifactStoreMaxSize, String browseUrlDescription, String screenshotDescription,
-		String clickDescription, String fillDescription, String evaluateDescription) {
+		String clickDescription, String fillDescription, String evaluateDescription, List<String> allowedUrlPatterns,
+		List<String> blockedUrlPatterns) {
 
 	/** Default browser mode. */
 	public static final String DEFAULT_MODE = "agentcore";

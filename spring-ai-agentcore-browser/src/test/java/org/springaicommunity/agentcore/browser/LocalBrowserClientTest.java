@@ -46,7 +46,7 @@ class LocalBrowserClientTest {
 		playwright = Playwright.create();
 		AgentCoreBrowserConfiguration config = new AgentCoreBrowserConfiguration(
 				AgentCoreBrowserConfiguration.MODE_LOCAL, null, null, null, null, null, null, null, null, null, null,
-				null, null);
+				null, null, null, null);
 		client = new LocalBrowserClient(playwright, config);
 	}
 
@@ -122,7 +122,7 @@ class LocalBrowserClientTest {
 	void shouldTruncateContent() {
 		AgentCoreBrowserConfiguration smallConfig = new AgentCoreBrowserConfiguration(
 				AgentCoreBrowserConfiguration.MODE_LOCAL, null, null, null, null, 50, null, null, null, null, null,
-				null, null);
+				null, null, null, null);
 		LocalBrowserClient smallClient = new LocalBrowserClient(playwright, smallConfig);
 
 		String result = smallClient.browseAndExtract("https://example.com");
