@@ -74,6 +74,10 @@
             <artifactId>bucket4j-core</artifactId>
             <version>${bucket4j-core.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
 
         <!-- Optional Dependencies -->
         <dependency>

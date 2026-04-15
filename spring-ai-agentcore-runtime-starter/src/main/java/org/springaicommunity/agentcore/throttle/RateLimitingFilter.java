@@ -19,8 +19,9 @@ package org.springaicommunity.agentcore.throttle;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import jakarta.servlet.Filter;
@@ -45,13 +46,22 @@ public class RateLimitingFilter implements Filter {
 
 	private static final String UTF_8 = "UTF-8";
 
-	private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
+	private static final long DEFAULT_MAX_BUCKETS = 100_000;
+
+	private static final Duration DEFAULT_BUCKET_EXPIRY = Duration.ofMinutes(5);
+
+	private final Cache<String, Bucket> buckets;
 
 	private final Map<String, Integer> pathLimits;
 
 	public RateLimitingFilter(int invocationsLimit, int pingLimit) {
+		this(invocationsLimit, pingLimit, DEFAULT_MAX_BUCKETS, DEFAULT_BUCKET_EXPIRY);
+	}
+
+	public RateLimitingFilter(int invocationsLimit, int pingLimit, long maxBuckets, Duration bucketExpiry) {
 		this.pathLimits = Map.of(ThrottleConfiguration.INVOCATIONS_PATH, invocationsLimit,
 				ThrottleConfiguration.PING_PATH, pingLimit);
+		this.buckets = Caffeine.newBuilder().maximumSize(maxBuckets).expireAfterAccess(bucketExpiry).build();
 	}
 
 	@Override
@@ -95,7 +105,7 @@ public class RateLimitingFilter implements Filter {
 
 	private Bucket getBucket(String clientId, String path) {
 		var key = clientId + ':' + path;
-		return buckets.computeIfAbsent(key, k -> createBucket(path));
+		return buckets.get(key, k -> createBucket(path));
 	}
 
 	private Bucket createBucket(String path) {
