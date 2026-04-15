@@ -291,24 +291,38 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 		try {
 			var actorAndSession = actorAndSession(conversationId);
 
-			var listEventsRequest = ListEventsRequest.builder()
-				.memoryId(memoryId)
-				.actorId(actorAndSession.actor())
-				.sessionId(actorAndSession.session())
-				.includePayloads(false)
-				.maxResults(pageSize)
-				.build();
+			int totalDeleted = 0;
+			String nextToken = null;
 
-			var events = client.listEvents(listEventsRequest).events();
+			do {
+				var requestBuilder = ListEventsRequest.builder()
+					.memoryId(memoryId)
+					.actorId(actorAndSession.actor())
+					.sessionId(actorAndSession.session())
+					.includePayloads(false)
+					.maxResults(pageSize);
 
-			events.forEach(event -> client.deleteEvent(DeleteEventRequest.builder()
-				.memoryId(memoryId)
-				.actorId(actorAndSession.actor())
-				.sessionId(actorAndSession.session())
-				.eventId(event.eventId())
-				.build()));
+				if (nextToken != null) {
+					requestBuilder.nextToken(nextToken);
+				}
 
-			logger.debug("Successfully deleted {} events for conversation: {}", events.size(), conversationId);
+				var listEventsResponse = client.listEvents(requestBuilder.build());
+				var events = listEventsResponse.events();
+				nextToken = listEventsResponse.nextToken();
+
+				for (var event : events) {
+					client.deleteEvent(DeleteEventRequest.builder()
+						.memoryId(memoryId)
+						.actorId(actorAndSession.actor())
+						.sessionId(actorAndSession.session())
+						.eventId(event.eventId())
+						.build());
+				}
+				totalDeleted += events.size();
+			}
+			while (nextToken != null);
+
+			logger.debug("Successfully deleted {} events for conversation: {}", totalDeleted, conversationId);
 		}
 		catch (SdkException e) {
 			logger.error("Failed to delete conversation: {}", conversationId, e);
