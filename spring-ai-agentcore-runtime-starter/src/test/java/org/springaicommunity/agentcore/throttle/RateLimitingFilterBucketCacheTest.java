@@ -21,13 +21,18 @@ import java.io.StringWriter;
 import java.time.Duration;
 
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RateLimitingFilterBucketCacheTest {
@@ -67,6 +72,89 @@ class RateLimitingFilterBucketCacheTest {
 
 		Thread.sleep(250L);
 		assertEquals(0, filter.bucketCountAfterMaintenance());
+	}
+
+	@Test
+	void shouldReuseBucketForSameClient() throws Exception {
+		RateLimitingFilter filter = new RateLimitingFilter(1_000, 1_000, 100L, Duration.ofHours(24));
+		FilterChain chain = mock(FilterChain.class);
+		HttpServletResponse response = mock(HttpServletResponse.class);
+		StringWriter body = new StringWriter();
+		when(response.getWriter()).thenReturn(new PrintWriter(body));
+
+		HttpServletRequest request = mock(HttpServletRequest.class);
+		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		when(request.getHeader("X-Forwarded-For")).thenReturn("10.0.1.1");
+
+		filter.doFilter(request, response, chain);
+		filter.doFilter(request, response, chain);
+		filter.doFilter(request, response, chain);
+
+		assertEquals(1, filter.bucketCountAfterMaintenance());
+	}
+
+	@Test
+	void shouldUseDefaultCacheWithTwoArgConstructor() throws Exception {
+		RateLimitingFilter filter = new RateLimitingFilter(1_000, 1_000);
+		FilterChain chain = mock(FilterChain.class);
+		HttpServletResponse response = mock(HttpServletResponse.class);
+		StringWriter body = new StringWriter();
+		when(response.getWriter()).thenReturn(new PrintWriter(body));
+
+		HttpServletRequest request = mock(HttpServletRequest.class);
+		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		when(request.getHeader("X-Forwarded-For")).thenReturn("10.0.2.2");
+
+		filter.doFilter(request, response, chain);
+		filter.doFilter(request, response, chain);
+
+		assertEquals(1, filter.bucketCountAfterMaintenance());
+	}
+
+	@Test
+	void shouldNotEvictBucketWhileClientKeepsAccessing() throws Exception {
+		RateLimitingFilter filter = new RateLimitingFilter(100, 100, 1_000L, Duration.ofMillis(100));
+		FilterChain chain = mock(FilterChain.class);
+		HttpServletResponse response = mock(HttpServletResponse.class);
+		StringWriter body = new StringWriter();
+		when(response.getWriter()).thenReturn(new PrintWriter(body));
+
+		HttpServletRequest request = mock(HttpServletRequest.class);
+		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		when(request.getHeader("X-Forwarded-For")).thenReturn("192.168.0.3");
+
+		filter.doFilter(request, response, chain);
+		Thread.sleep(80L);
+		filter.doFilter(request, response, chain);
+		Thread.sleep(80L);
+		filter.doFilter(request, response, chain);
+
+		assertEquals(1, filter.bucketCountAfterMaintenance());
+	}
+
+	@Test
+	void shouldRestoreFullCapacityAfterIdleEviction() throws Exception {
+		RateLimitingFilter filter = new RateLimitingFilter(2, 2, 1_000L, Duration.ofMillis(100));
+		FilterChain chain = mock(FilterChain.class);
+		HttpServletResponse response = mock(HttpServletResponse.class);
+		StringWriter body = new StringWriter();
+		when(response.getWriter()).thenReturn(new PrintWriter(body));
+
+		HttpServletRequest request = mock(HttpServletRequest.class);
+		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		when(request.getHeader("X-Forwarded-For")).thenReturn("192.168.0.4");
+
+		filter.doFilter(request, response, chain);
+		filter.doFilter(request, response, chain);
+		filter.doFilter(request, response, chain);
+
+		verify(chain, times(2)).doFilter(any(ServletRequest.class), any(ServletResponse.class));
+
+		Thread.sleep(250L);
+
+		filter.doFilter(request, response, chain);
+
+		verify(chain, times(3)).doFilter(any(ServletRequest.class), any(ServletResponse.class));
 	}
 
 }
