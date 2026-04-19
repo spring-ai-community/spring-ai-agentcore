@@ -114,4 +114,9 @@ public class RateLimitingFilter implements Filter {
 		return Bucket.builder().addLimit(bandwidth).build();
 	}
 
+	long bucketCountAfterMaintenance() {
+		this.buckets.cleanUp();
+		return this.buckets.estimatedSize();
+	}
+
 }
