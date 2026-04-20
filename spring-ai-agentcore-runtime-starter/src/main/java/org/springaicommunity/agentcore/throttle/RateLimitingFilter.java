@@ -35,6 +35,14 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 
+/**
+ * Servlet filter that applies per-client rate limits.
+ * <p>
+ * The {@link #buckets} field is package-private for tests in this package only; it is not
+ * part of the public API. Tests that assert on cache size should call
+ * {@code buckets.cleanUp()} first so eviction work is applied before reading
+ * {@code estimatedSize()}.
+ */
 public class RateLimitingFilter implements Filter {
 
 	private static final String DEFAULT_CLIENT_ID = "default";
@@ -50,7 +58,7 @@ public class RateLimitingFilter implements Filter {
 
 	private static final Duration DEFAULT_BUCKET_EXPIRY = Duration.ofMinutes(5);
 
-	private final Cache<String, Bucket> buckets;
+	final Cache<String, Bucket> buckets;
 
 	private final Map<String, Integer> pathLimits;
 
@@ -112,11 +120,6 @@ public class RateLimitingFilter implements Filter {
 		var limit = pathLimits.get(path);
 		var bandwidth = Bandwidth.builder().capacity(limit).refillIntervally(limit, Duration.ofMinutes(1)).build();
 		return Bucket.builder().addLimit(bandwidth).build();
-	}
-
-	long bucketCountAfterMaintenance() {
-		this.buckets.cleanUp();
-		return this.buckets.estimatedSize();
 	}
 
 }

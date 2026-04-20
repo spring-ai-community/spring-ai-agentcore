@@ -37,6 +37,15 @@ import static org.mockito.Mockito.when;
 
 class RateLimitingFilterBucketCacheTest {
 
+	/**
+	 * Runs {@link com.github.benmanes.caffeine.cache.Cache#cleanUp()} before size; only
+	 * for test assertions.
+	 */
+	private static long bucketCountAfterMaintenance(RateLimitingFilter filter) {
+		filter.buckets.cleanUp();
+		return filter.buckets.estimatedSize();
+	}
+
 	@Test
 	void shouldNotGrowBeyondMaxBuckets() throws Exception {
 		RateLimitingFilter filter = new RateLimitingFilter(1_000, 1_000, 3L, Duration.ofHours(24));
@@ -52,7 +61,7 @@ class RateLimitingFilterBucketCacheTest {
 			filter.doFilter(request, response, chain);
 		}
 
-		assertEquals(3, filter.bucketCountAfterMaintenance());
+		assertEquals(3, bucketCountAfterMaintenance(filter));
 	}
 
 	@Test
@@ -68,10 +77,10 @@ class RateLimitingFilterBucketCacheTest {
 		when(request.getHeader("X-Forwarded-For")).thenReturn("192.168.0.1");
 
 		filter.doFilter(request, response, chain);
-		assertEquals(1, filter.bucketCountAfterMaintenance());
+		assertEquals(1, bucketCountAfterMaintenance(filter));
 
 		Thread.sleep(250L);
-		assertEquals(0, filter.bucketCountAfterMaintenance());
+		assertEquals(0, bucketCountAfterMaintenance(filter));
 	}
 
 	@Test
@@ -90,7 +99,7 @@ class RateLimitingFilterBucketCacheTest {
 		filter.doFilter(request, response, chain);
 		filter.doFilter(request, response, chain);
 
-		assertEquals(1, filter.bucketCountAfterMaintenance());
+		assertEquals(1, bucketCountAfterMaintenance(filter));
 	}
 
 	@Test
@@ -108,7 +117,7 @@ class RateLimitingFilterBucketCacheTest {
 		filter.doFilter(request, response, chain);
 		filter.doFilter(request, response, chain);
 
-		assertEquals(1, filter.bucketCountAfterMaintenance());
+		assertEquals(1, bucketCountAfterMaintenance(filter));
 	}
 
 	@Test
@@ -129,7 +138,7 @@ class RateLimitingFilterBucketCacheTest {
 		Thread.sleep(80L);
 		filter.doFilter(request, response, chain);
 
-		assertEquals(1, filter.bucketCountAfterMaintenance());
+		assertEquals(1, bucketCountAfterMaintenance(filter));
 	}
 
 	@Test
