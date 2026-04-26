@@ -573,4 +573,68 @@ public class AgentCoreShortTermMemoryRepositoryTest {
 		assertThat(messages.get(2).getText()).isEqualTo("third message");
 	}
 
+	@Test
+	void findByConversationIdPaginatesAcrossPages() {
+		// Given: two pages of events (AgentCore returns newest-first).
+		List<Event> firstPage = IntStream.range(0, 3).mapToObj(i -> textEvent("page1-msg-" + i)).toList();
+		List<Event> secondPage = IntStream.range(0, 2).mapToObj(i -> textEvent("page2-msg-" + i)).toList();
+
+		when(client.listEvents(any(ListEventsRequest.class)))
+			.thenReturn(ListEventsResponse.builder().events(firstPage).nextToken("next").build())
+			.thenReturn(ListEventsResponse.builder().events(secondPage).build());
+
+		// When
+		List<Message> messages = memoryRepository.findByConversationId("testActorId:testSessionId");
+
+		// Then: both pages fetched, and chronological order is preserved (second page
+		// first after reversal).
+		verify(client, times(2)).listEvents(any(ListEventsRequest.class));
+		assertThat(messages).hasSize(5);
+		assertThat(messages.get(0).getText()).isEqualTo("page2-msg-1");
+		assertThat(messages.get(4).getText()).isEqualTo("page1-msg-0");
+	}
+
+	private Event textEvent(String text) {
+		return Event.builder()
+			.payload(PayloadType.builder()
+				.conversational(
+						Conversational.builder().role(Role.USER).content(Content.builder().text(text).build()).build())
+				.build())
+			.build();
+	}
+
+	@Test
+	void deleteByConversationIdPaginatesAndDeletesAllEvents() {
+		// Given: two pages of events (10 + 5) — more than a single listEvents page would
+		// return.
+		List<Event> firstPage = IntStream.range(0, 10).mapToObj(i -> eventWithId("evt-" + i)).toList();
+		List<Event> secondPage = IntStream.range(10, 15).mapToObj(i -> eventWithId("evt-" + i)).toList();
+
+		when(client.listEvents(any(ListEventsRequest.class)))
+			.thenReturn(ListEventsResponse.builder().events(firstPage).nextToken("page2").build())
+			.thenReturn(ListEventsResponse.builder().events(secondPage).build());
+
+		// When
+		memoryRepository.deleteByConversationId("testActorId:testSessionId");
+
+		// Then: listEvents is called twice (pagination followed), deleteEvent is called
+		// once per event.
+		verify(client, times(2)).listEvents(any(ListEventsRequest.class));
+		ArgumentCaptor<DeleteEventRequest> deleteCaptor = ArgumentCaptor.forClass(DeleteEventRequest.class);
+		verify(client, times(15)).deleteEvent(deleteCaptor.capture());
+
+		List<String> deletedIds = deleteCaptor.getAllValues().stream().map(DeleteEventRequest::eventId).toList();
+		assertThat(deletedIds)
+			.containsExactlyInAnyOrderElementsOf(IntStream.range(0, 15).mapToObj(i -> "evt-" + i).toList());
+	}
+
+	private Event eventWithId(String id) {
+		return Event.builder()
+			.memoryId("testMemoryId")
+			.actorId("testActorId")
+			.sessionId("testSessionId")
+			.eventId(id)
+			.build();
+	}
+
 }

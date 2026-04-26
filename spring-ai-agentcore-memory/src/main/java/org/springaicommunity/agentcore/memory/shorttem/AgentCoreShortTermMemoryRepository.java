@@ -34,6 +34,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * ChatMemoryRepository implementation for Amazon Bedrock AgentCore Memory.
@@ -101,21 +102,18 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 			var messages = allEvents.stream().flatMap(event -> {
 				String eventId = event.eventId();
-				return event.payload().stream().map(payload -> {
-					Message message = switch (payload.conversational().role()) {
-						case ASSISTANT -> createAssistantMessage(payload, eventId);
-						case USER -> createUserMessage(payload, eventId);
-						default -> {
-							if (ignoreUnknownRoles) {
-								logger.warn("Ignoring unknown role: {}", payload.conversational().role());
-								yield null;
-							}
-							else {
-								throw new IllegalStateException("Unsupported role: " + payload.conversational().role());
-							}
+				return event.payload().stream().<Message>map(payload -> switch (payload.conversational().role()) {
+					case ASSISTANT -> createAssistantMessage(payload, eventId);
+					case USER -> createUserMessage(payload, eventId);
+					default -> {
+						if (ignoreUnknownRoles) {
+							logger.warn("Ignoring unknown role: {}", payload.conversational().role());
+							yield null;
 						}
-					};
-					return message;
+						else {
+							throw new IllegalStateException("Unsupported role: " + payload.conversational().role());
+						}
+					}
 				});
 			}).filter(Objects::nonNull).collect(java.util.stream.Collectors.toList());
 
@@ -151,33 +149,8 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 	private List<Event> fetchAllEvents(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession) {
 		var allEvents = new ArrayList<Event>();
-		var nextToken = (String) null;
-		int requestPageSize = totalEventsLimit != null ? Math.min(pageSize, totalEventsLimit) : pageSize;
-
 		try {
-			do {
-				var requestBuilder = ListEventsRequest.builder()
-					.actorId(actorAndSession.actor())
-					.sessionId(actorAndSession.session())
-					.memoryId(memoryId)
-					.includePayloads(true)
-					.maxResults(requestPageSize);
-
-				if (nextToken != null) {
-					requestBuilder.nextToken(nextToken);
-				}
-
-				var listEventsResponse = client.listEvents(requestBuilder.build());
-				allEvents.addAll(listEventsResponse.events());
-				nextToken = listEventsResponse.nextToken();
-
-				if (totalEventsLimit != null && allEvents.size() >= totalEventsLimit) {
-					allEvents = new ArrayList<>(allEvents.subList(0, totalEventsLimit));
-					break;
-				}
-			}
-			while (nextToken != null);
-
+			forEachEventPage(actorAndSession, true, true, allEvents::addAll);
 			// AgentCore returns events in descending order (newest first),
 			// reverse to chronological order for LLM context
 			Collections.reverse(allEvents);
@@ -290,30 +263,62 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 		try {
 			var actorAndSession = actorAndSession(conversationId);
-
-			var listEventsRequest = ListEventsRequest.builder()
-				.memoryId(memoryId)
-				.actorId(actorAndSession.actor())
-				.sessionId(actorAndSession.session())
-				.includePayloads(false)
-				.maxResults(pageSize)
-				.build();
-
-			var events = client.listEvents(listEventsRequest).events();
-
-			events.forEach(event -> client.deleteEvent(DeleteEventRequest.builder()
-				.memoryId(memoryId)
-				.actorId(actorAndSession.actor())
-				.sessionId(actorAndSession.session())
-				.eventId(event.eventId())
-				.build()));
-
-			logger.debug("Successfully deleted {} events for conversation: {}", events.size(), conversationId);
+			var deleted = new int[1];
+			forEachEventPage(actorAndSession, false, false, page -> page.forEach(event -> {
+				client.deleteEvent(DeleteEventRequest.builder()
+					.memoryId(memoryId)
+					.actorId(actorAndSession.actor())
+					.sessionId(actorAndSession.session())
+					.eventId(event.eventId())
+					.build());
+				deleted[0]++;
+			}));
+			logger.debug("Successfully deleted {} events for conversation: {}", deleted[0], conversationId);
 		}
 		catch (SdkException e) {
 			logger.error("Failed to delete conversation: {}", conversationId, e);
 			throw new AgentCoreMemoryException.StorageException("Failed to delete conversation: " + conversationId, e);
 		}
+	}
+
+	/**
+	 * Iterate all events for a conversation page by page. Centralizes pagination so
+	 * callers decide whether to include payloads and whether to honor
+	 * {@link #totalEventsLimit} (retrieval respects the limit; delete must not).
+	 */
+	private void forEachEventPage(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
+			boolean includePayloads, boolean respectLimit, Consumer<List<Event>> handler) {
+		var nextToken = (String) null;
+		int requestPageSize = (respectLimit && totalEventsLimit != null) ? Math.min(pageSize, totalEventsLimit)
+				: pageSize;
+		int seen = 0;
+
+		do {
+			var requestBuilder = ListEventsRequest.builder()
+				.actorId(actorAndSession.actor())
+				.sessionId(actorAndSession.session())
+				.memoryId(memoryId)
+				.includePayloads(includePayloads)
+				.maxResults(requestPageSize);
+			if (nextToken != null) {
+				requestBuilder.nextToken(nextToken);
+			}
+
+			var response = client.listEvents(requestBuilder.build());
+			var page = response.events();
+
+			if (respectLimit && totalEventsLimit != null && seen + page.size() > totalEventsLimit) {
+				page = page.subList(0, totalEventsLimit - seen);
+			}
+			handler.accept(page);
+			seen += page.size();
+			nextToken = response.nextToken();
+
+			if (respectLimit && totalEventsLimit != null && seen >= totalEventsLimit) {
+				break;
+			}
+		}
+		while (nextToken != null);
 	}
 
 	AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession(String conversationId) {
