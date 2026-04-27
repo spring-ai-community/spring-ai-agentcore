@@ -34,6 +34,8 @@ Spring AI chat client with OAuth authentication and per-user memory isolation, d
 - Terraform >= 1.0
 - Java 17+ and Maven 3.6+
 
+> **Building on non-arm64 hosts** (e.g. Intel/AMD Linux or Windows): AgentCore Runtime requires `linux/arm64` images. Register QEMU once per host with `docker run --privileged --rm tonistiigi/binfmt --install arm64`. Docker Desktop already includes this.
+
 ### Deploy
 
 1. **Build and deploy:**

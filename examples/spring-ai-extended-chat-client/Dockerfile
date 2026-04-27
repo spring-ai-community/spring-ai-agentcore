@@ -1,4 +1,4 @@
-FROM --platform=linux/arm64 amazoncorretto:21-alpine
+FROM amazoncorretto:21-alpine
 
 # Create non-root user
 RUN addgroup -S appuser && adduser -S appuser -G appuser
@@ -6,7 +6,7 @@ RUN addgroup -S appuser && adduser -S appuser -G appuser
 WORKDIR /app
 
 # Copy the jar file
-COPY target/spring-ai-extended-chat-client-1.0.0-SNAPSHOT.jar app.jar
+COPY target/spring-ai-extended-chat-client-*.jar app.jar
 
 # Change ownership
 RUN chown appuser:appuser /app/app.jar
