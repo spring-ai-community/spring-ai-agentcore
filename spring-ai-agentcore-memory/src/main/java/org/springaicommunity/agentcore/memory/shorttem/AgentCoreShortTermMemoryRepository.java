@@ -34,6 +34,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -263,7 +264,7 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 		try {
 			var actorAndSession = actorAndSession(conversationId);
-			var deleted = new int[1];
+			var deleted = new AtomicInteger();
 			forEachEventPage(actorAndSession, false, false, page -> page.forEach(event -> {
 				client.deleteEvent(DeleteEventRequest.builder()
 					.memoryId(memoryId)
@@ -271,9 +272,9 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 					.sessionId(actorAndSession.session())
 					.eventId(event.eventId())
 					.build());
-				deleted[0]++;
+				deleted.incrementAndGet();
 			}));
-			logger.debug("Successfully deleted {} events for conversation: {}", deleted[0], conversationId);
+			logger.debug("Successfully deleted {} events for conversation: {}", deleted.get(), conversationId);
 		}
 		catch (SdkException e) {
 			logger.error("Failed to delete conversation: {}", conversationId, e);
