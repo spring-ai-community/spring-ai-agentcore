@@ -71,6 +71,7 @@
     </dependencies>
 
     <build>
+        <finalName>spring-ai-extended-chat-client</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
