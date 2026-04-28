@@ -5,24 +5,16 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.0</version>
-        <relativePath/>
+        <groupId>org.springaicommunity.examples</groupId>
+        <artifactId>spring-ai-agentcore-examples</artifactId>
+        <version>1.1.0-SNAPSHOT</version>
     </parent>
 
-    <groupId>org.springaicommunity.examples</groupId>
     <artifactId>spring-ai-extended-chat-client</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
-    <packaging>jar</packaging>
-
     <name>Spring AI Extended Chat Client</name>
     <description>Spring AI chat client deployable into AgentCore and uses authentication context with short-term memory</description>
 
     <properties>
-        <java.version>17</java.version>
-        <spring-ai.version>1.1.1</spring-ai.version>
-        <awssdk.version>2.40.3</awssdk.version>
         <nimbus-jose-jwt.version>9.37.3</nimbus-jose-jwt.version>
     </properties>
 
@@ -31,38 +23,29 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-memory</artifactId>
-            <version>1.1.0-SNAPSHOT</version>
+            <version>${spring-ai-agentcore.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
-            <version>1.1.0-SNAPSHOT</version>
+            <version>${spring-ai-agentcore.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-bedrock-converse</artifactId>
-            <version>${spring-ai.version}</version>
         </dependency>
-
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-model</artifactId>
-            <version>${spring-ai.version}</version>
         </dependency>
-
         <dependency>
             <groupId>com.nimbusds</groupId>
             <artifactId>nimbus-jose-jwt</artifactId>
             <version>${nimbus-jose-jwt.version}</version>
         </dependency>
-
-        <!-- Test dependencies -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
@@ -71,7 +54,6 @@
     </dependencies>
 
     <build>
-        <finalName>spring-ai-extended-chat-client</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
