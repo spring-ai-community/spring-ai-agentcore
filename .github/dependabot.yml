@@ -1,7 +1,10 @@
 version: 2
 updates:
-  # Maven dependencies — the root entry recursively covers all submodules via
-  # dependabot's transitive POM discovery, so we don't need per-module entries.
+  # Maven dependencies — the root entry recursively covers the library
+  # submodules listed in the root POM's <modules> via Dependabot's transitive
+  # POM discovery. The `examples/` reactor is standalone (its parent is
+  # spring-boot-starter-parent, not this repo's root POM), so it needs its
+  # own entry below.
   - package-ecosystem: "maven"
     directory: "/"
     schedule:
@@ -38,6 +41,23 @@ updates:
           - "org.mockito:*"
           - "org.assertj:*"
           - "org.testcontainers:*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Example applications have their own reactor (examples/pom.xml) and are not
+  # reachable from the root POM's <modules>, so they need a separate entry.
+  - package-ecosystem: "maven"
+    directory: "/examples"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "examples"
+    groups:
+      examples:
         update-types:
           - "minor"
           - "patch"
