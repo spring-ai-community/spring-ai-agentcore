@@ -32,7 +32,7 @@ Spring AI chat client with OAuth authentication and per-user memory isolation, d
 - AWS CLI configured with appropriate permissions
 - Docker installed and running
 - Terraform >= 1.0
-- Java 17+ and Maven 3.6+
+- Java 21+ and Maven 3.6+
 
 > **Building on non-arm64 hosts**: AgentCore requires `linux/arm64` images. If building on a different architecture, you need an ARM64 emulation layer (e.g. [QEMU](https://github.com/tonistiigi/binfmt)). Docker Desktop includes this by default.
 

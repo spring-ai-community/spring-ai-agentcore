@@ -26,12 +26,10 @@
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-memory</artifactId>
-            <version>${spring-ai-agentcore.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
-            <version>${spring-ai-agentcore.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>

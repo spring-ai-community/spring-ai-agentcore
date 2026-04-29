@@ -18,7 +18,6 @@
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-browser</artifactId>
-            <version>${spring-ai-agentcore.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>

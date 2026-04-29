@@ -126,6 +126,16 @@ mvn test                       # Unit tests
 mvn spring-javaformat:apply    # Format (required before commit)
 ```
 
+### Building the examples
+
+The [`examples/`](examples/) tree is a separate multi-module Maven build that depends on
+the AgentCore modules. Run `mvn -DskipTests install` at the repo root first so the
+examples can resolve the `1.1.0-SNAPSHOT` artifacts locally, then:
+
+```bash
+mvn clean verify -f examples/pom.xml
+```
+
 Each module also has an [AGENTS.md](AGENTS.md) file providing context for AI coding assistants (project structure, conventions, key classes).
 
 ## License
