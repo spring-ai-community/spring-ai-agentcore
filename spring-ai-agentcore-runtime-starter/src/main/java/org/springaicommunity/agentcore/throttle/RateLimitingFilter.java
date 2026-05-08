@@ -54,6 +54,13 @@ public class RateLimitingFilter implements Filter {
 
 	private static final String UTF_8 = "UTF-8";
 
+	/**
+	 * Default ceiling on per-client rate limit buckets retained in memory. Raised from
+	 * 10_000 to 100_000 so fleets routing many distinct client IPs (VPC-fronted
+	 * deployments, Kubernetes pods behind an L7 proxy) do not evict legitimate clients
+	 * under normal load. At roughly a few hundred bytes per bucket, steady-state memory
+	 * cost is on the order of tens of MB.
+	 */
 	private static final long DEFAULT_MAX_BUCKETS = 100_000;
 
 	private static final Duration DEFAULT_BUCKET_EXPIRY = Duration.ofMinutes(5);
