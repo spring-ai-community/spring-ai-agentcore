@@ -54,7 +54,7 @@ public class RateLimitingFilter implements Filter {
 
 	private static final String UTF_8 = "UTF-8";
 
-	private static final long DEFAULT_MAX_BUCKETS = 10_000;
+	private static final long DEFAULT_MAX_BUCKETS = 100_000;
 
 	private static final Duration DEFAULT_BUCKET_EXPIRY = Duration.ofMinutes(5);
 

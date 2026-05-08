@@ -16,6 +16,8 @@
 
 package org.springaicommunity.agentcore.throttle;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -33,10 +35,14 @@ public class ThrottleConfiguration {
 
 	private int pingLimit;
 
+	private long maxBuckets = 100_000L;
+
+	private Duration bucketExpiry = Duration.ofMinutes(5);
+
 	@Bean
 	public FilterRegistrationBean<RateLimitingFilter> rateLimitingFilter() {
 		FilterRegistrationBean<RateLimitingFilter> registrationBean = new FilterRegistrationBean<>();
-		registrationBean.setFilter(new RateLimitingFilter(invocationsLimit, pingLimit));
+		registrationBean.setFilter(new RateLimitingFilter(invocationsLimit, pingLimit, maxBuckets, bucketExpiry));
 		registrationBean.addUrlPatterns(INVOCATIONS_PATH, PING_PATH);
 		registrationBean.setOrder(1);
 		return registrationBean;
@@ -56,6 +62,22 @@ public class ThrottleConfiguration {
 
 	public void setPingLimit(int pingLimit) {
 		this.pingLimit = pingLimit;
+	}
+
+	public long getMaxBuckets() {
+		return maxBuckets;
+	}
+
+	public void setMaxBuckets(long maxBuckets) {
+		this.maxBuckets = maxBuckets;
+	}
+
+	public Duration getBucketExpiry() {
+		return bucketExpiry;
+	}
+
+	public void setBucketExpiry(Duration bucketExpiry) {
+		this.bucketExpiry = bucketExpiry;
 	}
 
 }

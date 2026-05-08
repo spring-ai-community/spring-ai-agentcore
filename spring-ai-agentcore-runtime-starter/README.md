@@ -214,6 +214,9 @@ The starter includes built-in rate limiting using Bucket4j to protect against ex
 # Customize rate limits in requests per minute (optional)
 agentcore.throttle.invocations-limit=50
 agentcore.throttle.ping-limit=200
+# Optional: cap in-memory rate limit buckets (default 100_000) and idle expiry (default 5m)
+agentcore.throttle.max-buckets=100000
+agentcore.throttle.bucket-expiry=5m
 ```
 
 **Rate Limit Response (429):**
