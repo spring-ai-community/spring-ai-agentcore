@@ -18,6 +18,7 @@ package com.example.demo;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,7 @@ import org.springframework.boot.web.servlet.context.ServletWebServerApplicationC
 import org.springframework.stereotype.Component;
 
 import io.opentelemetry.sdk.trace.data.SpanData;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
 
 /**
  * Sends one AgentCore invocation and validates exported spans locally.
@@ -66,6 +68,8 @@ public class DemoVerificationRunner implements ApplicationRunner {
 			.body(prompt)
 			.retrieve()
 			.toBodilessEntity();
+
+		forceFlushTracerIfAvailable();
 
 		int code = runAssertions(port) ? 0 : 1;
 		SpringApplication.exit(applicationContext, () -> code);
@@ -121,6 +125,14 @@ public class DemoVerificationRunner implements ApplicationRunner {
 			log.warn("[FAIL] {}", label);
 		}
 		return ok;
+	}
+
+	private void forceFlushTracerIfAvailable() {
+		applicationContext.getBeansOfType(OpenTelemetrySdk.class)
+			.values()
+			.stream()
+			.findFirst()
+			.ifPresent(otel -> otel.getSdkTracerProvider().forceFlush().join(5, TimeUnit.SECONDS));
 	}
 
 }

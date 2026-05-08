@@ -23,6 +23,7 @@ import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
 import org.springaicommunity.agentcore.observability.telemetry.AgentCoreInvocationObservabilityAspect;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -41,11 +42,13 @@ public class AgentCoreObservabilityAutoConfiguration {
 	private static final String INSTRUMENTATION_SCOPE = "org.springaicommunity.agentcore.observability";
 
 	@Bean
+	@ConditionalOnMissingBean
 	public Tracer agentCoreObservabilityTracer(OpenTelemetry openTelemetry) {
 		return openTelemetry.getTracer(INSTRUMENTATION_SCOPE);
 	}
 
 	@Bean
+	@ConditionalOnMissingBean
 	public Meter agentCoreObservabilityMeter(OpenTelemetry openTelemetry) {
 		return openTelemetry.getMeter(INSTRUMENTATION_SCOPE);
 	}

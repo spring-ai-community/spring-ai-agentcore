@@ -230,7 +230,7 @@ public class AgentCoreInvocationObservabilityAspect {
 
 	private static String errorType(Throwable t) {
 		String cn = t.getClass().getName();
-		if (cn.contains("Throttling") || cn.endsWith("ThrottlingException")) {
+		if (cn.contains("Throttling")) {
 			return "rate_limit";
 		}
 		if (cn.contains("ValidationException") || cn.contains("InvalidParameter") || cn.contains("IllegalArgument")) {

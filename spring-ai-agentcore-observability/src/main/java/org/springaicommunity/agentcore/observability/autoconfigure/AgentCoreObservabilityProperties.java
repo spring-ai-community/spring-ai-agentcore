@@ -24,7 +24,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p>
  * The tighter-scope observability module only adds AgentCore-aware behavior on top of
  * what Spring AI Observability already emits. Content capture and PII masking are handled
- * upstream or by the OTel pipeline (e.g. CloudWatch managed data identifiers).
+ * upstream or by the OTel pipeline (e.g. CloudWatch managed data identifiers). This type
+ * remains intentionally small so future AgentCore-scoped toggles can be added without
+ * changing the external configuration contract.
  */
 @ConfigurationProperties(prefix = "spring.ai.agentcore.observability")
 public class AgentCoreObservabilityProperties {

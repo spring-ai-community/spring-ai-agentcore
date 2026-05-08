@@ -81,15 +81,6 @@ public final class GenAiTelemetrySupport {
 
 	public static final AttributeKey<String> GEN_AI_TOKEN_TYPE = AttributeKey.stringKey("gen_ai.token.type");
 
-	/** Span events for optional prompt/completion capture (opt-in). */
-	public static final String EVENT_GEN_AI_CONTENT_PROMPT = "gen_ai.content.prompt";
-
-	public static final String EVENT_GEN_AI_CONTENT_COMPLETION = "gen_ai.content.completion";
-
-	public static final AttributeKey<String> GEN_AI_PROMPT = AttributeKey.stringKey("gen_ai.prompt");
-
-	public static final AttributeKey<String> GEN_AI_COMPLETION = AttributeKey.stringKey("gen_ai.completion");
-
 	public static final String OP_CHAT = "chat";
 
 	public static final String OP_EXECUTE_TOOL = "execute_tool";
