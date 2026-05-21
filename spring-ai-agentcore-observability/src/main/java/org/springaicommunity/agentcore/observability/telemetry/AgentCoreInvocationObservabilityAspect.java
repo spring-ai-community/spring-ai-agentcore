@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -64,7 +63,7 @@ public class AgentCoreInvocationObservabilityAspect {
 	@Around("execution(* org.springaicommunity.agentcore.controller.AgentCoreInvocationsController.handleJsonInvocation(..))"
 			+ " || execution(* org.springaicommunity.agentcore.controller.AgentCoreInvocationsController.handleTextInvocation(..))")
 	public Object aroundAgentCoreController(ProceedingJoinPoint joinPoint) throws Throwable {
-		Span span = this.tracer.spanBuilder(GenAiTelemetrySupport.OP_CHAT).setSpanKind(SpanKind.INTERNAL).startSpan();
+		Span span = this.tracer.spanBuilder(GenAiTelemetrySupport.OP_CHAT).setSpanKind(SpanKind.CLIENT).startSpan();
 		AtomicBoolean deferredEnd = new AtomicBoolean(false);
 		try (Scope scope = span.makeCurrent()) {
 			applyAgentCoreRequestAttributes(span, joinPoint);
@@ -122,11 +121,10 @@ public class AgentCoreInvocationObservabilityAspect {
 	}
 
 	private <T> Mono<T> instrumentMono(Mono<T> mono, Span span) {
-		return mono.flatMap(r -> {
+		return mono.doOnNext(r -> {
 			if (r instanceof ChatResponse response) {
 				applyGenAiAttributes(span, response);
 			}
-			return Mono.just(r);
 		}).doOnSuccess(v -> span.setStatus(StatusCode.OK)).doOnError(t -> {
 			span.setStatus(StatusCode.ERROR);
 			span.recordException(t);
@@ -192,7 +190,7 @@ public class AgentCoreInvocationObservabilityAspect {
 		}
 		if (!finish.isEmpty()) {
 			span.setAttribute(GenAiTelemetrySupport.GEN_AI_RESPONSE_FINISH_REASONS,
-					finish.stream().distinct().collect(Collectors.joining(",")));
+					finish.stream().distinct().toList());
 		}
 
 		String modelAttr = (model != null && !model.isEmpty()) ? model : "unknown";
@@ -230,28 +228,23 @@ public class AgentCoreInvocationObservabilityAspect {
 
 	private static String errorType(Throwable t) {
 		String cn = t.getClass().getName();
+		String simpleName = t.getClass().getSimpleName().toLowerCase(Locale.ROOT);
 		if (cn.contains("Throttling")) {
 			return "rate_limit";
 		}
 		if (cn.contains("ValidationException") || cn.contains("InvalidParameter") || cn.contains("IllegalArgument")) {
 			return "invalid_request";
 		}
-		if (cn.contains("Timeout") || cn.contains("RequestTimeout") || cn.contains("ReadTimeout")) {
+		if (cn.contains("Timeout") || cn.contains("RequestTimeout") || cn.contains("ReadTimeout")
+				|| simpleName.contains("timeout")) {
 			return "timeout";
 		}
 		if (cn.contains("Auth") || cn.contains("Security") || cn.endsWith("AuthenticationException")
-				|| cn.contains("AccessDenied")) {
+				|| cn.contains("AccessDenied") || simpleName.contains("auth") || simpleName.contains("security")) {
 			return "authentication_failure";
 		}
 		if (cn.contains("amazon.awssdk") && cn.contains("ServiceException")) {
 			return "server_error";
-		}
-		String name = t.getClass().getSimpleName().toLowerCase(Locale.ROOT);
-		if (name.contains("timeout")) {
-			return "timeout";
-		}
-		if (name.contains("auth") || name.contains("security")) {
-			return "authentication_failure";
 		}
 		return "server_error";
 	}

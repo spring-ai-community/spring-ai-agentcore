@@ -17,8 +17,6 @@
 package org.springaicommunity.agentcore.observability.autoconfigure;
 
 import io.opentelemetry.api.OpenTelemetry;
-import io.opentelemetry.api.metrics.Meter;
-import io.opentelemetry.api.trace.Tracer;
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
 import org.springaicommunity.agentcore.observability.telemetry.AgentCoreInvocationObservabilityAspect;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -41,22 +39,18 @@ public class AgentCoreObservabilityAutoConfiguration {
 
 	private static final String INSTRUMENTATION_SCOPE = "org.springaicommunity.agentcore.observability";
 
+	/**
+	 * Scoped OpenTelemetry instruments are created from {@link OpenTelemetry} here rather
+	 * than as separate {@code Tracer}/{@code Meter} beans so
+	 * {@code @ConditionalOnMissingBean} does not suppress registration when the
+	 * OpenTelemetry starter already defines global instruments. Replace this aspect bean
+	 * (or supply a custom {@link OpenTelemetry} bean) to override instrumentation.
+	 */
 	@Bean
 	@ConditionalOnMissingBean
-	public Tracer agentCoreObservabilityTracer(OpenTelemetry openTelemetry) {
-		return openTelemetry.getTracer(INSTRUMENTATION_SCOPE);
-	}
-
-	@Bean
-	@ConditionalOnMissingBean
-	public Meter agentCoreObservabilityMeter(OpenTelemetry openTelemetry) {
-		return openTelemetry.getMeter(INSTRUMENTATION_SCOPE);
-	}
-
-	@Bean
-	public AgentCoreInvocationObservabilityAspect agentCoreInvocationObservabilityAspect(
-			Tracer agentCoreObservabilityTracer, Meter agentCoreObservabilityMeter) {
-		return new AgentCoreInvocationObservabilityAspect(agentCoreObservabilityTracer, agentCoreObservabilityMeter);
+	public AgentCoreInvocationObservabilityAspect agentCoreInvocationObservabilityAspect(OpenTelemetry openTelemetry) {
+		return new AgentCoreInvocationObservabilityAspect(openTelemetry.getTracer(INSTRUMENTATION_SCOPE),
+				openTelemetry.getMeter(INSTRUMENTATION_SCOPE));
 	}
 
 }

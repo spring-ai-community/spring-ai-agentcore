@@ -27,6 +27,37 @@ import org.aspectj.lang.ProceedingJoinPoint;
  */
 final class AgentCoreInvocationHeaderSupport {
 
+	private static final ClassLoader CLASS_LOADER = AgentCoreInvocationHeaderSupport.class.getClassLoader();
+
+	private static final Class<?> SERVLET_REQUEST = resolveClass("jakarta.servlet.http.HttpServletRequest");
+
+	private static final Method SERVLET_GET_HEADER = resolveMethod(SERVLET_REQUEST, "getHeader", String.class);
+
+	private static final Class<?> SERVER_WEB_EXCHANGE = resolveClass(
+			"org.springframework.web.server.ServerWebExchange");
+
+	private static final Method EXCHANGE_GET_REQUEST = resolveMethod(SERVER_WEB_EXCHANGE, "getRequest");
+
+	private static final Class<?> SERVER_HTTP_REQUEST = resolveClass(
+			"org.springframework.http.server.reactive.ServerHttpRequest");
+
+	private static final Method SERVER_HTTP_REQUEST_GET_HEADERS = resolveMethod(SERVER_HTTP_REQUEST, "getHeaders");
+
+	private static final Class<?> HTTP_HEADERS = resolveClass("org.springframework.http.HttpHeaders");
+
+	private static final Method HTTP_HEADERS_GET_FIRST = resolveMethod(HTTP_HEADERS, "getFirst", String.class);
+
+	private static final Class<?> REQUEST_CONTEXT_HOLDER = resolveClass(
+			"org.springframework.web.context.request.RequestContextHolder");
+
+	private static final Method HOLDER_GET_REQUEST_ATTRIBUTES = resolveMethod(REQUEST_CONTEXT_HOLDER,
+			"getRequestAttributes");
+
+	private static final Class<?> SERVLET_REQUEST_ATTRIBUTES = resolveClass(
+			"org.springframework.web.context.request.ServletRequestAttributes");
+
+	private static final Method ATTRIBUTES_GET_REQUEST = resolveMethod(SERVLET_REQUEST_ATTRIBUTES, "getRequest");
+
 	private AgentCoreInvocationHeaderSupport() {
 	}
 
@@ -51,72 +82,77 @@ final class AgentCoreInvocationHeaderSupport {
 	}
 
 	private static String headerFromServletRequest(Object a, String name) {
-		try {
-			Class<?> reqType = Class.forName("jakarta.servlet.http.HttpServletRequest", false,
-					AgentCoreInvocationHeaderSupport.class.getClassLoader());
-			if (!reqType.isInstance(a)) {
-				return null;
-			}
-			return (String) reqType.getMethod("getHeader", String.class).invoke(a, name);
-		}
-		catch (ClassNotFoundException e) {
+		if (SERVLET_REQUEST == null || SERVLET_GET_HEADER == null || !SERVLET_REQUEST.isInstance(a)) {
 			return null;
 		}
-		catch (ReflectiveOperationException | ClassCastException e) {
+		try {
+			return (String) SERVLET_GET_HEADER.invoke(a, name);
+		}
+		catch (ReflectiveOperationException | ClassCastException ex) {
 			return null;
 		}
 	}
 
 	private static String headerFromServerWebExchange(Object a, String name) {
+		if (SERVER_WEB_EXCHANGE == null || EXCHANGE_GET_REQUEST == null || !SERVER_WEB_EXCHANGE.isInstance(a)) {
+			return null;
+		}
 		try {
-			Class<?> exchangeType = Class.forName("org.springframework.web.server.ServerWebExchange", false,
-					AgentCoreInvocationHeaderSupport.class.getClassLoader());
-			if (!exchangeType.isInstance(a)) {
+			Object request = EXCHANGE_GET_REQUEST.invoke(a);
+			if (request == null || SERVER_HTTP_REQUEST == null || !SERVER_HTTP_REQUEST.isInstance(request)
+					|| SERVER_HTTP_REQUEST_GET_HEADERS == null || HTTP_HEADERS_GET_FIRST == null) {
 				return null;
 			}
-			Object request = exchangeType.getMethod("getRequest").invoke(a);
-			if (request == null) {
+			Object headers = SERVER_HTTP_REQUEST_GET_HEADERS.invoke(request);
+			if (headers == null || HTTP_HEADERS == null || !HTTP_HEADERS.isInstance(headers)) {
 				return null;
 			}
-			Object headers = request.getClass().getMethod("getHeaders").invoke(request);
-			if (headers == null) {
-				return null;
-			}
-			Object first = headers.getClass().getMethod("getFirst", String.class).invoke(headers, name);
+			Object first = HTTP_HEADERS_GET_FIRST.invoke(headers, name);
 			if (first instanceof String s && !s.isEmpty()) {
 				return s;
 			}
 		}
-		catch (ClassNotFoundException e) {
-			return null;
-		}
-		catch (ReflectiveOperationException | ClassCastException e) {
+		catch (ReflectiveOperationException | ClassCastException ex) {
 			return null;
 		}
 		return null;
 	}
 
 	private static String headerFromRequestContextHolder(String name) {
-		try {
-			Class<?> holder = Class.forName("org.springframework.web.context.request.RequestContextHolder", false,
-					AgentCoreInvocationHeaderSupport.class.getClassLoader());
-			Object ra = holder.getMethod("getRequestAttributes").invoke(null);
-			if (ra == null) {
-				return null;
-			}
-			Class<?> sraType = Class.forName("org.springframework.web.context.request.ServletRequestAttributes", false,
-					AgentCoreInvocationHeaderSupport.class.getClassLoader());
-			if (!sraType.isInstance(ra)) {
-				return null;
-			}
-			Method getRequest = sraType.getMethod("getRequest");
-			Object servletReq = getRequest.invoke(ra);
-			return headerFromServletRequest(servletReq, name);
-		}
-		catch (ClassNotFoundException e) {
+		if (REQUEST_CONTEXT_HOLDER == null || HOLDER_GET_REQUEST_ATTRIBUTES == null) {
 			return null;
 		}
-		catch (ReflectiveOperationException e) {
+		try {
+			Object ra = HOLDER_GET_REQUEST_ATTRIBUTES.invoke(null);
+			if (ra == null || SERVLET_REQUEST_ATTRIBUTES == null || ATTRIBUTES_GET_REQUEST == null
+					|| !SERVLET_REQUEST_ATTRIBUTES.isInstance(ra)) {
+				return null;
+			}
+			Object servletReq = ATTRIBUTES_GET_REQUEST.invoke(ra);
+			return headerFromServletRequest(servletReq, name);
+		}
+		catch (ReflectiveOperationException ex) {
+			return null;
+		}
+	}
+
+	private static Class<?> resolveClass(String name) {
+		try {
+			return Class.forName(name, false, CLASS_LOADER);
+		}
+		catch (ClassNotFoundException ex) {
+			return null;
+		}
+	}
+
+	private static Method resolveMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
+		if (type == null) {
+			return null;
+		}
+		try {
+			return type.getMethod(methodName, parameterTypes);
+		}
+		catch (NoSuchMethodException ex) {
 			return null;
 		}
 	}

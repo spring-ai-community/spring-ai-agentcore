@@ -57,12 +57,14 @@ import io.opentelemetry.api.metrics.DoubleHistogramBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import software.amazon.awssdk.core.exception.TestSdkServiceException;
 
 class AgentCoreInvocationObservabilityAspectTest {
 
@@ -101,6 +103,30 @@ class AgentCoreInvocationObservabilityAspectTest {
 		when(histogramBuilder.build()).thenReturn(histogram);
 
 		aspect = new AgentCoreInvocationObservabilityAspect(tracer, meter);
+	}
+
+	@Test
+	void usesClientSpanKind() throws Throwable {
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.proceed()).thenReturn("ok");
+
+		aspect.aroundAgentCoreController(pjp);
+
+		verify(spanBuilder).setSpanKind(SpanKind.CLIENT);
+	}
+
+	@Test
+	void mapsAuthenticationTimeoutExceptionToTimeout() throws Throwable {
+		class AuthenticationTimeoutException extends RuntimeException {
+
+		}
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.proceed()).thenThrow(new AuthenticationTimeoutException());
+
+		assertThatThrownBy(() -> aspect.aroundAgentCoreController(pjp))
+			.isInstanceOf(AuthenticationTimeoutException.class);
+
+		verify(span).setAttribute(eq(GenAiTelemetrySupport.ERROR_TYPE), eq("timeout"));
 	}
 
 	@Test
@@ -202,6 +228,27 @@ class AgentCoreInvocationObservabilityAspectTest {
 	}
 
 	@Test
+	void deduplicatesFinishReasonsAsStringArray() throws Throwable {
+		ChatResponse response = ChatResponse.builder()
+			.metadata(ChatResponseMetadata.builder().model("m").usage(new DefaultUsage(1, 1)).build())
+			.generations(List.of(
+					new Generation(new AssistantMessage("a"),
+							ChatGenerationMetadata.builder().finishReason("stop").build()),
+					new Generation(new AssistantMessage("b"),
+							ChatGenerationMetadata.builder().finishReason("stop").build()),
+					new Generation(new AssistantMessage("c"),
+							ChatGenerationMetadata.builder().finishReason("tool_use").build())))
+			.build();
+
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.proceed()).thenReturn(response);
+
+		aspect.aroundAgentCoreController(pjp);
+
+		verify(span).setAttribute(GenAiTelemetrySupport.GEN_AI_RESPONSE_FINISH_REASONS, List.of("stop", "tool_use"));
+	}
+
+	@Test
 	void skipsFinishReasonWhenGenerationMetadataMissing() throws Throwable {
 		ChatResponse response = ChatResponse.builder()
 			.metadata(ChatResponseMetadata.builder().model("m").usage(new DefaultUsage(1, 1)).build())
@@ -215,7 +262,7 @@ class AgentCoreInvocationObservabilityAspectTest {
 
 		aspect.aroundAgentCoreController(pjp);
 
-		verify(span).setAttribute(GenAiTelemetrySupport.GEN_AI_RESPONSE_FINISH_REASONS, "stop");
+		verify(span).setAttribute(GenAiTelemetrySupport.GEN_AI_RESPONSE_FINISH_REASONS, List.of("stop"));
 	}
 
 	@Test
@@ -439,6 +486,55 @@ class AgentCoreInvocationObservabilityAspectTest {
 	}
 
 	@Test
+	void mapsAwsSdkServiceExceptionToServerError() throws Throwable {
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.proceed()).thenThrow(new TestSdkServiceException());
+
+		assertThatThrownBy(() -> aspect.aroundAgentCoreController(pjp)).isInstanceOf(TestSdkServiceException.class);
+
+		verify(span).setAttribute(eq(GenAiTelemetrySupport.ERROR_TYPE), eq("server_error"));
+	}
+
+	@Test
+	void monoCancelStillEndsSpan() throws Throwable {
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.proceed()).thenReturn(Mono.never());
+
+		Object out = aspect.aroundAgentCoreController(pjp);
+		@SuppressWarnings("unchecked")
+		Mono<?> mono = (Mono<?>) out;
+		StepVerifier.create(mono).thenCancel().verify();
+
+		verify(span).end();
+	}
+
+	@Test
+	void mapsAccessDeniedToAuthenticationFailure() throws Throwable {
+		class AccessDeniedException extends RuntimeException {
+
+		}
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.proceed()).thenThrow(new AccessDeniedException());
+
+		assertThatThrownBy(() -> aspect.aroundAgentCoreController(pjp)).isInstanceOf(AccessDeniedException.class);
+
+		verify(span).setAttribute(eq(GenAiTelemetrySupport.ERROR_TYPE), eq("authentication_failure"));
+	}
+
+	@Test
+	void fluxCancelStillEndsSpan() throws Throwable {
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.proceed()).thenReturn(Flux.never());
+
+		Object out = aspect.aroundAgentCoreController(pjp);
+		@SuppressWarnings("unchecked")
+		Flux<?> flux = (Flux<?>) out;
+		StepVerifier.create(flux).thenCancel().verify();
+
+		verify(span).end();
+	}
+
+	@Test
 	void mapsThrottlingExceptionToRateLimit() throws Throwable {
 		class ThrottlingException extends RuntimeException {
 
@@ -449,6 +545,19 @@ class AgentCoreInvocationObservabilityAspectTest {
 		assertThatThrownBy(() -> aspect.aroundAgentCoreController(pjp)).isInstanceOf(ThrottlingException.class);
 
 		verify(span).setAttribute(eq(GenAiTelemetrySupport.ERROR_TYPE), eq("rate_limit"));
+	}
+
+	@Test
+	void mapsValidationExceptionToInvalidRequest() throws Throwable {
+		class ValidationException extends RuntimeException {
+
+		}
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.proceed()).thenThrow(new ValidationException());
+
+		assertThatThrownBy(() -> aspect.aroundAgentCoreController(pjp)).isInstanceOf(ValidationException.class);
+
+		verify(span).setAttribute(eq(GenAiTelemetrySupport.ERROR_TYPE), eq("invalid_request"));
 	}
 
 	@Test

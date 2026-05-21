@@ -138,6 +138,29 @@ class AgentCoreInvocationHeaderSupportTest {
 	}
 
 	@Test
+	void requestContextHolderReturnsNullWhenAttributesAbsent() {
+		RequestContextHolder.resetRequestAttributes();
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.getArgs()).thenReturn(new Object[0]);
+		assertThat(AgentCoreInvocationHeaderSupport.firstHeader(pjp, "x-amzn-request-id")).isNull();
+	}
+
+	@Test
+	void webExchangeEmptyHeaderFallsThroughToServletArg() {
+		ServerWebExchange exchange = mock(ServerWebExchange.class);
+		ServerHttpRequest shReq = mock(ServerHttpRequest.class);
+		HttpHeaders headers = new HttpHeaders();
+		headers.add("x-h", "");
+		when(exchange.getRequest()).thenReturn(shReq);
+		when(shReq.getHeaders()).thenReturn(headers);
+		HttpServletRequest servlet = mock(HttpServletRequest.class);
+		when(servlet.getHeader("x-h")).thenReturn("from-servlet");
+		ProceedingJoinPoint pjp = mock(ProceedingJoinPoint.class);
+		when(pjp.getArgs()).thenReturn(new Object[] { exchange, servlet });
+		assertThat(AgentCoreInvocationHeaderSupport.firstHeader(pjp, "x-h")).isEqualTo("from-servlet");
+	}
+
+	@Test
 	void servletEmptyHeaderFallsThroughToLaterArg() {
 		HttpServletRequest emptyHeader = mock(HttpServletRequest.class);
 		when(emptyHeader.getHeader("x")).thenReturn("");

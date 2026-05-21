@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.observability.telemetry;
 
 import io.opentelemetry.api.common.AttributeKey;
+import java.util.List;
 
 /**
  * Stable GenAI-related attribute keys aligned with OpenTelemetry semantic conventions for
@@ -44,8 +45,8 @@ public final class GenAiTelemetrySupport {
 	public static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey
 		.longKey("gen_ai.usage.output_tokens");
 
-	public static final AttributeKey<String> GEN_AI_RESPONSE_FINISH_REASONS = AttributeKey
-		.stringKey("gen_ai.response.finish_reasons");
+	public static final AttributeKey<List<String>> GEN_AI_RESPONSE_FINISH_REASONS = AttributeKey
+		.stringArrayKey("gen_ai.response.finish_reasons");
 
 	public static final AttributeKey<String> ERROR_TYPE = AttributeKey.stringKey("error.type");
 
