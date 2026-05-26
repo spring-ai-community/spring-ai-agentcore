@@ -18,7 +18,6 @@ updates:
       spring:
         patterns:
           - "org.springframework*"
-          - "org.springframework.*:*"
           - "io.spring.*:*"
         update-types:
           - "minor"
