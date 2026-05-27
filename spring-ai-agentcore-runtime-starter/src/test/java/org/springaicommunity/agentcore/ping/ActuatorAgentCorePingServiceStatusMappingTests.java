@@ -24,10 +24,9 @@ import org.springframework.boot.actuate.health.HealthEndpoint;
 import org.springframework.boot.actuate.health.Status;
 import org.springframework.http.HttpStatus;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for ActuatorAgentCorePingService status mapping logic.
@@ -38,7 +37,7 @@ class ActuatorAgentCorePingServiceStatusMappingTests {
 	void shouldMapUpStatusToHealthy() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		when(endpoint.health()).thenReturn(Health.up().build());
+		given(endpoint.health()).willReturn(Health.up().build());
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -47,15 +46,15 @@ class ActuatorAgentCorePingServiceStatusMappingTests {
 		var response = service.getPingStatus();
 
 		// Then
-		assertEquals(PingStatus.HEALTHY, response.status());
-		assertEquals(HttpStatus.OK, response.httpStatus());
+		assertThat(response.status()).isEqualTo(PingStatus.HEALTHY);
+		assertThat(response.httpStatus()).isEqualTo(HttpStatus.OK);
 	}
 
 	@Test
 	void shouldMapDownStatusToUnhealthy() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		when(endpoint.health()).thenReturn(Health.down().build());
+		given(endpoint.health()).willReturn(Health.down().build());
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -64,15 +63,15 @@ class ActuatorAgentCorePingServiceStatusMappingTests {
 		var response = service.getPingStatus();
 
 		// Then
-		assertEquals(PingStatus.UNHEALTHY, response.status());
-		assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.httpStatus());
+		assertThat(response.status()).isEqualTo(PingStatus.UNHEALTHY);
+		assertThat(response.httpStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 	}
 
 	@Test
 	void shouldMapUnknownStatusToUnhealthy() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		when(endpoint.health()).thenReturn(Health.status(Status.UNKNOWN).build());
+		given(endpoint.health()).willReturn(Health.status(Status.UNKNOWN).build());
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -81,15 +80,15 @@ class ActuatorAgentCorePingServiceStatusMappingTests {
 		var response = service.getPingStatus();
 
 		// Then
-		assertEquals(PingStatus.UNHEALTHY, response.status());
-		assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.httpStatus());
+		assertThat(response.status()).isEqualTo(PingStatus.UNHEALTHY);
+		assertThat(response.httpStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 	}
 
 	@Test
 	void shouldMapOutOfServiceStatusToUnhealthy() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		when(endpoint.health()).thenReturn(Health.status(Status.OUT_OF_SERVICE).build());
+		given(endpoint.health()).willReturn(Health.status(Status.OUT_OF_SERVICE).build());
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -98,15 +97,15 @@ class ActuatorAgentCorePingServiceStatusMappingTests {
 		var response = service.getPingStatus();
 
 		// Then
-		assertEquals(PingStatus.UNHEALTHY, response.status());
-		assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.httpStatus());
+		assertThat(response.status()).isEqualTo(PingStatus.UNHEALTHY);
+		assertThat(response.httpStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 	}
 
 	@Test
 	void shouldMapCustomStatusToUnhealthy() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		when(endpoint.health()).thenReturn(Health.status("CUSTOM_STATUS").build());
+		given(endpoint.health()).willReturn(Health.status("CUSTOM_STATUS").build());
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -115,15 +114,15 @@ class ActuatorAgentCorePingServiceStatusMappingTests {
 		var response = service.getPingStatus();
 
 		// Then
-		assertEquals(PingStatus.UNHEALTHY, response.status());
-		assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.httpStatus());
+		assertThat(response.status()).isEqualTo(PingStatus.UNHEALTHY);
+		assertThat(response.httpStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 	}
 
 	@Test
 	void shouldHandleExceptionsWithInternalServerError() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		when(endpoint.health()).thenThrow(new RuntimeException("Health check failed"));
+		given(endpoint.health()).willThrow(new RuntimeException("Health check failed"));
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -132,15 +131,15 @@ class ActuatorAgentCorePingServiceStatusMappingTests {
 		var response = service.getPingStatus();
 
 		// Then
-		assertEquals(PingStatus.UNHEALTHY, response.status());
-		assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.httpStatus());
+		assertThat(response.status()).isEqualTo(PingStatus.UNHEALTHY);
+		assertThat(response.httpStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 	}
 
 	@Test
 	void shouldReturnCurrentTimestamp() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		when(endpoint.health()).thenReturn(Health.up().build());
+		given(endpoint.health()).willReturn(Health.up().build());
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -151,8 +150,8 @@ class ActuatorAgentCorePingServiceStatusMappingTests {
 		var afterCall = System.currentTimeMillis() / 1000;
 
 		// Then
-		assertTrue(response.timeOfLastUpdate() >= beforeCall);
-		assertTrue(response.timeOfLastUpdate() <= afterCall);
+		assertThat(response.timeOfLastUpdate() >= beforeCall).isTrue();
+		assertThat(response.timeOfLastUpdate() <= afterCall).isTrue();
 	}
 
 }

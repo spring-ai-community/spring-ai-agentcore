@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.List;
@@ -39,7 +40,13 @@ import org.springframework.ai.chat.prompt.Prompt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * Unit tests for {@link AgentCoreLongTermMemoryAdvisor}. Focused on the advisor's
@@ -85,14 +92,14 @@ class AgentCoreLongTermMemoryAdvisorTests {
 
 	@Test
 	void passesRequestThroughUnchangedWhenNoMemoriesFound() {
-		when(this.retriever.searchMemories(anyString(), anyString(), anyString(), anyString(), anyInt(), anyString()))
-			.thenReturn(List.of());
+		given(this.retriever.searchMemories(anyString(), anyString(), anyString(), anyString(), anyInt(), anyString()))
+			.willReturn(List.of());
 
 		ChatClientRequest request = this.requestWith("Hello", Map.of(ChatMemory.CONVERSATION_ID, "user-456"));
 
 		this.semanticAdvisor.adviseCall(request, this.chain);
 
-		verify(this.chain).nextCall(request);
+		then(this.chain).should().nextCall(request);
 	}
 
 	@Test
@@ -110,30 +117,31 @@ class AgentCoreLongTermMemoryAdvisorTests {
 
 	@Test
 	void semanticSearchesMemoriesWithConfiguredParameters() {
-		when(this.retriever.searchMemories(eq("strategy-123"), eq("user-456"), anyString(), eq("What do I like?"),
+		given(this.retriever.searchMemories(eq("strategy-123"), eq("user-456"), anyString(), eq("What do I like?"),
 				eq(3), eq(ACTOR_NS)))
-			.thenReturn(List.of(new MemoryRecord("1", "User likes coffee", 0.9),
+			.willReturn(List.of(new MemoryRecord("1", "User likes coffee", 0.9),
 					new MemoryRecord("2", "User is from Seattle", 0.85)));
 
 		this.semanticAdvisor.adviseCall(
 				this.requestWith("What do I like?", Map.of(ChatMemory.CONVERSATION_ID, "user-456")), this.chain);
 
-		verify(this.retriever).searchMemories(eq("strategy-123"), eq("user-456"), anyString(), eq("What do I like?"),
-				eq(3), eq(ACTOR_NS));
+		then(this.retriever).should()
+			.searchMemories(eq("strategy-123"), eq("user-456"), anyString(), eq("What do I like?"), eq(3),
+					eq(ACTOR_NS));
 		SystemMessage enriched = (SystemMessage) this.captureEnrichedPrompt().getInstructions().get(0);
 		assertThat(enriched.getText()).contains("Known facts", "User likes coffee", "User is from Seattle");
 	}
 
 	@Test
 	void userPreferenceListsMemoriesWithoutQuery() {
-		when(this.retriever.listMemories("strategy-456", "user-456", ACTOR_NS)).thenReturn(
+		given(this.retriever.listMemories("strategy-456", "user-456", ACTOR_NS)).willReturn(
 				List.of(new MemoryRecord("1", "Dark mode enabled", 0.0), new MemoryRecord("2", "Metric units", 0.0)));
 
 		this.userPreferenceAdvisor.adviseCall(
 				this.requestWith("Show settings", Map.of(ChatMemory.CONVERSATION_ID, "user-456:session-1")),
 				this.chain);
 
-		verify(this.retriever).listMemories("strategy-456", "user-456", ACTOR_NS);
+		then(this.retriever).should().listMemories("strategy-456", "user-456", ACTOR_NS);
 		SystemMessage enriched = (SystemMessage) this.captureEnrichedPrompt().getInstructions().get(0);
 		assertThat(enriched.getText()).contains("User preferences", "Dark mode enabled");
 	}
@@ -141,15 +149,15 @@ class AgentCoreLongTermMemoryAdvisorTests {
 	@Test
 	void summaryUsesSessionScopedNamespace() {
 		AgentCoreLongTermMemoryAdvisor advisor = this.summaryAdvisor("sum-1", SESSION_NS, "Prior session summary");
-		when(this.retriever.searchMemories(eq("sum-1"), eq("user-1"), eq("session-1"), eq("Continue"), anyInt(),
+		given(this.retriever.searchMemories(eq("sum-1"), eq("user-1"), eq("session-1"), eq("Continue"), anyInt(),
 				eq(SESSION_NS)))
-			.thenReturn(List.of(new MemoryRecord("1", "We discussed quantum physics.", 0.9)));
+			.willReturn(List.of(new MemoryRecord("1", "We discussed quantum physics.", 0.9)));
 
 		advisor.adviseCall(this.requestWith("Continue", Map.of(ChatMemory.CONVERSATION_ID, "user-1:session-1")),
 				this.chain);
 
-		verify(this.retriever).searchMemories(eq("sum-1"), eq("user-1"), eq("session-1"), eq("Continue"), anyInt(),
-				eq(SESSION_NS));
+		then(this.retriever).should()
+			.searchMemories(eq("sum-1"), eq("user-1"), eq("session-1"), eq("Continue"), anyInt(), eq(SESSION_NS));
 	}
 
 	// ------------------------------------------------------------------
@@ -158,9 +166,9 @@ class AgentCoreLongTermMemoryAdvisorTests {
 
 	@Test
 	void semanticMergesIntoExistingSystemMessage() {
-		when(this.retriever.searchMemories(eq("strategy-123"), eq("user-1"), anyString(), eq("Q"), anyInt(),
+		given(this.retriever.searchMemories(eq("strategy-123"), eq("user-1"), anyString(), eq("Q"), anyInt(),
 				eq(ACTOR_NS)))
-			.thenReturn(List.of(new MemoryRecord("1", "User likes coffee.", 0.9)));
+			.willReturn(List.of(new MemoryRecord("1", "User likes coffee.", 0.9)));
 
 		ChatClientRequest request = ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new SystemMessage("Be concise."), new UserMessage("Q"))))
@@ -178,9 +186,9 @@ class AgentCoreLongTermMemoryAdvisorTests {
 	@Test
 	void summaryReplacesUserMessageRatherThanAddingSystemMessage() {
 		AgentCoreLongTermMemoryAdvisor advisor = this.summaryAdvisor("sum-1", SESSION_NS, "Prior session summary");
-		when(this.retriever.searchMemories(eq("sum-1"), eq("user-1"), eq("session-1"), eq("Continue"), anyInt(),
+		given(this.retriever.searchMemories(eq("sum-1"), eq("user-1"), eq("session-1"), eq("Continue"), anyInt(),
 				eq(SESSION_NS)))
-			.thenReturn(List.of(new MemoryRecord("1", "We discussed quantum physics.", 0.9)));
+			.willReturn(List.of(new MemoryRecord("1", "We discussed quantum physics.", 0.9)));
 
 		advisor.adviseCall(this.requestWith("Continue", Map.of(ChatMemory.CONVERSATION_ID, "user-1:session-1")),
 				this.chain);
@@ -202,18 +210,18 @@ class AgentCoreLongTermMemoryAdvisorTests {
 		this.semanticAdvisor.adviseCall(request, this.chain);
 
 		verifyNoInteractions(this.retriever);
-		verify(this.chain).nextCall(request);
+		then(this.chain).should().nextCall(request);
 	}
 
 	@Test
 	void userPreferenceProceedsEvenWhenUserPromptIsEmpty() {
-		when(this.retriever.listMemories("strategy-456", "user-1", ACTOR_NS))
-			.thenReturn(List.of(new MemoryRecord("1", "Dark mode", 0.0)));
+		given(this.retriever.listMemories("strategy-456", "user-1", ACTOR_NS))
+			.willReturn(List.of(new MemoryRecord("1", "Dark mode", 0.0)));
 
 		this.userPreferenceAdvisor.adviseCall(this.requestWith("", Map.of(ChatMemory.CONVERSATION_ID, "user-1")),
 				this.chain);
 
-		verify(this.retriever).listMemories("strategy-456", "user-1", ACTOR_NS);
+		then(this.retriever).should().listMemories("strategy-456", "user-1", ACTOR_NS);
 	}
 
 	// ------------------------------------------------------------------
@@ -230,12 +238,12 @@ class AgentCoreLongTermMemoryAdvisorTests {
 			.episodesTopK(3)
 			.reflectionsTopK(2));
 
-		when(this.retriever.searchMemories(eq("ep-123"), eq("user-456"), anyString(), eq("How's the weather?"), eq(3),
+		given(this.retriever.searchMemories(eq("ep-123"), eq("user-456"), anyString(), eq("How's the weather?"), eq(3),
 				eq(ACTOR_NS)))
-			.thenReturn(List.of(new MemoryRecord("1", "User asked about weather yesterday", 0.9)));
-		when(this.retriever.searchMemories(eq("ep-123"), eq("user-456"), anyString(), eq("How's the weather?"), eq(2),
+			.willReturn(List.of(new MemoryRecord("1", "User asked about weather yesterday", 0.9)));
+		given(this.retriever.searchMemories(eq("ep-123"), eq("user-456"), anyString(), eq("How's the weather?"), eq(2),
 				eq(reflectionsNs)))
-			.thenReturn(List.of(new MemoryRecord("2", "User prefers detailed answers", 0.85)));
+			.willReturn(List.of(new MemoryRecord("2", "User prefers detailed answers", 0.85)));
 
 		advisor.adviseCall(this.requestWith("How's the weather?", Map.of(ChatMemory.CONVERSATION_ID, "user-456")),
 				this.chain);
@@ -254,19 +262,19 @@ class AgentCoreLongTermMemoryAdvisorTests {
 			.episodesTopK(3)
 			.reflectionsTopK(2));
 
-		when(this.retriever.searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), anyString(), eq(3),
+		given(this.retriever.searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), anyString(), eq(3),
 				eq(ACTOR_NS)))
-			.thenReturn(List.of(new MemoryRecord("1", "Previous interaction", 0.9)));
-		when(this.retriever.searchMemories(eq("reflections-strategy"), eq("user-456"), anyString(), anyString(), eq(2),
+			.willReturn(List.of(new MemoryRecord("1", "Previous interaction", 0.9)));
+		given(this.retriever.searchMemories(eq("reflections-strategy"), eq("user-456"), anyString(), anyString(), eq(2),
 				eq(ACTOR_NS)))
-			.thenReturn(List.of(new MemoryRecord("2", "User prefers detailed answers", 0.85)));
+			.willReturn(List.of(new MemoryRecord("2", "User prefers detailed answers", 0.85)));
 
 		advisor.adviseCall(this.requestWith("Hello", Map.of(ChatMemory.CONVERSATION_ID, "user-456")), this.chain);
 
-		verify(this.retriever).searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), anyString(), eq(3),
-				eq(ACTOR_NS));
-		verify(this.retriever).searchMemories(eq("reflections-strategy"), eq("user-456"), anyString(), anyString(),
-				eq(2), eq(ACTOR_NS));
+		then(this.retriever).should()
+			.searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), anyString(), eq(3), eq(ACTOR_NS));
+		then(this.retriever).should()
+			.searchMemories(eq("reflections-strategy"), eq("user-456"), anyString(), anyString(), eq(2), eq(ACTOR_NS));
 	}
 
 	@Test
@@ -280,16 +288,17 @@ class AgentCoreLongTermMemoryAdvisorTests {
 			.episodesTopK(3)
 			.reflectionsTopK(2));
 
-		when(this.retriever.searchMemories(eq("ep-123"), eq("user-456"), anyString(), eq("Q"), eq(3), eq(ACTOR_NS)))
-			.thenReturn(List.of(new MemoryRecord("1", "episode", 0.9)));
-		when(this.retriever.searchMemories(eq("ep-123"), eq("user-456"), anyString(), eq("Q"), eq(2),
+		given(this.retriever.searchMemories(eq("ep-123"), eq("user-456"), anyString(), eq("Q"), eq(3), eq(ACTOR_NS)))
+			.willReturn(List.of(new MemoryRecord("1", "episode", 0.9)));
+		given(this.retriever.searchMemories(eq("ep-123"), eq("user-456"), anyString(), eq("Q"), eq(2),
 				eq(reflectionsNs)))
-			.thenReturn(List.of(new MemoryRecord("2", "reflection", 0.85)));
+			.willReturn(List.of(new MemoryRecord("2", "reflection", 0.85)));
 
 		advisor.adviseCall(this.requestWith("Q", Map.of(ChatMemory.CONVERSATION_ID, "user-456")), this.chain);
 
-		verify(this.retriever, never()).searchMemories(eq("legacy-reflections-strategy"), anyString(), anyString(),
-				anyString(), anyInt(), anyString());
+		then(this.retriever).should(never())
+			.searchMemories(eq("legacy-reflections-strategy"), anyString(), anyString(), anyString(), anyInt(),
+					anyString());
 	}
 
 	@Test
@@ -300,9 +309,9 @@ class AgentCoreLongTermMemoryAdvisorTests {
 			.episodesTopK(3)
 			.reflectionsTopK(2));
 
-		when(this.retriever.searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), eq("Hello"), eq(3),
+		given(this.retriever.searchMemories(eq("episodes-strategy"), eq("user-456"), anyString(), eq("Hello"), eq(3),
 				eq(ACTOR_NS)))
-			.thenReturn(List.of(new MemoryRecord("1", "Previous interaction", 0.9)));
+			.willReturn(List.of(new MemoryRecord("1", "Previous interaction", 0.9)));
 
 		advisor.adviseCall(this.requestWith("Hello", Map.of(ChatMemory.CONVERSATION_ID, "user-456")), this.chain);
 
@@ -369,7 +378,7 @@ class AgentCoreLongTermMemoryAdvisorTests {
 
 	private Prompt captureEnrichedPrompt() {
 		ArgumentCaptor<ChatClientRequest> captor = ArgumentCaptor.forClass(ChatClientRequest.class);
-		verify(this.chain).nextCall(captor.capture());
+		then(this.chain).should().nextCall(captor.capture());
 		return captor.getValue().prompt();
 	}
 

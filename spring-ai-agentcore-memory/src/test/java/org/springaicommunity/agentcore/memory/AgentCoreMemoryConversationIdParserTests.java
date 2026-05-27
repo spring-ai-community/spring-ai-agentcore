@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springaicommunity.agentcore.memory;
 
 import org.junit.jupiter.api.Test;

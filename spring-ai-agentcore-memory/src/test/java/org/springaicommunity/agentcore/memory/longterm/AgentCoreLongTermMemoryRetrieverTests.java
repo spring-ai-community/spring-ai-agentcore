@@ -13,18 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.List;
 
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import org.assertj.core.api.Assertions;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever.MemoryRecord;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
@@ -37,8 +37,8 @@ import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryReco
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 /**
  * Unit tests for {@link AgentCoreLongTermMemoryRetriever}.
@@ -67,8 +67,8 @@ class AgentCoreLongTermMemoryRetrieverTests {
 			.score(0.95)
 			.build();
 
-		when(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
-			.thenReturn(RetrieveMemoryRecordsResponse.builder().memoryRecordSummaries(summary).build());
+		given(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
+			.willReturn(RetrieveMemoryRecordsResponse.builder().memoryRecordSummaries(summary).build());
 
 		// When
 		List<MemoryRecord> records = this.retriever.searchMemories("strategy-123", "user-456", "coffee preferences", 5);
@@ -81,7 +81,7 @@ class AgentCoreLongTermMemoryRetrieverTests {
 
 		ArgumentCaptor<RetrieveMemoryRecordsRequest> captor = ArgumentCaptor
 			.forClass(RetrieveMemoryRecordsRequest.class);
-		verify(this.client).retrieveMemoryRecords(captor.capture());
+		then(this.client).should().retrieveMemoryRecords(captor.capture());
 
 		assertThat(captor.getValue().memoryId()).isEqualTo("test-memory-id");
 		assertThat(captor.getValue().namespace()).isEqualTo("/strategies/strategy-123/actors/user-456");
@@ -98,8 +98,8 @@ class AgentCoreLongTermMemoryRetrieverTests {
 			.score(0.88)
 			.build();
 
-		when(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
-			.thenReturn(RetrieveMemoryRecordsResponse.builder().memoryRecordSummaries(summary).build());
+		given(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
+			.willReturn(RetrieveMemoryRecordsResponse.builder().memoryRecordSummaries(summary).build());
 
 		// When
 		List<MemoryRecord> records = this.retriever.searchMemories("strategy-123", "user-456", "session-789", "travel",
@@ -111,7 +111,7 @@ class AgentCoreLongTermMemoryRetrieverTests {
 
 		ArgumentCaptor<RetrieveMemoryRecordsRequest> captor = ArgumentCaptor
 			.forClass(RetrieveMemoryRecordsRequest.class);
-		verify(this.client).retrieveMemoryRecords(captor.capture());
+		then(this.client).should().retrieveMemoryRecords(captor.capture());
 
 		assertThat(captor.getValue().namespace())
 			.isEqualTo("/strategies/strategy-123/actors/user-456/sessions/session-789");
@@ -129,8 +129,8 @@ class AgentCoreLongTermMemoryRetrieverTests {
 			.content(MemoryContent.builder().text("Uses metric units").build())
 			.build();
 
-		when(this.client.listMemoryRecords(any(ListMemoryRecordsRequest.class)))
-			.thenReturn(ListMemoryRecordsResponse.builder().memoryRecordSummaries(summary1, summary2).build());
+		given(this.client.listMemoryRecords(any(ListMemoryRecordsRequest.class)))
+			.willReturn(ListMemoryRecordsResponse.builder().memoryRecordSummaries(summary1, summary2).build());
 
 		// When
 		List<MemoryRecord> records = this.retriever.listMemories("strategy-123", "user-456",
@@ -142,7 +142,7 @@ class AgentCoreLongTermMemoryRetrieverTests {
 		assertThat(records.get(1).content()).isEqualTo("Uses metric units");
 
 		ArgumentCaptor<ListMemoryRecordsRequest> captor = ArgumentCaptor.forClass(ListMemoryRecordsRequest.class);
-		verify(this.client).listMemoryRecords(captor.capture());
+		then(this.client).should().listMemoryRecords(captor.capture());
 
 		assertThat(captor.getValue().memoryId()).isEqualTo("test-memory-id");
 		assertThat(captor.getValue().namespace()).isEqualTo("/strategies/strategy-123/actors/user-456");
@@ -151,8 +151,8 @@ class AgentCoreLongTermMemoryRetrieverTests {
 	@Test
 	void shouldThrowExceptionOnApiError() {
 		// Given
-		when(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
-			.thenThrow(new RuntimeException("API error"));
+		given(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
+			.willThrow(new RuntimeException("API error"));
 
 		// When/Then
 		Assertions.assertThatThrownBy(() -> this.retriever.searchMemories("strategy-123", "user-456", "query", 5))
@@ -170,8 +170,8 @@ class AgentCoreLongTermMemoryRetrieverTests {
 			.score(null)
 			.build();
 
-		when(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
-			.thenReturn(RetrieveMemoryRecordsResponse.builder().memoryRecordSummaries(summary).build());
+		given(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
+			.willReturn(RetrieveMemoryRecordsResponse.builder().memoryRecordSummaries(summary).build());
 
 		// When
 		List<MemoryRecord> records = this.retriever.searchMemories("strategy-123", "user-456", "query", 5);

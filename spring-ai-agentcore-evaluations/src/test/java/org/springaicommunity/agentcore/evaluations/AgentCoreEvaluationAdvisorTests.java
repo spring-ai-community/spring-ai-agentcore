@@ -54,11 +54,11 @@ import org.springframework.ai.chat.prompt.Prompt;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
  * Tests for {@link AgentCoreEvaluationAdvisor}.
@@ -95,7 +95,7 @@ class AgentCoreEvaluationAdvisorTests {
 
 		EvaluationResult result = new EvaluationResult("Builtin.Helpfulness", 0.83, "Very Helpful", "ok", 100, 20,
 				null);
-		when(this.client.evaluateAll(anyList(), anyList(), any())).thenReturn(List.of(result));
+		given(this.client.evaluateAll(anyList(), anyList(), any())).willReturn(List.of(result));
 
 		AgentCoreEvaluationAdvisor advisor = AgentCoreEvaluationAdvisor.builder(this.client)
 			.async(false)
@@ -106,7 +106,7 @@ class AgentCoreEvaluationAdvisorTests {
 		ChatClientRequest request = request("What is the capital of France?");
 		ChatClientResponse response = response("Paris.");
 		CallAdvisorChain chain = mock(CallAdvisorChain.class);
-		when(chain.nextCall(any())).thenReturn(response);
+		given(chain.nextCall(any())).willReturn(response);
 
 		advisor.adviseCall(request, chain);
 
@@ -129,7 +129,7 @@ class AgentCoreEvaluationAdvisorTests {
 
 		EvaluationResult errored = new EvaluationResult("Builtin.Helpfulness", null, null, null, null, null,
 				"AgentSpanMappingException");
-		when(this.client.evaluateAll(anyList(), anyList(), any())).thenReturn(List.of(errored));
+		given(this.client.evaluateAll(anyList(), anyList(), any())).willReturn(List.of(errored));
 
 		AgentCoreEvaluationAdvisor advisor = AgentCoreEvaluationAdvisor.builder(this.client)
 			.async(false)
@@ -137,7 +137,7 @@ class AgentCoreEvaluationAdvisorTests {
 			.build();
 
 		CallAdvisorChain chain = mock(CallAdvisorChain.class);
-		when(chain.nextCall(any())).thenReturn(response("hello"));
+		given(chain.nextCall(any())).willReturn(response("hello"));
 		advisor.adviseCall(request("hi"), chain);
 
 		Counter errors = registry.find("agentcore.evaluation.errors")
@@ -151,7 +151,7 @@ class AgentCoreEvaluationAdvisorTests {
 	@Test
 	void shouldAggregateStreamingChunksForEvaluation() {
 		AtomicReference<List<?>> capturedSpans = new AtomicReference<>();
-		when(this.client.evaluateAll(anyList(), anyList(), any())).thenAnswer((inv) -> {
+		given(this.client.evaluateAll(anyList(), anyList(), any())).willAnswer((inv) -> {
 			capturedSpans.set(inv.getArgument(1));
 			return List.of();
 		});
@@ -159,7 +159,7 @@ class AgentCoreEvaluationAdvisorTests {
 		AgentCoreEvaluationAdvisor advisor = AgentCoreEvaluationAdvisor.builder(this.client).async(false).build();
 
 		StreamAdvisorChain chain = mock(StreamAdvisorChain.class);
-		when(chain.nextStream(any())).thenReturn(Flux.just(response("Hello, "), response("world"), response("!")));
+		given(chain.nextStream(any())).willReturn(Flux.just(response("Hello, "), response("world"), response("!")));
 
 		List<ChatClientResponse> out = advisor.adviseStream(request("hi"), chain).collectList().block();
 
@@ -169,13 +169,13 @@ class AgentCoreEvaluationAdvisorTests {
 
 	@Test
 	void streamingShouldEmitChunksBeforeSourceCompletes() {
-		when(this.client.evaluateAll(anyList(), anyList(), any())).thenReturn(List.of());
+		given(this.client.evaluateAll(anyList(), anyList(), any())).willReturn(List.of());
 
 		AgentCoreEvaluationAdvisor advisor = AgentCoreEvaluationAdvisor.builder(this.client).async(false).build();
 
 		Sinks.Many<ChatClientResponse> source = Sinks.many().unicast().onBackpressureBuffer();
 		StreamAdvisorChain chain = mock(StreamAdvisorChain.class);
-		when(chain.nextStream(any())).thenReturn(source.asFlux());
+		given(chain.nextStream(any())).willReturn(source.asFlux());
 
 		List<ChatClientResponse> received = new ArrayList<>();
 		Disposable sub = advisor.adviseStream(request("hi"), chain).subscribe(received::add);
@@ -185,11 +185,11 @@ class AgentCoreEvaluationAdvisorTests {
 		// Source has NOT completed yet; downstream must already have both chunks.
 		assertThat(received).hasSize(2);
 		// Evaluation must not have fired yet.
-		verify(this.client, never()).evaluateAll(anyList(), anyList(), any());
+		then(this.client).should(never()).evaluateAll(anyList(), anyList(), any());
 
 		source.tryEmitComplete();
 		sub.dispose();
-		verify(this.client, times(1)).evaluateAll(anyList(), anyList(), any());
+		then(this.client).should(times(1)).evaluateAll(anyList(), anyList(), any());
 	}
 
 	@Test
@@ -200,11 +200,11 @@ class AgentCoreEvaluationAdvisorTests {
 			.build();
 
 		StreamAdvisorChain chain = mock(StreamAdvisorChain.class);
-		when(chain.nextStream(any())).thenReturn(Flux.just(response("a"), response("b"), response("c")));
+		given(chain.nextStream(any())).willReturn(Flux.just(response("a"), response("b"), response("c")));
 
 		advisor.adviseStream(request("hi"), chain).collectList().block();
 
-		verify(this.client, never()).evaluateAll(anyList(), anyList(), any());
+		then(this.client).should(never()).evaluateAll(anyList(), anyList(), any());
 	}
 
 	@Test
@@ -213,13 +213,13 @@ class AgentCoreEvaluationAdvisorTests {
 
 		Sinks.Many<ChatClientResponse> source = Sinks.many().unicast().onBackpressureBuffer();
 		StreamAdvisorChain chain = mock(StreamAdvisorChain.class);
-		when(chain.nextStream(any())).thenReturn(source.asFlux());
+		given(chain.nextStream(any())).willReturn(source.asFlux());
 
 		Disposable sub = advisor.adviseStream(request("hi"), chain).subscribe();
 		source.tryEmitNext(response("partial"));
 		sub.dispose();
 
-		verify(this.client, never()).evaluateAll(anyList(), anyList(), any());
+		then(this.client).should(never()).evaluateAll(anyList(), anyList(), any());
 	}
 
 	@Test
@@ -228,7 +228,7 @@ class AgentCoreEvaluationAdvisorTests {
 		AgentCoreEvaluationMetrics metrics = new AgentCoreEvaluationMetrics(registry);
 		EvaluationResult result = new EvaluationResult("Builtin.Helpfulness", 0.83, "Very Helpful", "ok", 100, 20,
 				null);
-		when(this.client.evaluateAll(anyList(), anyList(), any())).thenReturn(List.of(result));
+		given(this.client.evaluateAll(anyList(), anyList(), any())).willReturn(List.of(result));
 
 		AgentCoreEvaluationAdvisor advisor = AgentCoreEvaluationAdvisor.builder(this.client)
 			.async(true)
@@ -236,7 +236,7 @@ class AgentCoreEvaluationAdvisorTests {
 			.build();
 
 		CallAdvisorChain chain = mock(CallAdvisorChain.class);
-		when(chain.nextCall(any())).thenReturn(response("Paris."));
+		given(chain.nextCall(any())).willReturn(response("Paris."));
 
 		// Handler returns immediately; the metric is populated on another thread.
 		advisor.adviseCall(request("hi"), chain);
@@ -253,6 +253,8 @@ class AgentCoreEvaluationAdvisorTests {
 
 	private static final EvaluationResult VALID_RESULT = new EvaluationResult("Builtin.Helpfulness", 0.9, "Good", null,
 			null, null, null);
+
+	private static final List<Object> MIXED_RESULT_ENTRIES = List.of(VALID_RESULT, "stray", 42);
 
 	/**
 	 * Cases for {@link #resultsFromIsTypeSafe(String, Consumer, List)}.
@@ -271,7 +273,7 @@ class AgentCoreEvaluationAdvisorTests {
 						List.of()),
 				Arguments.of("list contains mixed entry types",
 						(Consumer<ChatClientResponse>) (response) -> response.context()
-							.put(AgentCoreEvaluationAdvisor.EVALUATION_RESULTS_KEY, List.of(VALID_RESULT, "stray", 42)),
+							.put(AgentCoreEvaluationAdvisor.EVALUATION_RESULTS_KEY, MIXED_RESULT_ENTRIES),
 						List.of(VALID_RESULT)));
 	}
 

@@ -28,7 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class AgentCoreMethodScannerTests {
@@ -50,7 +52,7 @@ class AgentCoreMethodScannerTests {
 		var result = this.scanner.postProcessAfterInitialization(bean, "testBean");
 
 		assertThat(result).isSameAs(bean);
-		verify(this.mockRegistry).registerMethod(eq(bean), any());
+		then(this.mockRegistry).should().registerMethod(eq(bean), any());
 	}
 
 	@Test
@@ -60,13 +62,13 @@ class AgentCoreMethodScannerTests {
 		var result = this.scanner.postProcessAfterInitialization(bean, "testBean");
 
 		assertThat(result).isSameAs(bean);
-		verify(this.mockRegistry, never()).registerMethod(any(), any());
+		then(this.mockRegistry).should(never()).registerMethod(any(), any());
 	}
 
 	@Test
 	void shouldPropagateRegistryExceptionForMultipleMethods() {
 		var bean = new BeanWithMultipleMethods();
-		doThrow(new AgentCoreInvocationException("Multiple methods")).when(this.mockRegistry)
+		willThrow(new AgentCoreInvocationException("Multiple methods")).given(this.mockRegistry)
 			.registerMethod(any(), any());
 
 		assertThatThrownBy(() -> this.scanner.postProcessAfterInitialization(bean, "testBean"))

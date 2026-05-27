@@ -37,7 +37,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -61,7 +61,7 @@ class AgentCoreInvocationsControllerTests {
 
 	@Test
 	void shouldHandleStringInput() throws Exception {
-		when(this.mockInvoker.invokeAgentMethod(eq("hello"), any(HttpHeaders.class))).thenReturn("world");
+		given(this.mockInvoker.invokeAgentMethod(eq("hello"), any(HttpHeaders.class))).willReturn("world");
 
 		this.mockMvc.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON).content("\"hello\""))
 			.andExpect(status().isOk())
@@ -73,7 +73,7 @@ class AgentCoreInvocationsControllerTests {
 		var input = new TestInput("test");
 		var output = new TestOutput("result");
 
-		when(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).thenReturn(output);
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).willReturn(output);
 
 		this.mockMvc
 			.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON)
@@ -87,7 +87,7 @@ class AgentCoreInvocationsControllerTests {
 		var inputMap = Map.of("key", "value", "number", 42);
 		var outputMap = Map.of("result", "processed", "input", inputMap);
 
-		when(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).thenReturn(outputMap);
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).willReturn(outputMap);
 
 		this.mockMvc
 			.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON)
@@ -100,8 +100,8 @@ class AgentCoreInvocationsControllerTests {
 
 	@Test
 	void shouldHandleTextPlainInput() throws Exception {
-		when(this.mockInvoker.invokeAgentMethod(eq("plain text input"), any(HttpHeaders.class)))
-			.thenReturn("processed text");
+		given(this.mockInvoker.invokeAgentMethod(eq("plain text input"), any(HttpHeaders.class)))
+			.willReturn("processed text");
 
 		this.mockMvc.perform(post("/invocations").contentType(MediaType.TEXT_PLAIN).content("plain text input"))
 			.andExpect(status().isOk())
@@ -112,7 +112,7 @@ class AgentCoreInvocationsControllerTests {
 	void shouldHandleBinaryDataOutputWithJsonInput() throws Exception {
 		String binaryData = "Binary response";
 		var response = binaryData.getBytes();
-		when(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).thenReturn(response);
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).willReturn(response);
 
 		this.mockMvc
 			.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON)
@@ -130,7 +130,7 @@ class AgentCoreInvocationsControllerTests {
 		var response = ResponseEntity.ok()
 			.contentType(MediaType.APPLICATION_OCTET_STREAM)
 			.body((binaryData.getBytes()));
-		when(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).thenReturn(response);
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).willReturn(response);
 
 		this.mockMvc.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON).content("""
 				{"prompt":"test"}"""))
@@ -143,7 +143,7 @@ class AgentCoreInvocationsControllerTests {
 	void shouldHandleBinaryDataOutputWithTextInput() throws Exception {
 		String binaryData = "Binary response";
 		var response = binaryData.getBytes();
-		when(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).thenReturn(response);
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).willReturn(response);
 
 		this.mockMvc
 			.perform(post("/invocations").contentType(MediaType.TEXT_PLAIN)
@@ -160,7 +160,7 @@ class AgentCoreInvocationsControllerTests {
 		var response = ResponseEntity.ok()
 			.contentType(MediaType.APPLICATION_OCTET_STREAM)
 			.body((binaryData.getBytes()));
-		when(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).thenReturn(response);
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class))).willReturn(response);
 
 		this.mockMvc.perform(post("/invocations").contentType(MediaType.TEXT_PLAIN).content("test"))
 			.andExpect(status().isOk())
@@ -170,8 +170,8 @@ class AgentCoreInvocationsControllerTests {
 
 	@Test
 	void shouldHandleException() throws Exception {
-		when(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class)))
-			.thenThrow(new AgentCoreInvocationException("Test error"));
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class)))
+			.willThrow(new AgentCoreInvocationException("Test error"));
 
 		this.mockMvc.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON).content("{ }"))
 			.andExpect(status().isInternalServerError());

@@ -32,8 +32,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Comprehensive tests for AgentCorePingAutoConfiguration.
@@ -112,7 +112,7 @@ class AgentCorePingAutoConfigurationComprehensiveTests {
 		@Bean
 		HealthEndpoint healthEndpoint() {
 			var endpoint = mock(HealthEndpoint.class);
-			when(endpoint.health()).thenReturn(Health.up().build());
+			given(endpoint.health()).willReturn(Health.up().build());
 			return endpoint;
 		}
 

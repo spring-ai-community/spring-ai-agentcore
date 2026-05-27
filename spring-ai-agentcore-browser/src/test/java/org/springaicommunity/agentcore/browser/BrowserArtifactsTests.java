@@ -16,12 +16,11 @@
 
 package org.springaicommunity.agentcore.browser;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
 import org.springaicommunity.agentcore.artifacts.ArtifactMetadata;
-
-import java.util.Map;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 
 import static org.assertj.core.api.Assertions.assertThat;

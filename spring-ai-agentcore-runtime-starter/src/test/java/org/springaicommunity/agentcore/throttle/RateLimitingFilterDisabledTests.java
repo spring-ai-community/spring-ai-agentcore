@@ -27,7 +27,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 		properties = { "agentcore.throttle.invocations-limit=0", "agentcore.throttle.ping-limit=0" })
@@ -47,10 +47,10 @@ class RateLimitingFilterDisabledTests {
 		for (int i = 0; i < 5; i++) {
 			ResponseEntity<String> invocationsResponse = this.restTemplate.postForEntity(invocationsUrl, "test" + i,
 					String.class);
-			assertEquals(HttpStatus.OK, invocationsResponse.getStatusCode());
+			assertThat(invocationsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
 			ResponseEntity<String> pingResponse = this.restTemplate.getForEntity(pingUrl, String.class);
-			assertEquals(HttpStatus.OK, pingResponse.getStatusCode());
+			assertThat(pingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 		}
 	}
 

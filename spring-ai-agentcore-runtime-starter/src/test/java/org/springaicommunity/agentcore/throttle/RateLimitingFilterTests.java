@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
 		properties = { "agentcore.throttle.invocations-limit=2", "agentcore.throttle.ping-limit=3" })
@@ -45,19 +45,19 @@ class RateLimitingFilterTests {
 
 		// First two requests should succeed
 		ResponseEntity<String> response1 = this.restTemplate.postForEntity(url, "test1", String.class);
-		assertEquals(HttpStatus.OK, response1.getStatusCode());
+		assertThat(response1.getStatusCode()).isEqualTo(HttpStatus.OK);
 
 		ResponseEntity<String> response2 = this.restTemplate.postForEntity(url, "test2", String.class);
-		assertEquals(HttpStatus.OK, response2.getStatusCode());
+		assertThat(response2.getStatusCode()).isEqualTo(HttpStatus.OK);
 
 		// Third request should be throttled
 		try {
 			ResponseEntity<String> response3 = this.restTemplate.postForEntity(url, "test3", String.class);
-			assertEquals(HttpStatus.TOO_MANY_REQUESTS, response3.getStatusCode());
+			assertThat(response3.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 		}
 
 		catch (HttpClientErrorException ex) {
-			assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
+			assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 		}
 	}
 
@@ -68,17 +68,17 @@ class RateLimitingFilterTests {
 		// First three requests should succeed
 		for (int i = 0; i < 3; i++) {
 			ResponseEntity<String> response = this.restTemplate.getForEntity(url, String.class);
-			assertEquals(HttpStatus.OK, response.getStatusCode());
+			assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		}
 
 		// Fourth request should be throttled
 		try {
 			ResponseEntity<String> response = this.restTemplate.getForEntity(url, String.class);
-			assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+			assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 		}
 
 		catch (HttpClientErrorException ex) {
-			assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
+			assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 		}
 	}
 
@@ -96,7 +96,7 @@ class RateLimitingFilterTests {
 		// First two requests with X-Forwarded-For should succeed
 		for (int i = 0; i < 2; i++) {
 			ResponseEntity<String> response = clientWithHeader.postForEntity(url, "test", String.class);
-			assertEquals(HttpStatus.OK, response.getStatusCode());
+			assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 		}
 
 		// Third request with same X-Forwarded-For should be throttled
@@ -104,7 +104,7 @@ class RateLimitingFilterTests {
 			clientWithHeader.postForEntity(url, "test", String.class);
 		}
 		catch (HttpClientErrorException ex) {
-			assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
+			assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 		}
 
 		// Request from different IP (different X-Forwarded-For) should succeed
@@ -115,7 +115,7 @@ class RateLimitingFilterTests {
 		});
 
 		ResponseEntity<String> response = clientWithDifferentIp.postForEntity(url, "test", String.class);
-		assertEquals(HttpStatus.OK, response.getStatusCode());
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 	}
 
 	@SpringBootApplication(scanBasePackages = "org.springaicommunity.agentcore.autoconfigure")

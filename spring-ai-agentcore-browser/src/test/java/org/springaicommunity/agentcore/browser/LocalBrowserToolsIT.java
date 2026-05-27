@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration test verifying auto-configuration wiring and screenshot storage with
  * {@code agentcore.browser.mode=local}. Lets {@link AgentCoreBrowserAutoConfiguration}
  * create all beans — no manual wiring. Browser operation behavior is covered by
- * {@link LocalBrowserClientTest}.
+ * {@link LocalBrowserClientTests}.
  *
  * @author Yuriy Bezsonov
  */

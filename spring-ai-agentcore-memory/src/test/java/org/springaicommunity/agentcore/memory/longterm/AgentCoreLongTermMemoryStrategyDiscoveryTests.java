@@ -36,7 +36,7 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.StrategyCon
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
+import static org.mockito.BDDMockito.given;
 
 /**
  * Tests for {@link AgentCoreLongTermMemoryStrategyDiscovery}. Focus on how reflection
@@ -145,7 +145,7 @@ class AgentCoreLongTermMemoryStrategyDiscoveryTests {
 	private void mockGetMemory(List<MemoryStrategy> strategies) {
 		Memory memory = Memory.builder().strategies(strategies).build();
 		GetMemoryResponse response = GetMemoryResponse.builder().memory(memory).build();
-		when(this.controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+		given(this.controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 	}
 
 }

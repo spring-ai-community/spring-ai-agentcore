@@ -22,8 +22,8 @@ import org.springaicommunity.agentcore.model.PingStatus;
 import org.springframework.http.HttpStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for StaticAgentCorePingService.
@@ -82,7 +82,7 @@ class StaticAgentCorePingServiceTests {
 	void shouldReturnHealthyBusy() {
 		// Given
 		var agentCoreTaskTracker = mock(AgentCoreTaskTracker.class);
-		when(agentCoreTaskTracker.getCount()).thenReturn(1L);
+		given(agentCoreTaskTracker.getCount()).willReturn(1L);
 		var service = new StaticAgentCorePingService(agentCoreTaskTracker);
 
 		// When

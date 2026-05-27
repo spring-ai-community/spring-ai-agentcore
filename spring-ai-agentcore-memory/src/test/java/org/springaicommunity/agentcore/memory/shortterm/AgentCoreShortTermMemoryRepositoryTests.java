@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springaicommunity.agentcore.memory.shortterm;
 
 import java.util.ArrayList;
@@ -21,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,7 +33,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser;
 import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
-import software.amazon.awssdk.services.bedrockagentcore.model.*;
+import software.amazon.awssdk.services.bedrockagentcore.model.Content;
+import software.amazon.awssdk.services.bedrockagentcore.model.Conversational;
+import software.amazon.awssdk.services.bedrockagentcore.model.CreateEventRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.CreateEventResponse;
+import software.amazon.awssdk.services.bedrockagentcore.model.DeleteEventRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.Event;
+import software.amazon.awssdk.services.bedrockagentcore.model.ListEventsRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.ListEventsResponse;
+import software.amazon.awssdk.services.bedrockagentcore.model.PayloadType;
+import software.amazon.awssdk.services.bedrockagentcore.model.Role;
 
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -42,9 +51,12 @@ import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 public class AgentCoreShortTermMemoryRepositoryTests {
@@ -65,10 +77,10 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		List<Message> messages = List.of(UserMessage.builder().text("hello").build());
 
 		CreateEventResponse response = CreateEventResponse.builder().event(this.buildTestEvent()).build();
-		when(this.client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+		given(this.client.createEvent(any(CreateEventRequest.class))).willReturn(response);
 
 		ListEventsResponse listEventsResponse = ListEventsResponse.builder().events(this.buildTestEvent()).build();
-		when(this.client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(listEventsResponse);
 
 		var conversationId = "testActorId:testSessionId";
 		this.memoryRepository.saveAll(conversationId, messages);
@@ -80,7 +92,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 
 		ArgumentCaptor<CreateEventRequest> createEventsRequestArgumentCaptor = ArgumentCaptor
 			.forClass(CreateEventRequest.class);
-		verify(this.client, times(1)).createEvent(createEventsRequestArgumentCaptor.capture());
+		then(this.client).should(times(1)).createEvent(createEventsRequestArgumentCaptor.capture());
 		assertThat(createEventsRequestArgumentCaptor.getValue().actorId()).isEqualTo("testActorId");
 		assertThat(createEventsRequestArgumentCaptor.getValue().sessionId()).isEqualTo("testSessionId");
 		assertThat(createEventsRequestArgumentCaptor.getValue().memoryId()).isEqualTo("testMemoryId");
@@ -89,7 +101,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 			.allMatch((p) -> p.conversational().content().text().contains("hello"));
 
 		ArgumentCaptor<ListEventsRequest> requestArgumentCaptor = ArgumentCaptor.forClass(ListEventsRequest.class);
-		verify(this.client).listEvents(requestArgumentCaptor.capture());
+		then(this.client).should().listEvents(requestArgumentCaptor.capture());
 		assertThat(requestArgumentCaptor.getValue().actorId()).isEqualTo("testActorId");
 		assertThat(requestArgumentCaptor.getValue().sessionId()).isEqualTo("testSessionId");
 		assertThat(requestArgumentCaptor.getValue().memoryId()).isEqualTo("testMemoryId");
@@ -98,12 +110,12 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 	@Test
 	public void testChatMemory() {
 		CreateEventResponse response = CreateEventResponse.builder().event(this.buildTestEvent()).build();
-		when(this.client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+		given(this.client.createEvent(any(CreateEventRequest.class))).willReturn(response);
 
 		ListEventsResponse listEventsResponse = ListEventsResponse.builder()
 			.events(this.buildTestEvent(), this.buildTestEvent(), this.buildTestEvent())
 			.build();
-		when(this.client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(listEventsResponse);
 
 		var chatMemory = MessageWindowChatMemory.builder()
 			.chatMemoryRepository(this.memoryRepository)
@@ -124,7 +136,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 
 		ArgumentCaptor<CreateEventRequest> createEventsRequestArgumentCaptor = ArgumentCaptor
 			.forClass(CreateEventRequest.class);
-		verify(this.client, times(1)).createEvent(createEventsRequestArgumentCaptor.capture());
+		then(this.client).should(times(1)).createEvent(createEventsRequestArgumentCaptor.capture());
 		assertThat(createEventsRequestArgumentCaptor.getValue().actorId()).isEqualTo("testActorId");
 		assertThat(createEventsRequestArgumentCaptor.getValue().sessionId()).isEqualTo("testSessionId");
 		assertThat(createEventsRequestArgumentCaptor.getValue().memoryId()).isEqualTo("testMemoryId");
@@ -134,7 +146,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 
 		ArgumentCaptor<ListEventsRequest> listEventsRequestArgumentCaptor = ArgumentCaptor
 			.forClass(ListEventsRequest.class);
-		verify(this.client, times(2)).listEvents(listEventsRequestArgumentCaptor.capture());
+		then(this.client).should(times(2)).listEvents(listEventsRequestArgumentCaptor.capture());
 		assertThat(listEventsRequestArgumentCaptor.getValue().actorId()).isEqualTo("testActorId");
 		assertThat(listEventsRequestArgumentCaptor.getValue().sessionId()).isEqualTo("testSessionId");
 		assertThat(listEventsRequestArgumentCaptor.getValue().memoryId()).isEqualTo("testMemoryId");
@@ -160,8 +172,8 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		AgentCoreMemoryConversationIdParser.ActorAndSession result = AgentCoreMemoryConversationIdParser
 			.parse("actor123:session456");
 
-		assertEquals("actor123", result.actor());
-		assertEquals("session456", result.session());
+		assertThat(result.actor()).isEqualTo("actor123");
+		assertThat(result.session()).isEqualTo("session456");
 	}
 
 	@Test
@@ -169,8 +181,8 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		AgentCoreMemoryConversationIdParser.ActorAndSession result = AgentCoreMemoryConversationIdParser
 			.parse("actor123");
 
-		assertEquals("actor123", result.actor());
-		assertEquals("default-session", result.session());
+		assertThat(result.actor()).isEqualTo("actor123");
+		assertThat(result.session()).isEqualTo("default-session");
 	}
 
 	@Test
@@ -196,7 +208,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 							.build())
 						.build())
 			.build();
-		when(this.client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(listEventsResponse);
 
 		List<Message> memoryMessages = memoryRepositoryWithLimit.findByConversationId("testActorId:testSessionId");
 
@@ -228,33 +240,34 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 			.toList();
 
 		ListEventsResponse listEventsResponse = ListEventsResponse.builder().events(events).build();
-		when(this.client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(listEventsResponse);
 
 		memoryRepository.findByConversationId("testActorId:testSessionId");
 
 		ArgumentCaptor<ListEventsRequest> requestCaptor = ArgumentCaptor.forClass(ListEventsRequest.class);
-		verify(this.client).listEvents(requestCaptor.capture());
+		then(this.client).should().listEvents(requestCaptor.capture());
 		assertThat(requestCaptor.getValue().maxResults()).isEqualTo(expectedPageSize);
 	}
 
 	@Test
 	void shouldThrowExceptionForNullConversationId() {
-		assertThat(Assertions.assertThrows(IllegalArgumentException.class,
-				() -> this.memoryRepository.findByConversationId(null)))
+		assertThatThrownBy(() -> this.memoryRepository.findByConversationId(null))
+			.isInstanceOf(IllegalArgumentException.class)
 			.hasMessage("ConversationId cannot be null or empty");
 	}
 
 	@Test
 	void shouldThrowExceptionForEmptyConversationId() {
-		assertThat(Assertions.assertThrows(IllegalArgumentException.class,
-				() -> this.memoryRepository.findByConversationId("")))
+		assertThatThrownBy(() -> this.memoryRepository.findByConversationId(""))
+			.isInstanceOf(IllegalArgumentException.class)
 			.hasMessage("ConversationId cannot be null or empty");
 	}
 
 	@Test
 	void shouldThrowExceptionForNullMemoryId() {
-		assertThat(Assertions.assertThrows(IllegalArgumentException.class,
-				() -> new AgentCoreShortTermMemoryRepository(null, this.client, null, "default-session", 100, false)))
+		assertThatThrownBy(
+				() -> new AgentCoreShortTermMemoryRepository(null, this.client, null, "default-session", 100, false))
+			.isInstanceOf(IllegalArgumentException.class)
 			.hasMessage("MemoryId cannot be null or empty");
 	}
 
@@ -273,7 +286,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 					.build())
 				.build())
 			.build();
-		when(this.client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(listEventsResponse);
 
 		List<Message> memoryMessages = memoryRepositoryWithIgnore.findByConversationId("testActorId:testSessionId");
 
@@ -303,7 +316,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		CreateEventResponse response = CreateEventResponse.builder()
 			.event(Event.builder().memoryId("testMemoryId").build())
 			.build();
-		when(this.client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+		given(this.client.createEvent(any(CreateEventRequest.class))).willReturn(response);
 
 		// Mix of known and unknown message types
 		List<Message> messages = List.of(UserMessage.builder().text("user message").build(),
@@ -314,7 +327,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		memoryRepositoryWithIgnore.saveAll("testActorId:testSessionId", messages);
 
 		ArgumentCaptor<CreateEventRequest> requestCaptor = ArgumentCaptor.forClass(CreateEventRequest.class);
-		verify(this.client).createEvent(requestCaptor.capture());
+		then(this.client).should().createEvent(requestCaptor.capture());
 
 		// Should only have 1 payload (USER message), SYSTEM message should be filtered
 		// out
@@ -328,8 +341,8 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 				new SystemMessage("system message") // This will cause exception
 		);
 
-		assertThat(Assertions.assertThrows(IllegalStateException.class,
-				() -> this.memoryRepository.saveAll("testActorId:testSessionId", messages)))
+		assertThatThrownBy(() -> this.memoryRepository.saveAll("testActorId:testSessionId", messages))
+			.isInstanceOf(IllegalStateException.class)
 			.hasMessageContaining("Unsupported message type: SystemMessage");
 	}
 
@@ -343,24 +356,22 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 
 		List<Message> messages = List.of(UserMessage.builder().text("old message 1").metadata(existingMetadata).build(),
 				AssistantMessage.builder().content("old message 2").properties(existingMetadata).build(),
-				UserMessage.builder().text("new message 1").build(), // No eventId -
-																		// should be saved
-				AssistantMessage.builder().content("new message 2").build() // No eventId
-																			// - should be
-																			// saved
-		);
+				// no eventId - should be saved
+				UserMessage.builder().text("new message 1").build(),
+				// no eventId - should be saved
+				AssistantMessage.builder().content("new message 2").build());
 
 		CreateEventResponse response = CreateEventResponse.builder()
 			.event(Event.builder().eventId("new-event-id").memoryId("testMemoryId").build())
 			.build();
-		when(this.client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+		given(this.client.createEvent(any(CreateEventRequest.class))).willReturn(response);
 
 		// When
 		this.memoryRepository.saveAll("testActorId:testSessionId", messages);
 
 		// Then: Only 2 new messages should be saved
 		ArgumentCaptor<CreateEventRequest> requestCaptor = ArgumentCaptor.forClass(CreateEventRequest.class);
-		verify(this.client, times(1)).createEvent(requestCaptor.capture());
+		then(this.client).should(times(1)).createEvent(requestCaptor.capture());
 		assertThat(requestCaptor.getValue().payload()).hasSize(2);
 		assertThat(requestCaptor.getValue().payload().get(0).conversational().content().text())
 			.isEqualTo("new message 1");
@@ -381,7 +392,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		this.memoryRepository.saveAll("testActorId:testSessionId", messages);
 
 		// Then: No createEvent call should be made
-		verify(this.client, never()).createEvent(any(CreateEventRequest.class));
+		then(this.client).should(never()).createEvent(any(CreateEventRequest.class));
 	}
 
 	@Test
@@ -397,7 +408,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		CreateEventResponse response = CreateEventResponse.builder()
 			.event(Event.builder().eventId(returnedEventId).memoryId("testMemoryId").build())
 			.build();
-		when(this.client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+		given(this.client.createEvent(any(CreateEventRequest.class))).willReturn(response);
 
 		// When
 		this.memoryRepository.saveAll("testActorId:testSessionId", messages);
@@ -427,7 +438,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 			.build();
 
 		ListEventsResponse listEventsResponse = ListEventsResponse.builder().events(event).build();
-		when(this.client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(listEventsResponse);
 
 		// When
 		List<Message> messages = this.memoryRepository.findByConversationId("testActorId:testSessionId");
@@ -470,12 +481,12 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 			.build();
 
 		ListEventsResponse listEventsResponse = ListEventsResponse.builder().events(existingEvent).build();
-		when(this.client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(listEventsResponse);
 
 		CreateEventResponse createResponse = CreateEventResponse.builder()
 			.event(Event.builder().eventId(newEventId).memoryId("testMemoryId").build())
 			.build();
-		when(this.client.createEvent(any(CreateEventRequest.class))).thenReturn(createResponse);
+		given(this.client.createEvent(any(CreateEventRequest.class))).willReturn(createResponse);
 
 		// Step 1: Find existing messages
 		List<Message> existingMessages = this.memoryRepository.findByConversationId("testActorId:testSessionId");
@@ -491,7 +502,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 
 		// Verify: Only new messages were saved
 		ArgumentCaptor<CreateEventRequest> requestCaptor = ArgumentCaptor.forClass(CreateEventRequest.class);
-		verify(this.client, times(1)).createEvent(requestCaptor.capture());
+		then(this.client).should(times(1)).createEvent(requestCaptor.capture());
 		assertThat(requestCaptor.getValue().payload()).hasSize(2);
 		assertThat(requestCaptor.getValue().payload().get(0).conversational().content().text())
 			.isEqualTo("new user message");
@@ -505,7 +516,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		this.memoryRepository.saveAll("testActorId:testSessionId", List.of());
 
 		// Then: No createEvent call
-		verify(this.client, never()).createEvent(any(CreateEventRequest.class));
+		then(this.client).should(never()).createEvent(any(CreateEventRequest.class));
 	}
 
 	@Test
@@ -514,7 +525,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		this.memoryRepository.saveAll("testActorId:testSessionId", null);
 
 		// Then: No createEvent call
-		verify(this.client, never()).createEvent(any(CreateEventRequest.class));
+		then(this.client).should(never()).createEvent(any(CreateEventRequest.class));
 	}
 
 	@Test
@@ -531,14 +542,14 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		CreateEventResponse response = CreateEventResponse.builder()
 			.event(Event.builder().eventId("new-event-id").memoryId("testMemoryId").build())
 			.build();
-		when(this.client.createEvent(any(CreateEventRequest.class))).thenReturn(response);
+		given(this.client.createEvent(any(CreateEventRequest.class))).willReturn(response);
 
 		// When
 		this.memoryRepository.saveAll("testActorId:testSessionId", messages);
 
 		// Then: New messages should be in order
 		ArgumentCaptor<CreateEventRequest> requestCaptor = ArgumentCaptor.forClass(CreateEventRequest.class);
-		verify(this.client).createEvent(requestCaptor.capture());
+		then(this.client).should().createEvent(requestCaptor.capture());
 		List<PayloadType> payloads = requestCaptor.getValue().payload();
 		assertThat(payloads).hasSize(3);
 		assertThat(payloads.get(0).conversational().content().text()).isEqualTo("new 1");
@@ -578,7 +589,7 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 							.build())
 						.build())
 			.build();
-		when(this.client.listEvents(any(ListEventsRequest.class))).thenReturn(listEventsResponse);
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(listEventsResponse);
 
 		// When
 		List<Message> messages = this.memoryRepository.findByConversationId("testActorId:testSessionId");
@@ -596,28 +607,27 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		List<Event> firstPage = IntStream.range(0, 3).mapToObj((i) -> this.textEvent("page1-msg-" + i)).toList();
 		List<Event> secondPage = IntStream.range(0, 2).mapToObj((i) -> this.textEvent("page2-msg-" + i)).toList();
 
-		when(this.client.listEvents(any(ListEventsRequest.class)))
-			.thenReturn(ListEventsResponse.builder().events(firstPage).nextToken("next").build())
-			.thenReturn(ListEventsResponse.builder().events(secondPage).build());
+		given(this.client.listEvents(any(ListEventsRequest.class)))
+			.willReturn(ListEventsResponse.builder().events(firstPage).nextToken("next").build())
+			.willReturn(ListEventsResponse.builder().events(secondPage).build());
 
 		// When
 		List<Message> messages = this.memoryRepository.findByConversationId("testActorId:testSessionId");
 
 		// Then: both pages fetched, and chronological order is preserved (second page
 		// first after reversal).
-		verify(this.client, times(2)).listEvents(any(ListEventsRequest.class));
+		then(this.client).should(times(2)).listEvents(any(ListEventsRequest.class));
 		assertThat(messages).hasSize(5);
 		assertThat(messages.get(0).getText()).isEqualTo("page2-msg-1");
 		assertThat(messages.get(4).getText()).isEqualTo("page1-msg-0");
 	}
 
 	private Event textEvent(String text) {
-		return Event.builder()
-			.payload(PayloadType.builder()
-				.conversational(
-						Conversational.builder().role(Role.USER).content(Content.builder().text(text).build()).build())
-				.build())
+		Conversational conversational = Conversational.builder()
+			.role(Role.USER)
+			.content(Content.builder().text(text).build())
 			.build();
+		return Event.builder().payload(PayloadType.builder().conversational(conversational).build()).build();
 	}
 
 	@Test
@@ -627,18 +637,18 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 		List<Event> firstPage = IntStream.range(0, 10).mapToObj((i) -> this.eventWithId("evt-" + i)).toList();
 		List<Event> secondPage = IntStream.range(10, 15).mapToObj((i) -> this.eventWithId("evt-" + i)).toList();
 
-		when(this.client.listEvents(any(ListEventsRequest.class)))
-			.thenReturn(ListEventsResponse.builder().events(firstPage).nextToken("page2").build())
-			.thenReturn(ListEventsResponse.builder().events(secondPage).build());
+		given(this.client.listEvents(any(ListEventsRequest.class)))
+			.willReturn(ListEventsResponse.builder().events(firstPage).nextToken("page2").build())
+			.willReturn(ListEventsResponse.builder().events(secondPage).build());
 
 		// When
 		this.memoryRepository.deleteByConversationId("testActorId:testSessionId");
 
 		// Then: listEvents is called twice (pagination followed), deleteEvent is called
 		// once per event.
-		verify(this.client, times(2)).listEvents(any(ListEventsRequest.class));
+		then(this.client).should(times(2)).listEvents(any(ListEventsRequest.class));
 		ArgumentCaptor<DeleteEventRequest> deleteCaptor = ArgumentCaptor.forClass(DeleteEventRequest.class);
-		verify(this.client, times(15)).deleteEvent(deleteCaptor.capture());
+		then(this.client).should(times(15)).deleteEvent(deleteCaptor.capture());
 
 		List<String> deletedIds = deleteCaptor.getAllValues().stream().map(DeleteEventRequest::eventId).toList();
 		assertThat(deletedIds)

@@ -154,10 +154,10 @@ class BrowserChatFlowIT {
 
 		@Bean
 		ChatModel chatModel() {
-			return BedrockProxyChatModel.builder()
-				.defaultOptions(
-						BedrockChatOptions.builder().model("global.anthropic.claude-sonnet-4-5-20250929-v1:0").build())
+			BedrockChatOptions options = BedrockChatOptions.builder()
+				.model("global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 				.build();
+			return BedrockProxyChatModel.builder().defaultOptions(options).build();
 		}
 
 		@Bean

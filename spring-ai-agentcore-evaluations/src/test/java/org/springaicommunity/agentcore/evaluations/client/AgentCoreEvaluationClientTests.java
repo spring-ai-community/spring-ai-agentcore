@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springaicommunity.agentcore.evaluations.client;
 
 import java.util.HashMap;
@@ -26,8 +27,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
-
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcore.model.EvaluateRequest;
@@ -36,8 +35,9 @@ import software.amazon.awssdk.services.bedrockagentcore.model.EvaluationResultCo
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Tests for {@link AgentCoreEvaluationClient}. Focuses on contract-level behaviour: span
@@ -49,7 +49,7 @@ class AgentCoreEvaluationClientTests {
 	@Test
 	void convertsNestedSpansAndNullsToDocumentFaithfully() {
 		BedrockAgentCoreClient sdk = mock(BedrockAgentCoreClient.class);
-		when(sdk.evaluate(any(EvaluateRequest.class))).thenReturn(EvaluateResponse.builder().build());
+		given(sdk.evaluate(any(EvaluateRequest.class))).willReturn(EvaluateResponse.builder().build());
 
 		Map<String, Object> span = new HashMap<>();
 		span.put("traceId", "t1");
@@ -60,7 +60,7 @@ class AgentCoreEvaluationClientTests {
 		new AgentCoreEvaluationClient(sdk).evaluate("Builtin.Helpfulness", List.of(span));
 
 		ArgumentCaptor<EvaluateRequest> captor = ArgumentCaptor.forClass(EvaluateRequest.class);
-		Mockito.verify(sdk).evaluate(captor.capture());
+		then(sdk).should().evaluate(captor.capture());
 		List<Document> sent = captor.getValue().evaluationInput().sessionSpans();
 
 		assertThat(sent).hasSize(1);
@@ -82,8 +82,8 @@ class AgentCoreEvaluationClientTests {
 			.errorCode("AgentSpanMappingException")
 			.errorMessage("bad span")
 			.build();
-		when(sdk.evaluate(any(EvaluateRequest.class)))
-			.thenReturn(EvaluateResponse.builder().evaluationResults(errored).build());
+		given(sdk.evaluate(any(EvaluateRequest.class)))
+			.willReturn(EvaluateResponse.builder().evaluationResults(errored).build());
 
 		List<EvaluationResult> results = new AgentCoreEvaluationClient(sdk).evaluate("Builtin.Helpfulness",
 				List.of(Map.of("k", "v")));
@@ -98,7 +98,7 @@ class AgentCoreEvaluationClientTests {
 	@Test
 	void evaluateAllIsolatesPerEvaluatorExceptions() {
 		BedrockAgentCoreClient sdk = mock(BedrockAgentCoreClient.class);
-		when(sdk.evaluate(any(EvaluateRequest.class))).thenAnswer((inv) -> {
+		given(sdk.evaluate(any(EvaluateRequest.class))).willAnswer((inv) -> {
 			String id = inv.getArgument(0, EvaluateRequest.class).evaluatorId();
 			if ("Builtin.Correctness".equals(id)) {
 				throw new IllegalStateException("boom");
@@ -139,7 +139,7 @@ class AgentCoreEvaluationClientTests {
 		AtomicInteger inFlight = new AtomicInteger();
 
 		BedrockAgentCoreClient sdk = mock(BedrockAgentCoreClient.class);
-		when(sdk.evaluate(any(EvaluateRequest.class))).thenAnswer((inv) -> {
+		given(sdk.evaluate(any(EvaluateRequest.class))).willAnswer((inv) -> {
 			int n = inFlight.incrementAndGet();
 			maxConcurrent.accumulateAndGet(n, Math::max);
 			latch.countDown();

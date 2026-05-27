@@ -441,58 +441,24 @@ class CodeInterpreterToolsIT {
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 
 		// Session 1: generates chart1.png
-		executor.submit(() -> {
-			try {
-				ToolCallReactiveContextHolder
-					.setContext(Context.of(SessionConstants.SESSION_ID_KEY, "parallel-session-1"));
-				CodeInterpreterTools tools1 = new CodeInterpreterTools(this.client, sharedStore);
-
-				startLatch.await();
-				tools1.executeCode("python", """
-						import matplotlib.pyplot as plt
-						plt.figure()
-						plt.bar(['A'], [10])
-						plt.title('Session 1')
-						plt.savefig('chart1.png')
-						print('session1')
-						""");
-				session1Files.set(sharedStore.retrieve("parallel-session-1"));
-			}
-			catch (Exception ex) {
-				ex.printStackTrace();
-			}
-			finally {
-				ToolCallReactiveContextHolder.clearContext();
-				doneLatch.countDown();
-			}
-		});
+		executor.submit(() -> this.runSessionFixture(sharedStore, "parallel-session-1", """
+				import matplotlib.pyplot as plt
+				plt.figure()
+				plt.bar(['A'], [10])
+				plt.title('Session 1')
+				plt.savefig('chart1.png')
+				print('session1')
+				""", session1Files, startLatch, doneLatch));
 
 		// Session 2: generates chart2.png
-		executor.submit(() -> {
-			try {
-				ToolCallReactiveContextHolder
-					.setContext(Context.of(SessionConstants.SESSION_ID_KEY, "parallel-session-2"));
-				CodeInterpreterTools tools2 = new CodeInterpreterTools(this.client, sharedStore);
-
-				startLatch.await();
-				tools2.executeCode("python", """
-						import matplotlib.pyplot as plt
-						plt.figure()
-						plt.bar(['B'], [20])
-						plt.title('Session 2')
-						plt.savefig('chart2.png')
-						print('session2')
-						""");
-				session2Files.set(sharedStore.retrieve("parallel-session-2"));
-			}
-			catch (Exception ex) {
-				ex.printStackTrace();
-			}
-			finally {
-				ToolCallReactiveContextHolder.clearContext();
-				doneLatch.countDown();
-			}
-		});
+		executor.submit(() -> this.runSessionFixture(sharedStore, "parallel-session-2", """
+				import matplotlib.pyplot as plt
+				plt.figure()
+				plt.bar(['B'], [20])
+				plt.title('Session 2')
+				plt.savefig('chart2.png')
+				print('session2')
+				""", session2Files, startLatch, doneLatch));
 
 		// Start both threads simultaneously
 		startLatch.countDown();
@@ -509,6 +475,25 @@ class CodeInterpreterToolsIT {
 		// Verify store is empty for both sessions
 		assertThat(sharedStore.hasArtifacts("parallel-session-1")).isFalse();
 		assertThat(sharedStore.hasArtifacts("parallel-session-2")).isFalse();
+	}
+
+	private void runSessionFixture(ArtifactStore<GeneratedFile> sharedStore, String sessionId, String code,
+			AtomicReference<List<GeneratedFile>> capturedFiles, CountDownLatch startLatch, CountDownLatch doneLatch) {
+		try {
+			ToolCallReactiveContextHolder.setContext(Context.of(SessionConstants.SESSION_ID_KEY, sessionId));
+			CodeInterpreterTools tools = new CodeInterpreterTools(this.client, sharedStore);
+
+			startLatch.await();
+			tools.executeCode("python", code);
+			capturedFiles.set(sharedStore.retrieve(sessionId));
+		}
+		catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		finally {
+			ToolCallReactiveContextHolder.clearContext();
+			doneLatch.countDown();
+		}
 	}
 
 	@SpringBootApplication(exclude = { AgentCoreCodeInterpreterAutoConfiguration.class })

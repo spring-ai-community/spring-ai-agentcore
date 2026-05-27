@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.List;
@@ -34,7 +35,10 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrat
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 
 /**
  * Unit tests for {@link AgentCoreLongTermMemoryNamespaceValidator}.
@@ -253,7 +257,7 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 	private void mockGetMemoryResponse(List<MemoryStrategy> strategies) {
 		Memory memory = Memory.builder().strategies(strategies).build();
 		GetMemoryResponse response = GetMemoryResponse.builder().memory(memory).build();
-		when(this.controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+		given(this.controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 	}
 
 	@Nested
@@ -293,7 +297,7 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 					Map.of("semantic-123", List.of(expectedPattern)));
 
 			// Then
-			verify(this.registrar).registerNamespace("test-memory", "semantic-123", expectedPattern);
+			then(this.registrar).should().registerNamespace("test-memory", "semantic-123", expectedPattern);
 		}
 
 		@Test
@@ -311,7 +315,7 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 					Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())));
 
 			// Then
-			verify(this.registrar, never()).registerNamespace(any(), any(), any());
+			then(this.registrar).should(never()).registerNamespace(any(), any(), any());
 		}
 
 		@Test
@@ -331,7 +335,7 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 				.hasMessageContaining("Namespace mismatch");
 
 			// Verify registrar was never called
-			verify(this.registrar, never()).registerNamespace(any(), any(), any());
+			then(this.registrar).should(never()).registerNamespace(any(), any(), any());
 		}
 
 	}

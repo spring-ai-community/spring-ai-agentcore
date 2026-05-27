@@ -63,6 +63,10 @@ class AgentCoreMemoryE2EIT extends AgentCoreMemoryIT {
 
 	private static final String MEMORY_NAME = "e2e_test_" + TEST_ID;
 
+	private static final String ACTOR_NAMESPACE = "/strategies/{memoryStrategyId}/actors/{actorId}";
+
+	private static final String SESSION_NAMESPACE = "/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}";
+
 	private static BedrockAgentCoreControlClient controlClient;
 
 	@BeforeAll
@@ -97,40 +101,7 @@ class AgentCoreMemoryE2EIT extends AgentCoreMemoryIT {
 
 		// Add LTM strategies (all 4)
 		System.out.println("Adding LTM strategies...");
-		controlClient.updateMemory(UpdateMemoryRequest.builder()
-			.memoryId(memoryId)
-			.memoryStrategies(ModifyMemoryStrategies.builder()
-				.addMemoryStrategies(
-						MemoryStrategyInput.builder()
-							.semanticMemoryStrategy(SemanticMemoryStrategyInput.builder()
-								.name(SEMANTIC_STRATEGY_NAME)
-								.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}"))
-								.build())
-							.build(),
-						MemoryStrategyInput.builder()
-							.userPreferenceMemoryStrategy(UserPreferenceMemoryStrategyInput.builder()
-								.name(PREFERENCES_STRATEGY_NAME)
-								.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}"))
-								.build())
-							.build(),
-						MemoryStrategyInput.builder()
-							.summaryMemoryStrategy(SummaryMemoryStrategyInput.builder()
-								.name(SUMMARY_STRATEGY_NAME)
-								.namespaces(
-										List.of("/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
-								.build())
-							.build(),
-						MemoryStrategyInput.builder()
-							.episodicMemoryStrategy(EpisodicMemoryStrategyInput.builder()
-								.name(EPISODIC_STRATEGY_NAME)
-								.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}"))
-								.reflectionConfiguration(EpisodicReflectionConfigurationInput.builder()
-									.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}"))
-									.build())
-								.build())
-							.build())
-				.build())
-			.build());
+		addLongTermMemoryStrategies();
 
 		// Wait for strategies to be ACTIVE
 		await().atMost(Duration.ofMinutes(2)).pollInterval(Duration.ofSeconds(5)).until(() -> {
@@ -145,18 +116,68 @@ class AgentCoreMemoryE2EIT extends AgentCoreMemoryIT {
 		});
 
 		// Get strategy IDs
-		var memory = controlClient.getMemory(GetMemoryRequest.builder().memoryId(memoryId).build()).memory();
-		for (var strategy : memory.strategies()) {
-			switch (strategy.name()) {
-				case SEMANTIC_STRATEGY_NAME -> semanticStrategyId = strategy.strategyId();
-				case PREFERENCES_STRATEGY_NAME -> preferencesStrategyId = strategy.strategyId();
-				case SUMMARY_STRATEGY_NAME -> summaryStrategyId = strategy.strategyId();
-				case EPISODIC_STRATEGY_NAME -> episodicStrategyId = strategy.strategyId();
-			}
-		}
+		assignStrategyIds();
 
 		assertStrategyIdsNotNull();
 		logMemoryInfo("Memory ready: ");
+	}
+
+	private static void addLongTermMemoryStrategies() {
+		controlClient.updateMemory(UpdateMemoryRequest.builder()
+			.memoryId(memoryId)
+			.memoryStrategies(ModifyMemoryStrategies.builder()
+				.addMemoryStrategies(
+						MemoryStrategyInput.builder()
+							.semanticMemoryStrategy(SemanticMemoryStrategyInput.builder()
+								.name(SEMANTIC_STRATEGY_NAME)
+								.namespaces(List.of(ACTOR_NAMESPACE))
+								.build())
+							.build(),
+						MemoryStrategyInput.builder()
+							.userPreferenceMemoryStrategy(UserPreferenceMemoryStrategyInput.builder()
+								.name(PREFERENCES_STRATEGY_NAME)
+								.namespaces(List.of(ACTOR_NAMESPACE))
+								.build())
+							.build(),
+						MemoryStrategyInput.builder()
+							.summaryMemoryStrategy(SummaryMemoryStrategyInput.builder()
+								.name(SUMMARY_STRATEGY_NAME)
+								.namespaces(List.of(SESSION_NAMESPACE))
+								.build())
+							.build(),
+						MemoryStrategyInput.builder()
+							.episodicMemoryStrategy(EpisodicMemoryStrategyInput.builder()
+								.name(EPISODIC_STRATEGY_NAME)
+								.namespaces(List.of(ACTOR_NAMESPACE))
+								.reflectionConfiguration(EpisodicReflectionConfigurationInput.builder()
+									.namespaces(List.of(ACTOR_NAMESPACE))
+									.build())
+								.build())
+							.build())
+				.build())
+			.build());
+	}
+
+	private static void assignStrategyIds() {
+		var memory = controlClient.getMemory(GetMemoryRequest.builder().memoryId(memoryId).build()).memory();
+		for (var strategy : memory.strategies()) {
+			String strategyId = strategy.strategyId();
+			switch (strategy.name()) {
+				case SEMANTIC_STRATEGY_NAME -> {
+					semanticStrategyId = strategyId;
+				}
+				case PREFERENCES_STRATEGY_NAME -> {
+					preferencesStrategyId = strategyId;
+				}
+				case SUMMARY_STRATEGY_NAME -> {
+					summaryStrategyId = strategyId;
+				}
+				case EPISODIC_STRATEGY_NAME -> {
+					episodicStrategyId = strategyId;
+				}
+				default -> throw new IllegalStateException("Unknown strategy: " + strategy.name());
+			}
+		}
 	}
 
 	@AfterAll

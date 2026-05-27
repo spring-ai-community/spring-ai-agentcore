@@ -53,26 +53,40 @@ spring-ai-agentcore/
 ## Build & Test
 
 ```bash
-# Build
-mvn clean install
+# Build a single module (preferred for development)
+mvn clean verify -pl spring-ai-agentcore-memory
 
-# Unit tests only
-mvn test
+# Build with upstream dependencies
+mvn clean verify -pl spring-ai-agentcore-memory -am
 
-# Full test suite (requires AWS credentials)
-AGENTCORE_IT=true mvn clean verify -pl spring-ai-agentcore-memory
+# Fix style before committing
+mvn spring-javaformat:apply rewrite:run -pl <module>
 
-# Format code (required before commit)
-mvn spring-javaformat:apply
+# Full build (CI does this — rarely needed locally)
+mvn clean verify
+
+# Integration tests (requires AWS credentials)
+AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-memory
 ```
 
 ## Code Conventions
 
 - **Java version**: 17+
-- **Code style**: Spring Java Format (run `mvn spring-javaformat:apply`)
+- **Code style**: Spring Java Format + Checkstyle + OpenRewrite (see `build-tools/`)
 - **License**: Apache 2.0 headers required on all Java files
-- **Testing**: Unit tests in `src/test`, integration tests with `IT` suffix
+- **Testing**: Unit tests `*Tests.java`, integration tests `*IT.java`
+- **Mocking**: Use `BDDMockito.given/then` (not `Mockito.when/verify`)
+- **Assertions**: Use AssertJ `assertThat(...)` (not JUnit `assertEquals`)
 - **Properties prefix**: `agentcore.memory.*` for memory module
+
+### Style enforcement
+
+After writing code, always run:
+```bash
+mvn spring-javaformat:apply rewrite:run -pl <module>
+```
+
+This fixes: import ordering, `this.` qualifiers, lambda formatting, inner type positioning, ternary style, catch formatting, method visibility, overload grouping, fully-qualified type references, and unused imports.
 
 ## Key Dependencies
 
@@ -98,4 +112,5 @@ AGENTCORE_MEMORY_LONG_TERM_EPISODIC_STRATEGY_ID=EpisodicMemory-xxxxx
 | Test | `mvn test` |
 | Integration test | `AGENTCORE_IT=true mvn verify` |
 | Format | `mvn spring-javaformat:apply` |
+| Fix all style | `mvn spring-javaformat:apply rewrite:run -pl <module>` |
 | Run memory IT | `./scripts/it-memory.sh` |

@@ -20,10 +20,7 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.http.HttpHeaders;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class AgentCoreContextTests {
 
@@ -32,8 +29,8 @@ class AgentCoreContextTests {
 		var context = new AgentCoreContext(null);
 		var headers = context.getHeaders();
 
-		assertNotNull(headers);
-		assertTrue(headers.isEmpty());
+		assertThat(headers).isNotNull();
+		assertThat(headers.isEmpty()).isTrue();
 	}
 
 	@Test
@@ -41,7 +38,7 @@ class AgentCoreContextTests {
 		var context = new AgentCoreContext(new HttpHeaders());
 		var value = context.getHeader(null);
 
-		assertNull(value);
+		assertThat(value).isNull();
 	}
 
 	@Test
@@ -49,7 +46,7 @@ class AgentCoreContextTests {
 		var context = new AgentCoreContext(new HttpHeaders());
 		var value = context.getHeader("non-existent-header");
 
-		assertNull(value);
+		assertThat(value).isNull();
 	}
 
 	@Test
@@ -61,8 +58,8 @@ class AgentCoreContextTests {
 		var context = new AgentCoreContext(originalHeaders);
 
 		var retrievedHeaders = context.getHeaders();
-		assertEquals("test-value", retrievedHeaders.getFirst("test-header"));
-		assertEquals("session-123", retrievedHeaders.getFirst(AgentCoreHeaders.SESSION_ID));
+		assertThat(retrievedHeaders.getFirst("test-header")).isEqualTo("test-value");
+		assertThat(retrievedHeaders.getFirst(AgentCoreHeaders.SESSION_ID)).isEqualTo("session-123");
 	}
 
 	@Test
@@ -73,9 +70,9 @@ class AgentCoreContextTests {
 
 		var context = new AgentCoreContext(headers);
 
-		assertEquals("session-456", context.getHeader(AgentCoreHeaders.SESSION_ID));
-		assertEquals("req-789", context.getHeader(AgentCoreHeaders.REQUEST_ID));
-		assertNull(context.getHeader("non-existent-header"));
+		assertThat(context.getHeader(AgentCoreHeaders.SESSION_ID)).isEqualTo("session-456");
+		assertThat(context.getHeader(AgentCoreHeaders.REQUEST_ID)).isEqualTo("req-789");
+		assertThat(context.getHeader("non-existent-header")).isNull();
 	}
 
 	@Test
@@ -83,8 +80,8 @@ class AgentCoreContextTests {
 		var headers = new HttpHeaders();
 		var context = new AgentCoreContext(headers);
 
-		assertNull(context.getHeader("test-header"));
-		assertTrue(context.getHeaders().isEmpty());
+		assertThat(context.getHeader("test-header")).isNull();
+		assertThat(context.getHeaders().isEmpty()).isTrue();
 	}
 
 }

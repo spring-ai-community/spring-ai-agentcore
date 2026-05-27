@@ -30,7 +30,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.mockito.Mockito.when;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -47,8 +47,8 @@ class AgentCorePingControllerTests {
 
 	@Test
 	void shouldReturnHealthyStatus() throws Exception {
-		when(this.mockPingService.getPingStatus())
-			.thenReturn(new AgentCorePingResponse(PingStatus.HEALTHY, HttpStatus.OK, 1234567890L));
+		given(this.mockPingService.getPingStatus())
+			.willReturn(new AgentCorePingResponse(PingStatus.HEALTHY, HttpStatus.OK, 1234567890L));
 
 		this.mockMvc.perform(get("/ping"))
 			.andExpect(status().isOk())
@@ -58,8 +58,8 @@ class AgentCorePingControllerTests {
 
 	@Test
 	void shouldReturnHealthyBusyStatus() throws Exception {
-		when(this.mockPingService.getPingStatus())
-			.thenReturn(new AgentCorePingResponse(PingStatus.HEALTHY_BUSY, HttpStatus.OK, 1234567890L));
+		given(this.mockPingService.getPingStatus())
+			.willReturn(new AgentCorePingResponse(PingStatus.HEALTHY_BUSY, HttpStatus.OK, 1234567890L));
 
 		this.mockMvc.perform(get("/ping"))
 			.andExpect(status().isOk())
@@ -69,8 +69,8 @@ class AgentCorePingControllerTests {
 
 	@Test
 	void shouldReturnUnhealthyStatus() throws Exception {
-		when(this.mockPingService.getPingStatus())
-			.thenReturn(new AgentCorePingResponse(PingStatus.UNHEALTHY, HttpStatus.SERVICE_UNAVAILABLE, 1234567890L));
+		given(this.mockPingService.getPingStatus())
+			.willReturn(new AgentCorePingResponse(PingStatus.UNHEALTHY, HttpStatus.SERVICE_UNAVAILABLE, 1234567890L));
 
 		this.mockMvc.perform(get("/ping"))
 			.andExpect(status().isServiceUnavailable())

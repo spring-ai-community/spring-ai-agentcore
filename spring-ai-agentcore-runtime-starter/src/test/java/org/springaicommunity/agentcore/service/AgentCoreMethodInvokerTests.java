@@ -25,14 +25,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
-
-import org.springframework.http.HttpHeaders;
 import org.springaicommunity.agentcore.context.AgentCoreContext;
 import org.springaicommunity.agentcore.exception.AgentCoreInvocationException;
 
+import org.springframework.http.HttpHeaders;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.when;
+import static org.mockito.BDDMockito.given;
 
 @ExtendWith(MockitoExtension.class)
 class AgentCoreMethodInvokerTests {
@@ -58,9 +58,9 @@ class AgentCoreMethodInvokerTests {
 		var testBean = new TestBean();
 		var method = TestBean.class.getDeclaredMethod("stringMethod", String.class);
 
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(true);
-		when(this.mockRegistry.getAgentMethod()).thenReturn(method);
-		when(this.mockRegistry.getAgentBean()).thenReturn(testBean);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(true);
+		given(this.mockRegistry.getAgentMethod()).willReturn(method);
+		given(this.mockRegistry.getAgentBean()).willReturn(testBean);
 
 		var result = this.invoker.invokeAgentMethod(this.testRequest);
 
@@ -73,9 +73,9 @@ class AgentCoreMethodInvokerTests {
 		var method = TestBean.class.getDeclaredMethod("mapMethod", Map.class);
 		var mapRequest = Map.of("prompt", "test prompt");
 
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(true);
-		when(this.mockRegistry.getAgentMethod()).thenReturn(method);
-		when(this.mockRegistry.getAgentBean()).thenReturn(testBean);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(true);
+		given(this.mockRegistry.getAgentMethod()).willReturn(method);
+		given(this.mockRegistry.getAgentBean()).willReturn(testBean);
 
 		var result = this.invoker.invokeAgentMethod(mapRequest);
 
@@ -88,9 +88,9 @@ class AgentCoreMethodInvokerTests {
 		var method = TestBean.class.getDeclaredMethod("customTypeMethod", CustomRequest.class);
 		var convertedRequest = new CustomRequest("test prompt");
 
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(true);
-		when(this.mockRegistry.getAgentMethod()).thenReturn(method);
-		when(this.mockRegistry.getAgentBean()).thenReturn(testBean);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(true);
+		given(this.mockRegistry.getAgentMethod()).willReturn(method);
+		given(this.mockRegistry.getAgentBean()).willReturn(testBean);
 
 		var result = this.invoker.invokeAgentMethod(convertedRequest);
 
@@ -102,9 +102,9 @@ class AgentCoreMethodInvokerTests {
 		var testBean = new TestBean();
 		var method = TestBean.class.getDeclaredMethod("noArgsMethod");
 
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(true);
-		when(this.mockRegistry.getAgentMethod()).thenReturn(method);
-		when(this.mockRegistry.getAgentBean()).thenReturn(testBean);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(true);
+		given(this.mockRegistry.getAgentMethod()).willReturn(method);
+		given(this.mockRegistry.getAgentBean()).willReturn(testBean);
 
 		var result = this.invoker.invokeAgentMethod(this.testRequest);
 
@@ -113,7 +113,7 @@ class AgentCoreMethodInvokerTests {
 
 	@Test
 	void shouldThrowExceptionWhenNoMethodRegistered() {
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(false);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(false);
 
 		assertThatThrownBy(() -> this.invoker.invokeAgentMethod(this.testRequest))
 			.isInstanceOf(AgentCoreInvocationException.class)
@@ -125,9 +125,9 @@ class AgentCoreMethodInvokerTests {
 		var testBean = new TestBean();
 		var method = TestBean.class.getDeclaredMethod("unsupportedMethod", String.class, String.class);
 
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(true);
-		when(this.mockRegistry.getAgentMethod()).thenReturn(method);
-		when(this.mockRegistry.getAgentBean()).thenReturn(testBean);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(true);
+		given(this.mockRegistry.getAgentMethod()).willReturn(method);
+		given(this.mockRegistry.getAgentBean()).willReturn(testBean);
 
 		assertThatThrownBy(() -> this.invoker.invokeAgentMethod(this.testRequest))
 			.isInstanceOf(AgentCoreInvocationException.class)
@@ -139,9 +139,9 @@ class AgentCoreMethodInvokerTests {
 		var testBean = new TestBean();
 		var method = TestBean.class.getDeclaredMethod("throwingMethod", String.class);
 
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(true);
-		when(this.mockRegistry.getAgentMethod()).thenReturn(method);
-		when(this.mockRegistry.getAgentBean()).thenReturn(testBean);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(true);
+		given(this.mockRegistry.getAgentMethod()).willReturn(method);
+		given(this.mockRegistry.getAgentBean()).willReturn(testBean);
 
 		assertThatThrownBy(() -> this.invoker.invokeAgentMethod(this.testRequest)).isInstanceOf(RuntimeException.class)
 			.hasMessage("Method exception");
@@ -154,9 +154,9 @@ class AgentCoreMethodInvokerTests {
 		var headers = new HttpHeaders();
 		headers.add("test-header", "test-value");
 
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(true);
-		when(this.mockRegistry.getAgentMethod()).thenReturn(method);
-		when(this.mockRegistry.getAgentBean()).thenReturn(testBean);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(true);
+		given(this.mockRegistry.getAgentMethod()).willReturn(method);
+		given(this.mockRegistry.getAgentBean()).willReturn(testBean);
 
 		var result = this.invoker.invokeAgentMethod(this.testRequest, headers);
 
@@ -170,9 +170,9 @@ class AgentCoreMethodInvokerTests {
 		var headers = new HttpHeaders();
 		headers.add("session-id", "session-123");
 
-		when(this.mockRegistry.hasAgentMethod()).thenReturn(true);
-		when(this.mockRegistry.getAgentMethod()).thenReturn(method);
-		when(this.mockRegistry.getAgentBean()).thenReturn(testBean);
+		given(this.mockRegistry.hasAgentMethod()).willReturn(true);
+		given(this.mockRegistry.getAgentMethod()).willReturn(method);
+		given(this.mockRegistry.getAgentBean()).willReturn(testBean);
 
 		var result = this.invoker.invokeAgentMethod(this.testRequest, headers);
 

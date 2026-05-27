@@ -30,8 +30,8 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.UpdateMemor
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 /**
  * Unit tests for {@link AgentCoreLongTermMemoryNamespaceRegistrar}.
@@ -56,8 +56,8 @@ class AgentCoreLongTermMemoryNamespaceRegistrarTests {
 	@DisplayName("Should call updateMemory with correct parameters")
 	void shouldCallUpdateMemoryWithCorrectParameters() {
 		// Given
-		when(this.controlClient.updateMemory(any(UpdateMemoryRequest.class)))
-			.thenReturn(UpdateMemoryResponse.builder().build());
+		given(this.controlClient.updateMemory(any(UpdateMemoryRequest.class)))
+			.willReturn(UpdateMemoryResponse.builder().build());
 
 		String memoryId = "test-memory";
 		String strategyId = "semantic-123";
@@ -67,7 +67,7 @@ class AgentCoreLongTermMemoryNamespaceRegistrarTests {
 		this.registrar.registerNamespace(memoryId, strategyId, namespacePattern);
 
 		// Then
-		verify(this.controlClient)
+		then(this.controlClient).should()
 			.updateMemory(argThat((UpdateMemoryRequest request) -> request.memoryId().equals(memoryId)
 					&& request.memoryStrategies().modifyMemoryStrategies().size() == 1
 					&& request.memoryStrategies().modifyMemoryStrategies().get(0).memoryStrategyId().equals(strategyId)
@@ -82,8 +82,8 @@ class AgentCoreLongTermMemoryNamespaceRegistrarTests {
 	@DisplayName("Should throw ConfigurationException when updateMemory fails")
 	void shouldThrowConfigurationExceptionOnFailure() {
 		// Given
-		when(this.controlClient.updateMemory(any(UpdateMemoryRequest.class)))
-			.thenThrow(new RuntimeException("API error"));
+		given(this.controlClient.updateMemory(any(UpdateMemoryRequest.class)))
+			.willThrow(new RuntimeException("API error"));
 
 		// When/Then
 		assertThatThrownBy(() -> this.registrar.registerNamespace("test-memory", "semantic-123", "/some/pattern"))

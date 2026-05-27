@@ -27,12 +27,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 class RateLimitingFilterBucketCacheTests {
 
@@ -51,16 +51,16 @@ class RateLimitingFilterBucketCacheTests {
 		FilterChain chain = mock(FilterChain.class);
 		HttpServletResponse response = mock(HttpServletResponse.class);
 		StringWriter body = new StringWriter();
-		when(response.getWriter()).thenReturn(new PrintWriter(body));
+		given(response.getWriter()).willReturn(new PrintWriter(body));
 
 		for (int i = 0; i < 4; i++) {
 			HttpServletRequest request = mock(HttpServletRequest.class);
-			when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
-			when(request.getHeader("X-Forwarded-For")).thenReturn("10.0.1." + i);
+			given(request.getRequestURI()).willReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+			given(request.getHeader("X-Forwarded-For")).willReturn("10.0.1." + i);
 			filter.doFilter(request, response, chain);
 		}
 
-		assertEquals(3, bucketCountAfterMaintenance(filter));
+		assertThat(bucketCountAfterMaintenance(filter)).isEqualTo(3);
 	}
 
 	@Test
@@ -69,17 +69,17 @@ class RateLimitingFilterBucketCacheTests {
 		FilterChain chain = mock(FilterChain.class);
 		HttpServletResponse response = mock(HttpServletResponse.class);
 		StringWriter body = new StringWriter();
-		when(response.getWriter()).thenReturn(new PrintWriter(body));
+		given(response.getWriter()).willReturn(new PrintWriter(body));
 
 		HttpServletRequest request = mock(HttpServletRequest.class);
-		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
-		when(request.getHeader("X-Forwarded-For")).thenReturn("192.168.0.1");
+		given(request.getRequestURI()).willReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		given(request.getHeader("X-Forwarded-For")).willReturn("192.168.0.1");
 
 		filter.doFilter(request, response, chain);
-		assertEquals(1, bucketCountAfterMaintenance(filter));
+		assertThat(bucketCountAfterMaintenance(filter)).isEqualTo(1);
 
 		Thread.sleep(250L);
-		assertEquals(0, bucketCountAfterMaintenance(filter));
+		assertThat(bucketCountAfterMaintenance(filter)).isEqualTo(0);
 	}
 
 	@Test
@@ -88,17 +88,17 @@ class RateLimitingFilterBucketCacheTests {
 		FilterChain chain = mock(FilterChain.class);
 		HttpServletResponse response = mock(HttpServletResponse.class);
 		StringWriter body = new StringWriter();
-		when(response.getWriter()).thenReturn(new PrintWriter(body));
+		given(response.getWriter()).willReturn(new PrintWriter(body));
 
 		HttpServletRequest request = mock(HttpServletRequest.class);
-		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
-		when(request.getHeader("X-Forwarded-For")).thenReturn("10.0.1.1");
+		given(request.getRequestURI()).willReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		given(request.getHeader("X-Forwarded-For")).willReturn("10.0.1.1");
 
 		filter.doFilter(request, response, chain);
 		filter.doFilter(request, response, chain);
 		filter.doFilter(request, response, chain);
 
-		assertEquals(1, bucketCountAfterMaintenance(filter));
+		assertThat(bucketCountAfterMaintenance(filter)).isEqualTo(1);
 	}
 
 	@Test
@@ -107,16 +107,16 @@ class RateLimitingFilterBucketCacheTests {
 		FilterChain chain = mock(FilterChain.class);
 		HttpServletResponse response = mock(HttpServletResponse.class);
 		StringWriter body = new StringWriter();
-		when(response.getWriter()).thenReturn(new PrintWriter(body));
+		given(response.getWriter()).willReturn(new PrintWriter(body));
 
 		HttpServletRequest request = mock(HttpServletRequest.class);
-		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
-		when(request.getHeader("X-Forwarded-For")).thenReturn("10.0.2.2");
+		given(request.getRequestURI()).willReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		given(request.getHeader("X-Forwarded-For")).willReturn("10.0.2.2");
 
 		filter.doFilter(request, response, chain);
 		filter.doFilter(request, response, chain);
 
-		assertEquals(1, bucketCountAfterMaintenance(filter));
+		assertThat(bucketCountAfterMaintenance(filter)).isEqualTo(1);
 	}
 
 	@Test
@@ -125,11 +125,11 @@ class RateLimitingFilterBucketCacheTests {
 		FilterChain chain = mock(FilterChain.class);
 		HttpServletResponse response = mock(HttpServletResponse.class);
 		StringWriter body = new StringWriter();
-		when(response.getWriter()).thenReturn(new PrintWriter(body));
+		given(response.getWriter()).willReturn(new PrintWriter(body));
 
 		HttpServletRequest request = mock(HttpServletRequest.class);
-		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
-		when(request.getHeader("X-Forwarded-For")).thenReturn("192.168.0.3");
+		given(request.getRequestURI()).willReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		given(request.getHeader("X-Forwarded-For")).willReturn("192.168.0.3");
 
 		filter.doFilter(request, response, chain);
 		Thread.sleep(80L);
@@ -137,7 +137,7 @@ class RateLimitingFilterBucketCacheTests {
 		Thread.sleep(80L);
 		filter.doFilter(request, response, chain);
 
-		assertEquals(1, bucketCountAfterMaintenance(filter));
+		assertThat(bucketCountAfterMaintenance(filter)).isEqualTo(1);
 	}
 
 	@Test
@@ -146,23 +146,23 @@ class RateLimitingFilterBucketCacheTests {
 		FilterChain chain = mock(FilterChain.class);
 		HttpServletResponse response = mock(HttpServletResponse.class);
 		StringWriter body = new StringWriter();
-		when(response.getWriter()).thenReturn(new PrintWriter(body));
+		given(response.getWriter()).willReturn(new PrintWriter(body));
 
 		HttpServletRequest request = mock(HttpServletRequest.class);
-		when(request.getRequestURI()).thenReturn(ThrottleConfiguration.INVOCATIONS_PATH);
-		when(request.getHeader("X-Forwarded-For")).thenReturn("192.168.0.4");
+		given(request.getRequestURI()).willReturn(ThrottleConfiguration.INVOCATIONS_PATH);
+		given(request.getHeader("X-Forwarded-For")).willReturn("192.168.0.4");
 
 		filter.doFilter(request, response, chain);
 		filter.doFilter(request, response, chain);
 		filter.doFilter(request, response, chain);
 
-		verify(chain, times(2)).doFilter(any(ServletRequest.class), any(ServletResponse.class));
+		then(chain).should(times(2)).doFilter(any(ServletRequest.class), any(ServletResponse.class));
 
 		Thread.sleep(250L);
 
 		filter.doFilter(request, response, chain);
 
-		verify(chain, times(3)).doFilter(any(ServletRequest.class), any(ServletResponse.class));
+		then(chain).should(times(3)).doFilter(any(ServletRequest.class), any(ServletResponse.class));
 	}
 
 }

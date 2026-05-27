@@ -38,7 +38,7 @@ import org.springframework.test.web.reactive.server.FluxExchangeResult;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.server.ResponseStatusException;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(classes = EndToEndWebFluxIntegrationTests.FluxTestApp.class,
 		webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -75,7 +75,7 @@ class EndToEndWebFluxIntegrationTests {
 			.expectNext("Stream")
 			.verifyComplete();
 
-		assertEquals(0, this.agentCoreTaskTracker.getCount());
+		assertThat(this.agentCoreTaskTracker.getCount()).isEqualTo(0);
 	}
 
 	@Test
@@ -98,7 +98,7 @@ class EndToEndWebFluxIntegrationTests {
 				{"id":2,"message":"response2"}""".trim()).expectNext("""
 				{"id":3,"message":"response3"}""".trim()).verifyComplete();
 
-		assertEquals(0, this.agentCoreTaskTracker.getCount());
+		assertThat(this.agentCoreTaskTracker.getCount()).isEqualTo(0);
 	}
 
 	@ParameterizedTest
@@ -114,7 +114,7 @@ class EndToEndWebFluxIntegrationTests {
 			.expectStatus()
 			.isEqualTo(expectedStatus);
 
-		assertEquals(0, this.agentCoreTaskTracker.getCount());
+		assertThat(this.agentCoreTaskTracker.getCount()).isEqualTo(0);
 	}
 
 	@SpringBootApplication(scanBasePackages = "org.springaicommunity.agentcore.autoconfigure")

@@ -153,7 +153,8 @@ class CodeInterpreterChatFlowIT {
 
 		// Session 1: create chart1.png
 		chatClient.prompt()
-			.user("Execute: import matplotlib.pyplot as plt; plt.figure(); plt.bar(['A'], [10]); plt.savefig('chart1.png'); print('done1')")
+			.user("Execute: import matplotlib.pyplot as plt; plt.figure(); "
+					+ "plt.bar(['A'], [10]); plt.savefig('chart1.png'); print('done1')")
 			.stream()
 			.content()
 			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, session1))
@@ -162,7 +163,8 @@ class CodeInterpreterChatFlowIT {
 
 		// Session 2: create chart2.png
 		chatClient.prompt()
-			.user("Execute: import matplotlib.pyplot as plt; plt.figure(); plt.bar(['B'], [20]); plt.savefig('chart2.png'); print('done2')")
+			.user("Execute: import matplotlib.pyplot as plt; plt.figure(); "
+					+ "plt.bar(['B'], [20]); plt.savefig('chart2.png'); print('done2')")
 			.stream()
 			.content()
 			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, session2))
@@ -188,10 +190,10 @@ class CodeInterpreterChatFlowIT {
 
 		@Bean
 		ChatModel chatModel() {
-			return BedrockProxyChatModel.builder()
-				.defaultOptions(
-						BedrockChatOptions.builder().model("global.anthropic.claude-sonnet-4-5-20250929-v1:0").build())
+			BedrockChatOptions options = BedrockChatOptions.builder()
+				.model("global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 				.build();
+			return BedrockProxyChatModel.builder().defaultOptions(options).build();
 		}
 
 		@Bean

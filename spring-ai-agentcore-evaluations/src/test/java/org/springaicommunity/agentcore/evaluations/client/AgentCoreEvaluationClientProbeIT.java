@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springaicommunity.agentcore.evaluations.client;
 
 import java.util.HashMap;
@@ -87,20 +88,23 @@ class AgentCoreEvaluationClientProbeIT {
 					Map.of("messages", List.of(Map.of("role", "assistant", "content", Map.of("text", ASSISTANT)))));
 			case "flat" -> Map.of("messages", List.of(Map.of("role", "user", "content", USER),
 					Map.of("role", "assistant", "content", ASSISTANT)));
-			case "parts-array" -> Map.of("input",
-					Map.of("messages",
-							List.of(Map.of("role", "user", "content", List.of(Map.of("type", "text", "text", USER))))),
-					"output", Map.of("messages", List.of(Map.of("role", "assistant", "content",
-							List.of(Map.of("type", "text", "text", ASSISTANT))))));
-			case "list-text-objs" -> Map.of("input",
-					Map.of("messages", List.of(Map.of("role", "user", "content", List.of(Map.of("text", USER))))),
-					"output", Map.of("messages",
-							List.of(Map.of("role", "assistant", "content", List.of(Map.of("text", ASSISTANT))))));
+			case "parts-array" -> Map.of("input", Map.of("messages", List.of(partsMessage("user", USER))), "output",
+					Map.of("messages", List.of(partsMessage("assistant", ASSISTANT))));
+			case "list-text-objs" -> Map.of("input", Map.of("messages", List.of(textObjMessage("user", USER))),
+					"output", Map.of("messages", List.of(textObjMessage("assistant", ASSISTANT))));
 			case "io-strings" -> Map.of("input", USER, "output", ASSISTANT);
 			case "single-messages-list" -> Map.of("input", List.of(Map.of("role", "user", "content", USER)), "output",
 					List.of(Map.of("role", "assistant", "content", ASSISTANT)));
 			default -> throw new IllegalArgumentException(variant);
 		};
+	}
+
+	private static Map<String, Object> partsMessage(String role, String text) {
+		return Map.of("role", role, "content", List.of(Map.of("type", "text", "text", text)));
+	}
+
+	private static Map<String, Object> textObjMessage(String role, String text) {
+		return Map.of("role", role, "content", List.of(Map.of("text", text)));
 	}
 
 	private static Map<String, Object> buildSpan(String traceId, String spanId, long t) {

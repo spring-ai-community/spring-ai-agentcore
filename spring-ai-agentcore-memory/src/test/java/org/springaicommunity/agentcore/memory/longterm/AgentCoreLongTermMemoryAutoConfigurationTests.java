@@ -41,8 +41,8 @@ import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for {@link AgentCoreLongTermMemoryAutoConfiguration}.
@@ -55,6 +55,18 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 	private static final String MEMORY_ID_PROP = "agentcore.memory.memory-id=test-memory";
 
 	private static final String SEMANTIC_STRATEGY_PROP = "agentcore.memory.long-term.semantic.strategy-id=semantic-123";
+
+	private static final String ADVISOR_PREFIX = "AgentCoreLongTermMemoryAdvisor-";
+
+	private static final String ADVISOR_SEMANTIC = ADVISOR_PREFIX + "SEMANTIC";
+
+	private static final String ADVISOR_USER_PREFERENCE = ADVISOR_PREFIX + "USER_PREFERENCE";
+
+	private static final String ADVISOR_SUMMARY = ADVISOR_PREFIX + "SUMMARY";
+
+	private static final String ADVISOR_EPISODIC = ADVISOR_PREFIX + "EPISODIC";
+
+	private static final String SESSION_NAMESPACE = "/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}";
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withConfiguration(AutoConfigurations.of(AgentCoreShortTermMemoryRepositoryAutoConfiguration.class,
@@ -84,7 +96,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				AgentCoreLongTermMemoryAdvisor advisor = context.getBean("semanticAdvisor",
 						AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-SEMANTIC");
+				assertThat(advisor.getName()).isEqualTo(ADVISOR_SEMANTIC);
 			});
 	}
 
@@ -99,7 +111,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				AgentCoreLongTermMemoryAdvisor advisor = context.getBean("userPreferenceAdvisor",
 						AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-USER_PREFERENCE");
+				assertThat(advisor.getName()).isEqualTo(ADVISOR_USER_PREFERENCE);
 			});
 	}
 
@@ -114,7 +126,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				AgentCoreLongTermMemoryAdvisor advisor = context.getBean("summaryAdvisor",
 						AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-SUMMARY");
+				assertThat(advisor.getName()).isEqualTo(ADVISOR_SUMMARY);
 			});
 	}
 
@@ -129,7 +141,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				AgentCoreLongTermMemoryAdvisor advisor = context.getBean("episodicAdvisor",
 						AgentCoreLongTermMemoryAdvisor.class);
 				assertThat(advisor).isNotNull();
-				assertThat(advisor.getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-EPISODIC");
+				assertThat(advisor.getName()).isEqualTo(ADVISOR_EPISODIC);
 			});
 	}
 
@@ -233,9 +245,8 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 					.values();
 				assertThat(advisors).hasSize(4);
 				assertThat(advisors).extracting(AgentCoreLongTermMemoryAdvisor::getName)
-					.containsExactlyInAnyOrder("AgentCoreLongTermMemoryAdvisor-SEMANTIC",
-							"AgentCoreLongTermMemoryAdvisor-USER_PREFERENCE", "AgentCoreLongTermMemoryAdvisor-SUMMARY",
-							"AgentCoreLongTermMemoryAdvisor-EPISODIC");
+					.containsExactlyInAnyOrder(ADVISOR_SEMANTIC, ADVISOR_USER_PREFERENCE, ADVISOR_SUMMARY,
+							ADVISOR_EPISODIC);
 			});
 	}
 
@@ -257,8 +268,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 													// CUSTOM)
 
 				assertThat(advisors).extracting(AgentCoreLongTermMemoryAdvisor::getName)
-					.containsExactlyInAnyOrder("AgentCoreLongTermMemoryAdvisor-SEMANTIC",
-							"AgentCoreLongTermMemoryAdvisor-SUMMARY", "AgentCoreLongTermMemoryAdvisor-USER_PREFERENCE");
+					.containsExactlyInAnyOrder(ADVISOR_SEMANTIC, ADVISOR_SUMMARY, ADVISOR_USER_PREFERENCE);
 			});
 	}
 
@@ -283,8 +293,8 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 	void autodiscoveryShouldNotCreateDuplicateAdvisors() {
 		this.contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
-					"agentcore.memory.long-term.semantic.strategy-id=semantic-override", // Explicit
-																							// config
+					// Explicit config
+					"agentcore.memory.long-term.semantic.strategy-id=semantic-override",
 					"agentcore.memory.long-term.semantic.top-k=15")
 			.run((context) -> {
 				assertThat(context).hasNotFailed();
@@ -358,7 +368,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
 				// Only SEMANTIC should be created, CUSTOM should be skipped
 				assertThat(advisors).hasSize(1);
-				assertThat(advisors.get(0).getName()).isEqualTo("AgentCoreLongTermMemoryAdvisor-SEMANTIC");
+				assertThat(advisors.get(0).getName()).isEqualTo(ADVISOR_SEMANTIC);
 			});
 	}
 
@@ -381,9 +391,10 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 	void autodiscoveryShouldThrowErrorForMismatchedNamespace() {
 		this.contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
-					"agentcore.memory.long-term.semantic.strategy-id=discovered-semantic", // Matches
-					"agentcore.memory.long-term.semantic.namespace-pattern=/wrong/namespace/pattern") // Doesn't
-																										// match
+					// Matches discovered semantic
+					"agentcore.memory.long-term.semantic.strategy-id=discovered-semantic",
+					// Doesn't match
+					"agentcore.memory.long-term.semantic.namespace-pattern=/wrong/namespace/pattern")
 			.run((context) -> {
 				assertThat(context).hasFailed();
 				assertThat(context.getStartupFailure())
@@ -398,8 +409,8 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 	void autodiscoveryShouldIgnoreExplicitConfigWhenStrategyIdDoesNotMatch() {
 		this.contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
-					"agentcore.memory.long-term.semantic.strategy-id=non-matching-id", // Doesn't
-																						// match
+					// Doesn't match
+					"agentcore.memory.long-term.semantic.strategy-id=non-matching-id",
 					"agentcore.memory.long-term.semantic.top-k=99")
 			.run((context) -> {
 				assertThat(context).hasNotFailed();
@@ -435,7 +446,8 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 		this.contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
 					"agentcore.memory.long-term.semantic.strategy-id=discovered-semantic",
-					"agentcore.memory.long-term.semantic.namespace-pattern=/strategies/{memoryStrategyId}/actors/{actorId}")
+					"agentcore.memory.long-term.semantic.namespace-pattern="
+							+ "/strategies/{memoryStrategyId}/actors/{actorId}")
 			.run((context) -> {
 				// Should succeed - namespace matches discovered namespace
 				assertThat(context).hasNotFailed();
@@ -481,7 +493,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 					.build())
 				.build();
 
-			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 			return () -> controlClient;
 		}
 
@@ -509,7 +521,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 					.build())
 				.build();
 
-			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 			return () -> controlClient;
 		}
 
@@ -538,8 +550,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 							MemoryStrategy.builder()
 								.strategyId("discovered-summary")
 								.type(MemoryStrategyType.SUMMARIZATION)
-								.namespaces(
-										List.of("/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
+								.namespaces(List.of(SESSION_NAMESPACE))
 								.build(),
 							MemoryStrategy.builder()
 								.strategyId("discovered-prefs")
@@ -549,7 +560,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 					.build())
 				.build();
 
-			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 			return () -> controlClient;
 		}
 
@@ -571,7 +582,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				.memory(Memory.builder().strategies(List.of()).build())
 				.build();
 
-			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 			return () -> controlClient;
 		}
 
@@ -605,7 +616,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 					.build())
 				.build();
 
-			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 			return () -> controlClient;
 		}
 
@@ -628,15 +639,13 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 					.strategies(List.of(MemoryStrategy.builder()
 						.strategyId("multi-ns-strategy")
 						.type(MemoryStrategyType.SEMANTIC)
-						.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}", // First
-																								// one
-																								// used
-								"/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
+						// First one used
+						.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}", SESSION_NAMESPACE))
 						.build()))
 					.build())
 				.build();
 
-			when(controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 			return () -> controlClient;
 		}
 
