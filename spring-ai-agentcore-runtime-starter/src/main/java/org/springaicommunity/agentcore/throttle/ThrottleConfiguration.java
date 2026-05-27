@@ -36,14 +36,14 @@ public class ThrottleConfiguration {
 	@Bean
 	public FilterRegistrationBean<RateLimitingFilter> rateLimitingFilter() {
 		FilterRegistrationBean<RateLimitingFilter> registrationBean = new FilterRegistrationBean<>();
-		registrationBean.setFilter(new RateLimitingFilter(invocationsLimit, pingLimit));
+		registrationBean.setFilter(new RateLimitingFilter(this.invocationsLimit, this.pingLimit));
 		registrationBean.addUrlPatterns(INVOCATIONS_PATH, PING_PATH);
 		registrationBean.setOrder(1);
 		return registrationBean;
 	}
 
 	public int getInvocationsLimit() {
-		return invocationsLimit;
+		return this.invocationsLimit;
 	}
 
 	public void setInvocationsLimit(int invocationsLimit) {
@@ -51,7 +51,7 @@ public class ThrottleConfiguration {
 	}
 
 	public int getPingLimit() {
-		return pingLimit;
+		return this.pingLimit;
 	}
 
 	public void setPingLimit(int pingLimit) {

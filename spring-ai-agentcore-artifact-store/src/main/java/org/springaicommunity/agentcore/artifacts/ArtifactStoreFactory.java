@@ -38,7 +38,7 @@ public interface ArtifactStoreFactory {
 	 * @return configured artifact store
 	 */
 	default ArtifactStore<GeneratedFile> create(String storeName) {
-		return create(storeName, DEFAULT_TTL_SECONDS, DEFAULT_MAX_SIZE);
+		return this.create(storeName, DEFAULT_TTL_SECONDS, DEFAULT_MAX_SIZE);
 	}
 
 	/**
@@ -48,7 +48,7 @@ public interface ArtifactStoreFactory {
 	 * @return configured artifact store
 	 */
 	default ArtifactStore<GeneratedFile> create(String storeName, int ttlSeconds) {
-		return create(storeName, ttlSeconds, DEFAULT_MAX_SIZE);
+		return this.create(storeName, ttlSeconds, DEFAULT_MAX_SIZE);
 	}
 
 	/**

@@ -20,7 +20,6 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ModifyMemoryStrategies;
@@ -56,9 +55,9 @@ public class AgentCoreLongTermMemoryNamespaceRegistrar {
 				.build());
 			logger.info("Namespace '{}' registered successfully", namespacePattern);
 		}
-		catch (Exception e) {
+		catch (Exception ex) {
 			throw new AgentCoreMemoryException.ConfigurationException("Failed to register namespace '"
-					+ namespacePattern + "' for strategy '" + strategyId + "': " + e.getMessage());
+					+ namespacePattern + "' for strategy '" + strategyId + "': " + ex.getMessage());
 		}
 	}
 

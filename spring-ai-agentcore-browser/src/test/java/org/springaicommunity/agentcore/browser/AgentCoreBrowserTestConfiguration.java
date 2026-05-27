@@ -17,11 +17,12 @@
 package org.springaicommunity.agentcore.browser;
 
 import com.microsoft.playwright.Playwright;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 
 /**
  * Shared test configuration for AgentCore Browser integration tests. Provides the common

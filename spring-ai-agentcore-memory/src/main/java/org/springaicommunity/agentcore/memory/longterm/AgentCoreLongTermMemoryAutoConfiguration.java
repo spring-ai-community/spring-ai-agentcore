@@ -32,6 +32,9 @@ import org.springaicommunity.agentcore.memory.longterm.strategy.SummaryMemoryStr
 import org.springaicommunity.agentcore.memory.longterm.strategy.UserPreferenceMemoryStrategyHandler;
 import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
 import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
+
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
@@ -45,9 +48,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
 
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
-
 /**
  * Auto-configuration for AgentCore Long-Term Memory.
  *
@@ -59,48 +59,6 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreC
 public class AgentCoreLongTermMemoryAutoConfiguration {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryAutoConfiguration.class);
-
-	/**
-	 * Fires when either auto-discovery is on, or at least one explicit strategy id is
-	 * set. Inner classes look unused but are discovered reflectively by
-	 * {@link AnyNestedCondition} through their {@code @ConditionalOnProperty}
-	 * annotations.
-	 */
-	@SuppressWarnings("unused")
-	static class AnyStrategyConfiguredCondition extends AnyNestedCondition {
-
-		public AnyStrategyConfiguredCondition() {
-			super(ConfigurationPhase.REGISTER_BEAN);
-		}
-
-		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
-				havingValue = "true")
-		static class AutoDiscoveryCondition {
-
-		}
-
-		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
-		static class SemanticCondition {
-
-		}
-
-		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.UserPreference.CONFIG_PREFIX,
-				name = "strategy-id")
-		static class UserPreferenceCondition {
-
-		}
-
-		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Summary.CONFIG_PREFIX, name = "strategy-id")
-		static class SummaryCondition {
-
-		}
-
-		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX, name = "strategy-id")
-		static class EpisodicCondition {
-
-		}
-
-	}
 
 	@Bean
 	@ConditionalOnMissingBean
@@ -140,7 +98,7 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 		String memoryId = memoryConfig.memoryId();
 
 		if (!longTermMemoryProperties.autoDiscovery()) {
-			Map<String, List<String>> namespacesByStrategy = collectNamespacesByStrategy(longTermMemoryProperties);
+			Map<String, List<String>> namespacesByStrategy = this.collectNamespacesByStrategy(longTermMemoryProperties);
 			if (!namespacesByStrategy.isEmpty()) {
 				try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
 					AgentCoreLongTermMemoryNamespaceRegistrar registrar = new AgentCoreLongTermMemoryNamespaceRegistrar(
@@ -178,7 +136,7 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 		}
 
 		try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
-			AgentCoreLongTermMemoryNamespaceRegistrar registrar = config.namespace().autoRegister()
+			AgentCoreLongTermMemoryNamespaceRegistrar registrar = (config.namespace().autoRegister())
 					? new AgentCoreLongTermMemoryNamespaceRegistrar(controlClient) : null;
 
 			var factory = new AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory(retriever, config, memoryId,
@@ -321,6 +279,48 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 			}
 		}
 		return namespacesByStrategy;
+	}
+
+	/**
+	 * Fires when either auto-discovery is on, or at least one explicit strategy id is
+	 * set. Inner classes look unused but are discovered reflectively by
+	 * {@link AnyNestedCondition} through their {@code @ConditionalOnProperty}
+	 * annotations.
+	 */
+	@SuppressWarnings("unused")
+	static class AnyStrategyConfiguredCondition extends AnyNestedCondition {
+
+		AnyStrategyConfiguredCondition() {
+			super(ConfigurationPhase.REGISTER_BEAN);
+		}
+
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
+				havingValue = "true")
+		static class AutoDiscoveryCondition {
+
+		}
+
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
+		static class SemanticCondition {
+
+		}
+
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.UserPreference.CONFIG_PREFIX,
+				name = "strategy-id")
+		static class UserPreferenceCondition {
+
+		}
+
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Summary.CONFIG_PREFIX, name = "strategy-id")
+		static class SummaryCondition {
+
+		}
+
+		@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX, name = "strategy-id")
+		static class EpisodicCondition {
+
+		}
+
 	}
 
 }

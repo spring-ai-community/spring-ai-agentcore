@@ -49,19 +49,19 @@ public class LocalBrowserClient implements BrowserClient {
 
 	@Override
 	public String browseAndExtract(String url) {
-		return executeOnPage(url, page -> {
+		return this.executeOnPage(url, (page) -> {
 			String title = page.title();
 			String textContent = page.locator("body").innerText();
 
 			logger.info("Page loaded: {} ({} chars)", title, textContent.length());
 
-			return PageContentFormatter.format(title, textContent, config.maxContentLength());
+			return PageContentFormatter.format(title, textContent, this.config.maxContentLength());
 		});
 	}
 
 	@Override
 	public byte[] screenshotBytes(String url) {
-		return executeOnPage(url, page -> {
+		return this.executeOnPage(url, (page) -> {
 			byte[] bytes = page.screenshot();
 			logger.info("Screenshot taken: {} bytes", bytes.length);
 			return bytes;
@@ -70,7 +70,7 @@ public class LocalBrowserClient implements BrowserClient {
 
 	@Override
 	public String click(String url, String selector) {
-		return executeOnPage(url, page -> {
+		return this.executeOnPage(url, (page) -> {
 			page.click(selector);
 			page.waitForLoadState();
 			String newUrl = page.url();
@@ -82,7 +82,7 @@ public class LocalBrowserClient implements BrowserClient {
 
 	@Override
 	public String fill(String url, String selector, String value) {
-		return executeOnPage(url, page -> {
+		return this.executeOnPage(url, (page) -> {
 			page.fill(selector, value);
 			logger.info("Filled '{}' with value", selector);
 			return String.format("Filled element '%s' with value.", selector);
@@ -91,9 +91,9 @@ public class LocalBrowserClient implements BrowserClient {
 
 	@Override
 	public String evaluate(String url, String script) {
-		return executeOnPage(url, page -> {
+		return this.executeOnPage(url, (page) -> {
 			Object result = page.evaluate(script);
-			String resultStr = result != null ? result.toString() : "null";
+			String resultStr = (result != null) ? result.toString() : "null";
 			logger.info("Script executed, result: {}", resultStr);
 			return resultStr;
 		});
@@ -102,11 +102,11 @@ public class LocalBrowserClient implements BrowserClient {
 	private <T> T executeOnPage(String url, Function<Page, T> operation) {
 		Browser browser = null;
 		try {
-			BrowserType chromium = playwright.chromium();
+			BrowserType chromium = this.playwright.chromium();
 			browser = chromium.launch(new BrowserType.LaunchOptions().setHeadless(true));
 
-			BrowserContext context = browser.newContext(
-					new Browser.NewContextOptions().setViewportSize(config.viewportWidth(), config.viewportHeight()));
+			BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+				.setViewportSize(this.config.viewportWidth(), this.config.viewportHeight()));
 			Page page = context.newPage();
 
 			logger.info("Navigating to: {}", url);
@@ -115,17 +115,17 @@ public class LocalBrowserClient implements BrowserClient {
 
 			return operation.apply(page);
 		}
-		catch (Exception e) {
-			logger.error("Local browser operation failed", e);
-			throw new BrowserOperationException("Local browser operation failed: " + e.getMessage(), e);
+		catch (Exception ex) {
+			logger.error("Local browser operation failed", ex);
+			throw new BrowserOperationException("Local browser operation failed: " + ex.getMessage(), ex);
 		}
 		finally {
 			if (browser != null) {
 				try {
 					browser.close();
 				}
-				catch (Exception e) {
-					logger.warn("Failed to close local browser: {}", e.getMessage());
+				catch (Exception ex) {
+					logger.warn("Failed to close local browser: {}", ex.getMessage());
 				}
 			}
 		}

@@ -90,7 +90,7 @@ public class CaffeineArtifactStore<T> implements ArtifactStore<T> {
 		if (artifact == null) {
 			return;
 		}
-		String key = buildKey(sessionId, category);
+		String key = this.buildKey(sessionId, category);
 		int[] totalSize = { 0 };
 		this.cache.asMap().compute(key, (k, existing) -> {
 			if (existing == null) {
@@ -108,7 +108,7 @@ public class CaffeineArtifactStore<T> implements ArtifactStore<T> {
 		if (artifacts == null || artifacts.isEmpty()) {
 			return;
 		}
-		String key = buildKey(sessionId, category);
+		String key = this.buildKey(sessionId, category);
 		int[] totalSize = { 0 };
 		this.cache.asMap().compute(key, (k, existing) -> {
 			if (existing == null) {
@@ -124,29 +124,30 @@ public class CaffeineArtifactStore<T> implements ArtifactStore<T> {
 
 	@Override
 	public List<T> retrieve(String sessionId, String category) {
-		String key = buildKey(sessionId, category);
+		String key = this.buildKey(sessionId, category);
 		List<T> result = this.cache.asMap().remove(key);
-		logger.debug("{}: retrieved {} artifacts for key {}", this.storeName, result != null ? result.size() : 0, key);
+		logger.debug("{}: retrieved {} artifacts for key {}", this.storeName, (result != null) ? result.size() : 0,
+				key);
 		return result;
 	}
 
 	@Override
 	public boolean hasArtifacts(String sessionId, String category) {
-		String key = buildKey(sessionId, category);
+		String key = this.buildKey(sessionId, category);
 		List<T> stored = this.cache.getIfPresent(key);
 		return stored != null && !stored.isEmpty();
 	}
 
 	@Override
 	public int count(String sessionId, String category) {
-		String key = buildKey(sessionId, category);
+		String key = this.buildKey(sessionId, category);
 		List<T> stored = this.cache.getIfPresent(key);
-		return stored != null ? stored.size() : 0;
+		return (stored != null) ? stored.size() : 0;
 	}
 
 	@Override
 	public List<T> peek(String sessionId, String category) {
-		String key = buildKey(sessionId, category);
+		String key = this.buildKey(sessionId, category);
 		List<T> stored = this.cache.getIfPresent(key);
 		if (stored == null) {
 			return null;
@@ -157,7 +158,7 @@ public class CaffeineArtifactStore<T> implements ArtifactStore<T> {
 
 	@Override
 	public void clear(String sessionId, String category) {
-		String key = buildKey(sessionId, category);
+		String key = this.buildKey(sessionId, category);
 		this.cache.asMap().remove(key);
 		logger.debug("{}: cleared artifacts for key {}", this.storeName, key);
 	}

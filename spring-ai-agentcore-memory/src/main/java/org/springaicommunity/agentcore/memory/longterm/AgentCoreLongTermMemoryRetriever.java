@@ -21,7 +21,6 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListMemoryRecordsRequest;
@@ -65,14 +64,14 @@ public class AgentCoreLongTermMemoryRetriever {
 			int topK, String namespacePattern) {
 		String namespace = AgentCoreLongTermMemoryNamespace.buildNamespace(namespacePattern, strategyId, actorId,
 				sessionId);
-		return doSearch(namespace, strategyId, query, topK);
+		return this.doSearch(namespace, strategyId, query, topK);
 	}
 
 	/**
 	 * Semantic search for memories (actor-scoped, searches all sessions).
 	 */
 	public List<MemoryRecord> searchMemories(String strategyId, String actorId, String query, int topK) {
-		return searchMemories(strategyId, actorId, null, query, topK,
+		return this.searchMemories(strategyId, actorId, null, query, topK,
 				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
 	}
 
@@ -91,12 +90,13 @@ public class AgentCoreLongTermMemoryRetriever {
 				.build();
 
 			ListMemoryRecordsResponse response = this.client.listMemoryRecords(request);
-			List<MemoryRecord> records = extractRecords(response.memoryRecordSummaries());
+			List<MemoryRecord> records = this.extractRecords(response.memoryRecordSummaries());
 			logger.debug("Found {} memories in namespace: {}", records.size(), namespace);
 			return records;
 		}
-		catch (Exception e) {
-			throw new AgentCoreMemoryException.RetrievalException("Failed to list memories: namespace=" + namespace, e);
+		catch (Exception ex) {
+			throw new AgentCoreMemoryException.RetrievalException("Failed to list memories: namespace=" + namespace,
+					ex);
 		}
 	}
 
@@ -112,13 +112,13 @@ public class AgentCoreLongTermMemoryRetriever {
 				.build();
 
 			RetrieveMemoryRecordsResponse response = this.client.retrieveMemoryRecords(request);
-			List<MemoryRecord> records = extractRecords(response.memoryRecordSummaries());
+			List<MemoryRecord> records = this.extractRecords(response.memoryRecordSummaries());
 			logger.debug("Found {} memories for query: {}", records.size(), query);
 			return records;
 		}
-		catch (Exception e) {
+		catch (Exception ex) {
 			throw new AgentCoreMemoryException.RetrievalException("Failed to search memories: namespace=" + namespace,
-					e);
+					ex);
 		}
 	}
 
@@ -128,9 +128,9 @@ public class AgentCoreLongTermMemoryRetriever {
 		}
 		List<MemoryRecord> records = new ArrayList<>();
 		for (MemoryRecordSummary summary : summaries) {
-			String contentText = summary.content() != null ? summary.content().text() : "";
+			String contentText = (summary.content() != null) ? summary.content().text() : "";
 			records.add(new MemoryRecord(summary.memoryRecordId(), contentText,
-					summary.score() != null ? summary.score() : 0.0));
+					(summary.score() != null) ? summary.score() : 0.0));
 		}
 		return records;
 	}

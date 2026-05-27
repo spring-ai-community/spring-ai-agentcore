@@ -21,7 +21,6 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
@@ -95,7 +94,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 		for (Map.Entry<String, List<String>> entry : namespacesByStrategy.entrySet()) {
 			String strategyId = entry.getKey();
 			List<String> expectedPatterns = entry.getValue();
-			validateStrategy(memoryId, strategies, strategyId, expectedPatterns);
+			this.validateStrategy(memoryId, strategies, strategyId, expectedPatterns);
 		}
 
 		logger.info("Namespace validation passed for {} strategies", namespacesByStrategy.size());
@@ -104,7 +103,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 	private void validateStrategy(String memoryId, List<MemoryStrategy> strategies, String strategyId,
 			List<String> expectedPatterns) {
 		MemoryStrategy strategy = strategies.stream()
-			.filter(s -> strategyId.equals(s.strategyId()))
+			.filter((s) -> strategyId.equals(s.strategyId()))
 			.findFirst()
 			.orElseThrow(() -> new AgentCoreMemoryException.ConfigurationException(
 					"Strategy '" + strategyId + "' not found in memory '" + memoryId + "'. " + "Available strategies: "
@@ -118,14 +117,14 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 
 		// Every expected pattern must match at least one actual namespace.
 		for (String expected : expectedPatterns) {
-			boolean matched = actualNamespaces.stream().anyMatch(actual -> matchesPattern(actual, expected));
+			boolean matched = actualNamespaces.stream().anyMatch((actual) -> this.matchesPattern(actual, expected));
 			if (!matched) {
 				if (this.autoRegister) {
 					this.registrar.registerNamespace(memoryId, strategyId, expected);
 				}
 				else {
 					throw new AgentCoreMemoryException.ConfigurationException(
-							buildErrorMessage(strategyId, actualNamespaces, expected));
+							this.buildErrorMessage(strategyId, actualNamespaces, expected));
 				}
 			}
 		}
@@ -144,7 +143,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 
 		for (int i = 0; i < expectedParts.length; i++) {
 			String expectedPart = expectedParts[i];
-			if (!isPlaceholder(expectedPart) && !expectedPart.equals(actualParts[i])) {
+			if (!this.isPlaceholder(expectedPart) && !expectedPart.equals(actualParts[i])) {
 				return false;
 			}
 		}
@@ -161,7 +160,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 				+ "The memory was created with a different namespace format than configured in Spring.%n"
 				+ "Either update the memory namespace or configure the matching pattern in application.properties:%n"
 				+ "  agentcore.memory.long-term.<strategy>.namespace-pattern=%s", strategyId, actual, expected,
-				actual.isEmpty() ? expected : actual.get(0));
+				(actual.isEmpty()) ? expected : actual.get(0));
 	}
 
 }

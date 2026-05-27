@@ -16,11 +16,11 @@
 
 package org.springaicommunity.agentcore.memory.longterm;
 
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.api.Advisor;
-
 import java.util.ArrayList;
 import java.util.List;
+
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
 
 public class AgentCoreMemory {
 

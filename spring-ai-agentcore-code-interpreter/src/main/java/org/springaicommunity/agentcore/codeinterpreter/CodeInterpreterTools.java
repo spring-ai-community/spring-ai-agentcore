@@ -23,8 +23,9 @@ import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springaicommunity.agentcore.artifacts.SessionConstants;
-import org.springframework.ai.model.tool.internal.ToolCallReactiveContextHolder;
 import reactor.util.context.ContextView;
+
+import org.springframework.ai.model.tool.internal.ToolCallReactiveContextHolder;
 
 /**
  * Code Interpreter tool implementation for executing code in a secure sandbox.
@@ -82,7 +83,7 @@ public class CodeInterpreterTools {
 		this.artifactStore = artifactStore;
 		this.category = category;
 		logger.debug("CodeInterpreterTools initialized with category: {}",
-				category != null ? category : ArtifactStore.DEFAULT_CATEGORY);
+				(category != null) ? category : ArtifactStore.DEFAULT_CATEGORY);
 	}
 
 	/**
@@ -126,10 +127,10 @@ public class CodeInterpreterTools {
 				this.artifactStore.storeAll(sessionId, result.files());
 			}
 			logger.debug("Stored {} files for session {} in category {}", result.files().size(), sessionId,
-					this.category != null ? this.category : ArtifactStore.DEFAULT_CATEGORY);
+					(this.category != null) ? this.category : ArtifactStore.DEFAULT_CATEGORY);
 		}
 
-		return formatTextForLlm(result);
+		return this.formatTextForLlm(result);
 	}
 
 	private String formatTextForLlm(CodeExecutionResult result) {

@@ -136,12 +136,254 @@ public class AgentCoreEvaluationAdvisor implements CallAdvisor, StreamAdvisor {
 		this.metrics = builder.metrics;
 		this.callback = builder.callback;
 		this.order = builder.order;
-		this.executor = builder.executor != null ? builder.executor : DEFAULT_EXECUTOR;
+		this.executor = (builder.executor != null) ? builder.executor : DEFAULT_EXECUTOR;
 		this.includeHistory = builder.includeHistory;
 	}
 
 	public static Builder builder(AgentCoreEvaluationClient client) {
 		return new Builder(client);
+	}
+
+	@Override
+	public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
+		ChatClientResponse response = chain.nextCall(request);
+
+		if (this.shouldSample()) {
+			this.runEvaluation(request, response);
+		}
+
+		return response;
+	}
+
+	@Override
+	public Flux<ChatClientResponse> adviseStream(ChatClientRequest request, StreamAdvisorChain chain) {
+		// Decide once, up-front, whether this turn is sampled. Chunks pass through
+		// untouched so streaming to the caller is preserved; text is accumulated on the
+		// side and the evaluation is triggered on completion.
+		boolean sampled = this.shouldSample();
+		StringBuilder text = (sampled) ? new StringBuilder() : null;
+		AtomicReference<ChatClientResponse> last = new AtomicReference<>();
+
+		return chain.nextStream(request).doOnNext((chunk) -> {
+			last.set(chunk);
+			if (sampled) {
+				String t = this.extractAssistantResponse(chunk);
+				if (t != null) {
+					text.append(t);
+				}
+			}
+		}).doOnComplete(() -> {
+			if (sampled && last.get() != null) {
+				this.runEvaluation(request, this.aggregated(last.get(), text.toString()));
+			}
+		});
+	}
+
+	private ChatClientResponse aggregated(ChatClientResponse last, String text) {
+		ChatResponse chat = new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
+		return ChatClientResponse.builder().chatResponse(chat).context(last.context()).build();
+	}
+
+	private boolean shouldSample() {
+		return this.sampleRate >= 1.0 || ThreadLocalRandom.current().nextDouble() < this.sampleRate;
+	}
+
+	private void runEvaluation(ChatClientRequest request, ChatClientResponse response) {
+		if (this.async) {
+			CompletableFuture.runAsync(() -> this.doEvaluate(request, response), this.executor);
+		}
+		else {
+			this.doEvaluate(request, response);
+		}
+	}
+
+	private void doEvaluate(ChatClientRequest request, ChatClientResponse response) {
+		String sessionId = this.extractSessionId(request);
+		String traceId = UUID.randomUUID().toString().replace("-", "").substring(0, 32);
+
+		try {
+			String userPrompt = this.extractUserPrompt(request);
+			String assistantResponse = this.extractAssistantResponse(response);
+
+			if (userPrompt == null || assistantResponse == null) {
+				logger.debug("Skipping evaluation: missing prompt or response");
+				return;
+			}
+
+			// Build OTel-compatible spans and events
+			SpanEventBuilder spanBuilder = SpanEventBuilder.agentInvocation(traceId, sessionId)
+				.promptEvent(userPrompt)
+				.completionEvent(assistantResponse)
+				.modelId(this.extractModelId(response))
+				.finishReason(this.extractFinishReason(response))
+				.tokenUsage(this.extractInputTokens(response), this.extractOutputTokens(response))
+				.history((this.includeHistory) ? this.extractHistory(request) : List.of());
+
+			List<Map<String, Object>> spans = spanBuilder.buildSessionSpans();
+
+			Instant start = Instant.now();
+			// Run all configured evaluators in parallel on the advisor's executor.
+			// Latency drops from sum(per-evaluator) to max(per-evaluator) on the
+			// synchronous path and reduces wall-clock work on the async path too.
+			List<EvaluationResult> results = this.client.evaluateAll(this.evaluatorIds, spans, this.executor);
+			Duration latency = Duration.between(start, Instant.now());
+
+			// Record metrics
+			if (this.metrics != null) {
+				for (EvaluationResult r : results) {
+					String evaluatorId = (r.evaluatorId() != null) ? r.evaluatorId() : "unknown";
+					if (r.isError()) {
+						this.metrics.recordError(evaluatorId, r.errorCode());
+					}
+					else {
+						this.metrics.record(evaluatorId, r, latency);
+					}
+				}
+			}
+
+			// Store results in response context
+			response.context().put(EVALUATION_RESULTS_KEY, results);
+
+			// Invoke callback
+			if (this.callback != null) {
+				EvaluationEvent event = new EvaluationEvent(sessionId, traceId, results, Instant.now(), latency);
+				this.callback.accept(event);
+			}
+
+			logger.debug("Evaluation completed: {} results for session {}", results.size(), sessionId);
+
+		}
+		catch (Exception ex) {
+			logger.error("Evaluation failed for session {}: {}", sessionId, ex.getMessage());
+			if (this.metrics != null) {
+				for (String evaluatorId : this.evaluatorIds) {
+					this.metrics.recordError(evaluatorId, ex.getClass().getSimpleName());
+				}
+			}
+		}
+	}
+
+	private String extractSessionId(ChatClientRequest request) {
+		Object sessionId = request.context().get("sessionId");
+		if (sessionId != null) {
+			return sessionId.toString();
+		}
+		Object conversationId = request.context().get("conversationId");
+		if (conversationId != null) {
+			return conversationId.toString();
+		}
+		return UUID.randomUUID().toString();
+	}
+
+	private String extractUserPrompt(ChatClientRequest request) {
+		List<Message> all = request.prompt().getInstructions();
+		// Use the last UserMessage — in multi-turn chats with ChatMemory, earlier
+		// UserMessages are prior turns. Consistent with extractHistory's exclusion.
+		for (int i = all.size() - 1; i >= 0; i--) {
+			if (all.get(i) instanceof UserMessage) {
+				return all.get(i).getText();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Convert all messages in {@code request.prompt().getInstructions()} — except the
+	 * final {@code UserMessage}, which is emitted separately as the current user prompt —
+	 * into the ADOT body-message shape so they can be attached to {@code input.messages}.
+	 * System messages, prior user/assistant turns (spliced in by a {@code ChatMemory}
+	 * advisor), and {@code ToolResponseMessage} entries are included. Any intermediate
+	 * {@code AssistantMessage.toolCalls} from the current turn are not visible here, see
+	 * design doc Extension 5.1.
+	 */
+	private List<Map<String, Object>> extractHistory(ChatClientRequest request) {
+		List<Message> all = request.prompt().getInstructions();
+		int lastUserIdx = -1;
+		for (int i = all.size() - 1; i >= 0; i--) {
+			if (all.get(i) instanceof UserMessage) {
+				lastUserIdx = i;
+				break;
+			}
+		}
+		List<Map<String, Object>> out = new ArrayList<>();
+		for (int i = 0; i < all.size(); i++) {
+			if (i == lastUserIdx) {
+				continue;
+			}
+			Message msg = all.get(i);
+			if (msg instanceof SystemMessage sm) {
+				out.add(Map.of("role", "system", "content", sm.getText()));
+			}
+			else if (msg instanceof UserMessage um) {
+				out.add(Map.of("role", "user", "content", um.getText()));
+			}
+			else if (msg instanceof AssistantMessage am) {
+				String text = am.getText();
+				out.add(Map.of("role", "assistant", "content", (text != null) ? text : ""));
+			}
+			else if (msg instanceof ToolResponseMessage trm) {
+				for (ToolResponseMessage.ToolResponse tr : trm.getResponses()) {
+					out.add(Map.of("role", "tool", "content", Map.of("name", tr.name(), "result", tr.responseData())));
+				}
+			}
+		}
+		return out;
+	}
+
+	// ChatResponse.getResult() is declared non-null by Spring AI's @NonNullApi package
+	// annotation but returns null when the generations list is empty. The guard below
+	// is deliberate runtime defence against that contract-vs-source mismatch; the
+	// suppression silences the false "always true" analyser warning.
+	@SuppressWarnings("ConstantConditions")
+	private String extractAssistantResponse(ChatClientResponse response) {
+		if (response.chatResponse() == null || response.chatResponse().getResult() == null) {
+			return null;
+		}
+		Message output = response.chatResponse().getResult().getOutput();
+		return (output instanceof AssistantMessage) ? output.getText() : null;
+	}
+
+	private String extractModelId(ChatClientResponse response) {
+		if (response.chatResponse() == null) {
+			return null;
+		}
+		String model = response.chatResponse().getMetadata().getModel();
+		return (model != null && !model.isBlank()) ? model : null;
+	}
+
+	// ChatResponse.getResult() is declared non-null but returns null when generations
+	// is empty (same contract-vs-source mismatch as extractAssistantResponse above).
+	@SuppressWarnings("ConstantConditions")
+	private String extractFinishReason(ChatClientResponse response) {
+		if (response.chatResponse() == null || response.chatResponse().getResult() == null) {
+			return null;
+		}
+		String reason = response.chatResponse().getResult().getMetadata().getFinishReason();
+		return (reason != null && !reason.isBlank()) ? reason : null;
+	}
+
+	private Integer extractInputTokens(ChatClientResponse response) {
+		if (response.chatResponse() == null) {
+			return null;
+		}
+		return response.chatResponse().getMetadata().getUsage().getPromptTokens();
+	}
+
+	private Integer extractOutputTokens(ChatClientResponse response) {
+		if (response.chatResponse() == null) {
+			return null;
+		}
+		return response.chatResponse().getMetadata().getUsage().getCompletionTokens();
+	}
+
+	@Override
+	public String getName() {
+		return "AgentCoreEvaluationAdvisor";
+	}
+
+	@Override
+	public int getOrder() {
+		return this.order;
 	}
 
 	public static class Builder {
@@ -213,248 +455,6 @@ public class AgentCoreEvaluationAdvisor implements CallAdvisor, StreamAdvisor {
 			return new AgentCoreEvaluationAdvisor(this);
 		}
 
-	}
-
-	@Override
-	public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
-		ChatClientResponse response = chain.nextCall(request);
-
-		if (shouldSample()) {
-			runEvaluation(request, response);
-		}
-
-		return response;
-	}
-
-	@Override
-	public Flux<ChatClientResponse> adviseStream(ChatClientRequest request, StreamAdvisorChain chain) {
-		// Decide once, up-front, whether this turn is sampled. Chunks pass through
-		// untouched so streaming to the caller is preserved; text is accumulated on the
-		// side and the evaluation is triggered on completion.
-		boolean sampled = shouldSample();
-		StringBuilder text = sampled ? new StringBuilder() : null;
-		AtomicReference<ChatClientResponse> last = new AtomicReference<>();
-
-		return chain.nextStream(request).doOnNext(chunk -> {
-			last.set(chunk);
-			if (sampled) {
-				String t = extractAssistantResponse(chunk);
-				if (t != null) {
-					text.append(t);
-				}
-			}
-		}).doOnComplete(() -> {
-			if (sampled && last.get() != null) {
-				runEvaluation(request, aggregated(last.get(), text.toString()));
-			}
-		});
-	}
-
-	private ChatClientResponse aggregated(ChatClientResponse last, String text) {
-		ChatResponse chat = new ChatResponse(List.of(new Generation(new AssistantMessage(text))));
-		return ChatClientResponse.builder().chatResponse(chat).context(last.context()).build();
-	}
-
-	private boolean shouldSample() {
-		return this.sampleRate >= 1.0 || ThreadLocalRandom.current().nextDouble() < this.sampleRate;
-	}
-
-	private void runEvaluation(ChatClientRequest request, ChatClientResponse response) {
-		if (this.async) {
-			CompletableFuture.runAsync(() -> doEvaluate(request, response), this.executor);
-		}
-		else {
-			doEvaluate(request, response);
-		}
-	}
-
-	private void doEvaluate(ChatClientRequest request, ChatClientResponse response) {
-		String sessionId = extractSessionId(request);
-		String traceId = UUID.randomUUID().toString().replace("-", "").substring(0, 32);
-
-		try {
-			String userPrompt = extractUserPrompt(request);
-			String assistantResponse = extractAssistantResponse(response);
-
-			if (userPrompt == null || assistantResponse == null) {
-				logger.debug("Skipping evaluation: missing prompt or response");
-				return;
-			}
-
-			// Build OTel-compatible spans and events
-			SpanEventBuilder spanBuilder = SpanEventBuilder.agentInvocation(traceId, sessionId)
-				.promptEvent(userPrompt)
-				.completionEvent(assistantResponse)
-				.modelId(extractModelId(response))
-				.finishReason(extractFinishReason(response))
-				.tokenUsage(extractInputTokens(response), extractOutputTokens(response))
-				.history(this.includeHistory ? extractHistory(request) : List.of());
-
-			List<Map<String, Object>> spans = spanBuilder.buildSessionSpans();
-
-			Instant start = Instant.now();
-			// Run all configured evaluators in parallel on the advisor's executor.
-			// Latency drops from sum(per-evaluator) to max(per-evaluator) on the
-			// synchronous path and reduces wall-clock work on the async path too.
-			List<EvaluationResult> results = this.client.evaluateAll(this.evaluatorIds, spans, this.executor);
-			Duration latency = Duration.between(start, Instant.now());
-
-			// Record metrics
-			if (this.metrics != null) {
-				for (EvaluationResult r : results) {
-					String evaluatorId = r.evaluatorId() != null ? r.evaluatorId() : "unknown";
-					if (r.isError()) {
-						this.metrics.recordError(evaluatorId, r.errorCode());
-					}
-					else {
-						this.metrics.record(evaluatorId, r, latency);
-					}
-				}
-			}
-
-			// Store results in response context
-			response.context().put(EVALUATION_RESULTS_KEY, results);
-
-			// Invoke callback
-			if (this.callback != null) {
-				EvaluationEvent event = new EvaluationEvent(sessionId, traceId, results, Instant.now(), latency);
-				this.callback.accept(event);
-			}
-
-			logger.debug("Evaluation completed: {} results for session {}", results.size(), sessionId);
-
-		}
-		catch (Exception e) {
-			logger.error("Evaluation failed for session {}: {}", sessionId, e.getMessage());
-			if (this.metrics != null) {
-				for (String evaluatorId : this.evaluatorIds) {
-					this.metrics.recordError(evaluatorId, e.getClass().getSimpleName());
-				}
-			}
-		}
-	}
-
-	private String extractSessionId(ChatClientRequest request) {
-		Object sessionId = request.context().get("sessionId");
-		if (sessionId != null) {
-			return sessionId.toString();
-		}
-		Object conversationId = request.context().get("conversationId");
-		if (conversationId != null) {
-			return conversationId.toString();
-		}
-		return UUID.randomUUID().toString();
-	}
-
-	private String extractUserPrompt(ChatClientRequest request) {
-		List<Message> all = request.prompt().getInstructions();
-		// Use the last UserMessage — in multi-turn chats with ChatMemory, earlier
-		// UserMessages are prior turns. Consistent with extractHistory's exclusion.
-		for (int i = all.size() - 1; i >= 0; i--) {
-			if (all.get(i) instanceof UserMessage) {
-				return all.get(i).getText();
-			}
-		}
-		return null;
-	}
-
-	/**
-	 * Convert all messages in {@code request.prompt().getInstructions()} — except the
-	 * final {@code UserMessage}, which is emitted separately as the current user prompt —
-	 * into the ADOT body-message shape so they can be attached to {@code input.messages}.
-	 * System messages, prior user/assistant turns (spliced in by a {@code ChatMemory}
-	 * advisor), and {@code ToolResponseMessage} entries are included. Any intermediate
-	 * {@code AssistantMessage.toolCalls} from the current turn are not visible here, see
-	 * design doc Extension 5.1.
-	 */
-	private List<Map<String, Object>> extractHistory(ChatClientRequest request) {
-		List<Message> all = request.prompt().getInstructions();
-		int lastUserIdx = -1;
-		for (int i = all.size() - 1; i >= 0; i--) {
-			if (all.get(i) instanceof UserMessage) {
-				lastUserIdx = i;
-				break;
-			}
-		}
-		List<Map<String, Object>> out = new ArrayList<>();
-		for (int i = 0; i < all.size(); i++) {
-			if (i == lastUserIdx) {
-				continue;
-			}
-			Message msg = all.get(i);
-			if (msg instanceof SystemMessage sm) {
-				out.add(Map.of("role", "system", "content", sm.getText()));
-			}
-			else if (msg instanceof UserMessage um) {
-				out.add(Map.of("role", "user", "content", um.getText()));
-			}
-			else if (msg instanceof AssistantMessage am) {
-				String text = am.getText();
-				out.add(Map.of("role", "assistant", "content", text != null ? text : ""));
-			}
-			else if (msg instanceof ToolResponseMessage trm) {
-				for (ToolResponseMessage.ToolResponse tr : trm.getResponses()) {
-					out.add(Map.of("role", "tool", "content", Map.of("name", tr.name(), "result", tr.responseData())));
-				}
-			}
-		}
-		return out;
-	}
-
-	// ChatResponse.getResult() is declared non-null by Spring AI's @NonNullApi package
-	// annotation but returns null when the generations list is empty. The guard below
-	// is deliberate runtime defence against that contract-vs-source mismatch; the
-	// suppression silences the false "always true" analyser warning.
-	@SuppressWarnings("ConstantConditions")
-	private String extractAssistantResponse(ChatClientResponse response) {
-		if (response.chatResponse() == null || response.chatResponse().getResult() == null) {
-			return null;
-		}
-		Message output = response.chatResponse().getResult().getOutput();
-		return (output instanceof AssistantMessage) ? output.getText() : null;
-	}
-
-	private String extractModelId(ChatClientResponse response) {
-		if (response.chatResponse() == null) {
-			return null;
-		}
-		String model = response.chatResponse().getMetadata().getModel();
-		return (model != null && !model.isBlank()) ? model : null;
-	}
-
-	// ChatResponse.getResult() is declared non-null but returns null when generations
-	// is empty (same contract-vs-source mismatch as extractAssistantResponse above).
-	@SuppressWarnings("ConstantConditions")
-	private String extractFinishReason(ChatClientResponse response) {
-		if (response.chatResponse() == null || response.chatResponse().getResult() == null) {
-			return null;
-		}
-		String reason = response.chatResponse().getResult().getMetadata().getFinishReason();
-		return (reason != null && !reason.isBlank()) ? reason : null;
-	}
-
-	private Integer extractInputTokens(ChatClientResponse response) {
-		if (response.chatResponse() == null) {
-			return null;
-		}
-		return response.chatResponse().getMetadata().getUsage().getPromptTokens();
-	}
-
-	private Integer extractOutputTokens(ChatClientResponse response) {
-		if (response.chatResponse() == null) {
-			return null;
-		}
-		return response.chatResponse().getMetadata().getUsage().getCompletionTokens();
-	}
-
-	@Override
-	public String getName() {
-		return "AgentCoreEvaluationAdvisor";
-	}
-
-	@Override
-	public int getOrder() {
-		return this.order;
 	}
 
 }

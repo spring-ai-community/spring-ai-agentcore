@@ -16,18 +16,6 @@
 
 package org.springaicommunity.agentcore.memory.shorttem;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser;
-import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
-import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.Message;
-import org.springframework.ai.chat.messages.UserMessage;
-import software.amazon.awssdk.core.exception.SdkException;
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
-import software.amazon.awssdk.services.bedrockagentcore.model.*;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,6 +24,20 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
+import software.amazon.awssdk.core.exception.SdkException;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+import software.amazon.awssdk.services.bedrockagentcore.model.*;
+
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 
 /**
  * ChatMemoryRepository implementation for Amazon Bedrock AgentCore Memory.
@@ -79,7 +81,7 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 	public AgentCoreShortTermMemoryRepository(String memoryId, BedrockAgentCoreClient client, Integer totalEventsLimit,
 			String defaultSession, int pageSize, boolean ignoreUnknownRoles) {
-		this.memoryId = validateMemoryId(memoryId);
+		this.memoryId = this.validateMemoryId(memoryId);
 		this.client = client;
 		this.totalEventsLimit = totalEventsLimit;
 		this.defaultSession = defaultSession;
@@ -94,20 +96,20 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 	@Override
 	public List<Message> findByConversationId(String conversationId) {
-		validateConversationId(conversationId);
+		this.validateConversationId(conversationId);
 		logger.debug("Finding messages for conversation: {}", conversationId);
 
 		try {
-			var actorAndSession = actorAndSession(conversationId);
-			var allEvents = fetchAllEvents(actorAndSession);
+			var actorAndSession = this.actorAndSession(conversationId);
+			var allEvents = this.fetchAllEvents(actorAndSession);
 
-			var messages = allEvents.stream().flatMap(event -> {
+			var messages = allEvents.stream().flatMap((event) -> {
 				String eventId = event.eventId();
-				return event.payload().stream().<Message>map(payload -> switch (payload.conversational().role()) {
-					case ASSISTANT -> createAssistantMessage(payload, eventId);
-					case USER -> createUserMessage(payload, eventId);
+				return event.payload().stream().<Message>map((payload) -> switch (payload.conversational().role()) {
+					case ASSISTANT -> this.createAssistantMessage(payload, eventId);
+					case USER -> this.createUserMessage(payload, eventId);
 					default -> {
-						if (ignoreUnknownRoles) {
+						if (this.ignoreUnknownRoles) {
 							logger.warn("Ignoring unknown role: {}", payload.conversational().role());
 							yield null;
 						}
@@ -116,15 +118,15 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 						}
 					}
 				});
-			}).filter(Objects::nonNull).collect(java.util.stream.Collectors.toList());
+			}).filter(Objects::nonNull).collect(Collectors.toList());
 
 			logger.debug("Retrieved {} messages for conversation: {}", messages.size(), conversationId);
 			return messages;
 		}
-		catch (SdkException e) {
-			logger.error("Failed to retrieve messages for conversation: {}", conversationId, e);
+		catch (SdkException ex) {
+			logger.error("Failed to retrieve messages for conversation: {}", conversationId, ex);
 			throw new AgentCoreMemoryException.RetrievalException(
-					"Failed to retrieve messages for conversation: " + conversationId, e);
+					"Failed to retrieve messages for conversation: " + conversationId, ex);
 		}
 	}
 
@@ -151,16 +153,16 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 	private List<Event> fetchAllEvents(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession) {
 		var allEvents = new ArrayList<Event>();
 		try {
-			forEachEventPage(actorAndSession, true, true, allEvents::addAll);
+			this.forEachEventPage(actorAndSession, true, true, allEvents::addAll);
 			// AgentCore returns events in descending order (newest first),
 			// reverse to chronological order for LLM context
 			Collections.reverse(allEvents);
 			return allEvents;
 		}
-		catch (SdkException e) {
+		catch (SdkException ex) {
 			logger.error("Failed to fetch events for actor: {}, session: {}", actorAndSession.actor(),
-					actorAndSession.session(), e);
-			throw new AgentCoreMemoryException.RetrievalException("Failed to fetch events", e);
+					actorAndSession.session(), ex);
+			throw new AgentCoreMemoryException.RetrievalException("Failed to fetch events", ex);
 		}
 	}
 
@@ -179,7 +181,7 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 	 */
 	@Override
 	public void saveAll(String conversationId, List<Message> messages) {
-		validateConversationId(conversationId);
+		this.validateConversationId(conversationId);
 		if (messages == null || messages.isEmpty()) {
 			logger.debug("No messages to save for conversation: {}", conversationId);
 			return;
@@ -187,7 +189,7 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 		// Delta detection: filter to only new messages (no eventId in metadata)
 		List<Message> delta = messages.stream()// .toList();
-			.filter(m -> m.getMetadata().get(EVENT_ID_METADATA_KEY) == null)
+			.filter((m) -> m.getMetadata().get(EVENT_ID_METADATA_KEY) == null)
 			.toList();
 
 		if (delta.isEmpty()) {
@@ -200,7 +202,7 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 				messages.size());
 
 		try {
-			var actorAndSession = actorAndSession(conversationId);
+			var actorAndSession = this.actorAndSession(conversationId);
 
 			var payloads = delta.stream().map(this::buildPayloadType).filter(Objects::nonNull).toList();
 
@@ -210,26 +212,26 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 			}
 
 			var createEventRequest = CreateEventRequest.builder()
-				.memoryId(memoryId)
+				.memoryId(this.memoryId)
 				.actorId(actorAndSession.actor())
 				.sessionId(actorAndSession.session())
 				.payload(payloads)
 				.eventTimestamp(Instant.now())
 				.build();
 
-			var response = client.createEvent(createEventRequest);
+			var response = this.client.createEvent(createEventRequest);
 			String eventId = response.event().eventId();
 
 			// Mark saved messages with eventId for future delta detection
-			delta.forEach(m -> m.getMetadata().put(EVENT_ID_METADATA_KEY, eventId));
+			delta.forEach((m) -> m.getMetadata().put(EVENT_ID_METADATA_KEY, eventId));
 
 			logger.debug("Successfully saved {} messages as event {} for conversation: {}", delta.size(), eventId,
 					conversationId);
 		}
-		catch (SdkException e) {
-			logger.error("Failed to save messages for conversation: {}", conversationId, e);
+		catch (SdkException ex) {
+			logger.error("Failed to save messages for conversation: {}", conversationId, ex);
 			throw new AgentCoreMemoryException.StorageException(
-					"Failed to save messages for conversation: " + conversationId, e);
+					"Failed to save messages for conversation: " + conversationId, ex);
 		}
 	}
 
@@ -243,7 +245,7 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 			role = Role.USER;
 		}
 		else {
-			if (ignoreUnknownRoles) {
+			if (this.ignoreUnknownRoles) {
 				logger.warn("Ignoring unknown message type: {}", message.getClass().getSimpleName());
 				return null;
 			}
@@ -259,15 +261,15 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 	@Override
 	public void deleteByConversationId(String conversationId) {
-		validateConversationId(conversationId);
+		this.validateConversationId(conversationId);
 		logger.debug("Deleting conversation: {}", conversationId);
 
 		try {
-			var actorAndSession = actorAndSession(conversationId);
+			var actorAndSession = this.actorAndSession(conversationId);
 			var deleted = new AtomicInteger();
-			forEachEventPage(actorAndSession, false, false, page -> page.forEach(event -> {
-				client.deleteEvent(DeleteEventRequest.builder()
-					.memoryId(memoryId)
+			this.forEachEventPage(actorAndSession, false, false, (page) -> page.forEach((event) -> {
+				this.client.deleteEvent(DeleteEventRequest.builder()
+					.memoryId(this.memoryId)
 					.actorId(actorAndSession.actor())
 					.sessionId(actorAndSession.session())
 					.eventId(event.eventId())
@@ -276,9 +278,9 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 			}));
 			logger.debug("Successfully deleted {} events for conversation: {}", deleted.get(), conversationId);
 		}
-		catch (SdkException e) {
-			logger.error("Failed to delete conversation: {}", conversationId, e);
-			throw new AgentCoreMemoryException.StorageException("Failed to delete conversation: " + conversationId, e);
+		catch (SdkException ex) {
+			logger.error("Failed to delete conversation: {}", conversationId, ex);
+			throw new AgentCoreMemoryException.StorageException("Failed to delete conversation: " + conversationId, ex);
 		}
 	}
 
@@ -290,32 +292,32 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 	private void forEachEventPage(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
 			boolean includePayloads, boolean respectLimit, Consumer<List<Event>> handler) {
 		var nextToken = (String) null;
-		int requestPageSize = (respectLimit && totalEventsLimit != null) ? Math.min(pageSize, totalEventsLimit)
-				: pageSize;
+		int requestPageSize = (respectLimit && this.totalEventsLimit != null)
+				? Math.min(this.pageSize, this.totalEventsLimit) : this.pageSize;
 		int seen = 0;
 
 		do {
 			var requestBuilder = ListEventsRequest.builder()
 				.actorId(actorAndSession.actor())
 				.sessionId(actorAndSession.session())
-				.memoryId(memoryId)
+				.memoryId(this.memoryId)
 				.includePayloads(includePayloads)
 				.maxResults(requestPageSize);
 			if (nextToken != null) {
 				requestBuilder.nextToken(nextToken);
 			}
 
-			var response = client.listEvents(requestBuilder.build());
+			var response = this.client.listEvents(requestBuilder.build());
 			var page = response.events();
 
-			if (respectLimit && totalEventsLimit != null && seen + page.size() > totalEventsLimit) {
-				page = page.subList(0, totalEventsLimit - seen);
+			if (respectLimit && this.totalEventsLimit != null && seen + page.size() > this.totalEventsLimit) {
+				page = page.subList(0, this.totalEventsLimit - seen);
 			}
 			handler.accept(page);
 			seen += page.size();
 			nextToken = response.nextToken();
 
-			if (respectLimit && totalEventsLimit != null && seen >= totalEventsLimit) {
+			if (respectLimit && this.totalEventsLimit != null && seen >= this.totalEventsLimit) {
 				break;
 			}
 		}
@@ -323,7 +325,7 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 	}
 
 	AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession(String conversationId) {
-		return AgentCoreMemoryConversationIdParser.parse(conversationId, defaultSession);
+		return AgentCoreMemoryConversationIdParser.parse(conversationId, this.defaultSession);
 	}
 
 	private String validateMemoryId(String memoryId) {

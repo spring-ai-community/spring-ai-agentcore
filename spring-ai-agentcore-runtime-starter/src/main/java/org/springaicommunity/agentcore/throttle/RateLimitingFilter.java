@@ -79,12 +79,12 @@ public class RateLimitingFilter implements Filter {
 		var httpResponse = (HttpServletResponse) response;
 
 		var path = httpRequest.getRequestURI();
-		if (path == null || !shouldApplyRateLimit(path)) {
+		if (path == null || !this.shouldApplyRateLimit(path)) {
 			chain.doFilter(request, response);
 			return;
 		}
 
-		var bucket = getBucket(getClientId(httpRequest), path);
+		var bucket = this.getBucket(this.getClientId(httpRequest), path);
 		if (bucket.tryConsume(1)) {
 			chain.doFilter(request, response);
 		}
@@ -98,7 +98,7 @@ public class RateLimitingFilter implements Filter {
 	}
 
 	private boolean shouldApplyRateLimit(String path) {
-		var limit = pathLimits.get(path);
+		var limit = this.pathLimits.get(path);
 		return limit != null && limit > 0;
 	}
 
@@ -108,16 +108,16 @@ public class RateLimitingFilter implements Filter {
 			return forwardedFor.split(",")[0].trim();
 		}
 		var remoteAddr = request.getRemoteAddr();
-		return remoteAddr != null ? remoteAddr : DEFAULT_CLIENT_ID;
+		return (remoteAddr != null) ? remoteAddr : DEFAULT_CLIENT_ID;
 	}
 
 	private Bucket getBucket(String clientId, String path) {
 		var key = clientId + ':' + path;
-		return buckets.get(key, k -> createBucket(path));
+		return this.buckets.get(key, (k) -> this.createBucket(path));
 	}
 
 	private Bucket createBucket(String path) {
-		var limit = pathLimits.get(path);
+		var limit = this.pathLimits.get(path);
 		var bandwidth = Bandwidth.builder().capacity(limit).refillIntervally(limit, Duration.ofMinutes(1)).build();
 		return Bucket.builder().addLimit(bandwidth).build();
 	}

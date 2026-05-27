@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.browser;
 
 import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**

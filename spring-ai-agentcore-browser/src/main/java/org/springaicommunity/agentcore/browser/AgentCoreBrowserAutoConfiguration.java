@@ -23,6 +23,10 @@ import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
 import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStoreFactory;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.function.FunctionToolCallback;
@@ -33,9 +37,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Lazy;
-import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
-import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
 /**
  * Auto-configuration for AgentCore Browser integration.
@@ -140,11 +141,12 @@ public class AgentCoreBrowserAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean(name = "browserToolCallbackProvider")
 	ToolCallbackProvider browserToolCallbackProvider(BrowserTools tools, AgentCoreBrowserConfiguration config) {
-		String browseDesc = getDescription(config.browseUrlDescription(), BrowserTools.BROWSE_URL_DESCRIPTION);
-		String screenshotDesc = getDescription(config.screenshotDescription(), BrowserTools.SCREENSHOT_DESCRIPTION);
-		String clickDesc = getDescription(config.clickDescription(), BrowserTools.CLICK_DESCRIPTION);
-		String fillDesc = getDescription(config.fillDescription(), BrowserTools.FILL_DESCRIPTION);
-		String evaluateDesc = getDescription(config.evaluateDescription(), BrowserTools.EVALUATE_DESCRIPTION);
+		String browseDesc = this.getDescription(config.browseUrlDescription(), BrowserTools.BROWSE_URL_DESCRIPTION);
+		String screenshotDesc = this.getDescription(config.screenshotDescription(),
+				BrowserTools.SCREENSHOT_DESCRIPTION);
+		String clickDesc = this.getDescription(config.clickDescription(), BrowserTools.CLICK_DESCRIPTION);
+		String fillDesc = this.getDescription(config.fillDescription(), BrowserTools.FILL_DESCRIPTION);
+		String evaluateDesc = this.getDescription(config.evaluateDescription(), BrowserTools.EVALUATE_DESCRIPTION);
 
 		logger.debug("Creating Browser ToolCallbackProvider with 5 tools");
 

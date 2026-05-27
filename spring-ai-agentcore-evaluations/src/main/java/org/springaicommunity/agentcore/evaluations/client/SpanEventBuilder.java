@@ -189,10 +189,10 @@ public class SpanEventBuilder {
 		List<Map<String, Object>> sessionSpans = new ArrayList<>();
 
 		// Add the main span
-		sessionSpans.add(buildSpan());
+		sessionSpans.add(this.buildSpan());
 
 		// Add the event with input/output
-		sessionSpans.add(buildEvent());
+		sessionSpans.add(this.buildEvent());
 
 		return sessionSpans;
 	}
@@ -207,7 +207,7 @@ public class SpanEventBuilder {
 	}
 
 	private Map<String, Object> buildSpan() {
-		Map<String, Object> span = commonFields();
+		Map<String, Object> span = this.commonFields();
 		span.put("scope", Map.of("name", SCOPE_NAME, "version", ""));
 		span.put("parentSpanId", null);
 		span.put("name", "invoke_agent Strands Agents");
@@ -236,14 +236,14 @@ public class SpanEventBuilder {
 	}
 
 	private Map<String, Object> buildEvent() {
-		Map<String, Object> event = commonFields();
+		Map<String, Object> event = this.commonFields();
 		event.put("scope", Map.of("name", SCOPE_NAME));
 		event.put("timeUnixNano", this.endTimeNano);
 		event.put("observedTimeUnixNano", this.endTimeNano + 100_000L);
 		event.put("severityNumber", 9);
 		event.put("severityText", "");
 		event.put("attributes", Map.of("event.name", SCOPE_NAME));
-		event.put("body", buildBody());
+		event.put("body", this.buildBody());
 		return event;
 	}
 
@@ -269,8 +269,8 @@ public class SpanEventBuilder {
 		try {
 			return JSON.writeValueAsString(value);
 		}
-		catch (JsonProcessingException e) {
-			throw new IllegalStateException("Failed to serialise value as JSON: " + value, e);
+		catch (JsonProcessingException ex) {
+			throw new IllegalStateException("Failed to serialise value as JSON: " + value, ex);
 		}
 	}
 

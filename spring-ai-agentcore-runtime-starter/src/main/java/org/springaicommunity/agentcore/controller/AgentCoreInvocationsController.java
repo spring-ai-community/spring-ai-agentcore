@@ -46,7 +46,7 @@ public class AgentCoreInvocationsController implements AgentCoreInvocationsHandl
 					MediaType.APPLICATION_OCTET_STREAM_VALUE })
 	public Object handleJsonInvocation(@RequestBody Object request, @RequestHeader HttpHeaders headers)
 			throws Exception {
-		return handleInvocation(request, headers);
+		return this.handleInvocation(request, headers);
 	}
 
 	@PostMapping(value = "/invocations", consumes = MediaType.TEXT_PLAIN_VALUE,
@@ -54,16 +54,16 @@ public class AgentCoreInvocationsController implements AgentCoreInvocationsHandl
 					MediaType.APPLICATION_OCTET_STREAM_VALUE })
 	public Object handleTextInvocation(@RequestBody String request, @RequestHeader HttpHeaders headers)
 			throws Exception {
-		return handleInvocation(request, headers);
+		return this.handleInvocation(request, headers);
 	}
 
 	private Object handleInvocation(Object request, HttpHeaders headers) throws Exception {
 		try {
-			return invoker.invokeAgentMethod(request, headers);
+			return this.invoker.invokeAgentMethod(request, headers);
 		}
-		catch (AgentCoreInvocationException e) {
-			logger.error("Error trying to invoke AgentCoreInvocation method: " + e.getMessage(), e);
-			throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage());
+		catch (AgentCoreInvocationException ex) {
+			this.logger.error("Error trying to invoke AgentCoreInvocation method: " + ex.getMessage(), ex);
+			throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
 		}
 	}
 

@@ -64,7 +64,7 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 	List<AgentCoreLongTermMemoryAdvisor> createAdvisors(List<DiscoveredStrategy> discovered) {
 		List<AgentCoreLongTermMemoryAdvisor> advisors = new ArrayList<>();
 		for (DiscoveredStrategy strategy : discovered) {
-			advisors.add(createAdvisor(strategy));
+			advisors.add(this.createAdvisor(strategy));
 		}
 		logger.info("Created {} advisors from autodiscovery", advisors.size());
 		return advisors;
@@ -72,14 +72,15 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 
 	private AgentCoreLongTermMemoryAdvisor createAdvisor(DiscoveredStrategy discovered) {
 		AgentCoreLongTermMemoryStrategyType strategy = discovered.type();
-		AgentCoreLongTermMemoryStrategy explicitConfig = config.byKind(strategy);
+		AgentCoreLongTermMemoryStrategy explicitConfig = this.config.byKind(strategy);
 		boolean configMatches = explicitConfig != null && discovered.strategyId().equals(explicitConfig.strategyId());
-		AgentCoreLongTermMemoryStrategy effectiveExplicit = configMatches ? explicitConfig : null;
+		AgentCoreLongTermMemoryStrategy effectiveExplicit = (configMatches) ? explicitConfig : null;
 
-		String namespace = resolveNamespace(discovered, effectiveExplicit);
-		MemoryStrategyHandler handler = buildHandler(discovered, effectiveExplicit, namespace, strategy.contextLabel());
+		String namespace = this.resolveNamespace(discovered, effectiveExplicit);
+		MemoryStrategyHandler handler = this.buildHandler(discovered, effectiveExplicit, namespace,
+				strategy.contextLabel());
 
-		return AgentCoreLongTermMemoryAdvisor.builder(retriever).memoryStrategy(strategy).handler(handler).build();
+		return AgentCoreLongTermMemoryAdvisor.builder(this.retriever).memoryStrategy(strategy).handler(handler).build();
 	}
 
 	private MemoryStrategyHandler buildHandler(DiscoveredStrategy discovered,
@@ -110,7 +111,7 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 				}
 				yield b.build();
 			}
-			case EPISODIC -> buildEpisodicHandler(discovered, explicitConfig, namespace);
+			case EPISODIC -> this.buildEpisodicHandler(discovered, explicitConfig, namespace);
 			case CUSTOM -> throw new IllegalStateException(
 					"Auto-discovery should never produce CUSTOM; AgentCoreLongTermMemoryStrategyType.fromAwsType filters it out.");
 		};
@@ -136,11 +137,11 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 						episodicExplicit.reflectionsStrategyId());
 			}
 			else {
-				applyDiscoveredReflections(b, discovered);
+				this.applyDiscoveredReflections(b, discovered);
 			}
 		}
 		else {
-			applyDiscoveredReflections(b, discovered);
+			this.applyDiscoveredReflections(b, discovered);
 		}
 
 		return b.build();
@@ -169,8 +170,8 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 			return configuredNamespace;
 		}
 
-		if (registrar != null) {
-			registrar.registerNamespace(memoryId, discovered.strategyId(), configuredNamespace);
+		if (this.registrar != null) {
+			this.registrar.registerNamespace(this.memoryId, discovered.strategyId(), configuredNamespace);
 			logger.info("Strategy '{}': auto-registered new namespace '{}'", discovered.strategyId(),
 					configuredNamespace);
 			return configuredNamespace;

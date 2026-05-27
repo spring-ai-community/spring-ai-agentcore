@@ -60,24 +60,24 @@ public class AgentCoreEvaluationMetrics {
 			DistributionSummary.builder(METRIC_PREFIX + ".score")
 				.tag("evaluator", evaluatorId)
 				.description("Evaluation score distribution")
-				.register(registry)
+				.register(this.registry)
 				.record(result.score());
 		}
 
 		// Record count by label
-		String label = result.label() != null ? result.label() : "unknown";
+		String label = (result.label() != null) ? result.label() : "unknown";
 		Counter.builder(METRIC_PREFIX + ".count")
 			.tag("evaluator", evaluatorId)
 			.tag("label", label)
 			.description("Count of evaluations by label")
-			.register(registry)
+			.register(this.registry)
 			.increment();
 
 		// Record latency
 		Timer.builder(METRIC_PREFIX + ".latency")
 			.tag("evaluator", evaluatorId)
 			.description("Evaluation API call duration")
-			.register(registry)
+			.register(this.registry)
 			.record(latency);
 	}
 
@@ -91,7 +91,7 @@ public class AgentCoreEvaluationMetrics {
 			.tag("evaluator", evaluatorId)
 			.tag("error_code", errorCode)
 			.description("Count of failed evaluations")
-			.register(registry)
+			.register(this.registry)
 			.increment();
 	}
 

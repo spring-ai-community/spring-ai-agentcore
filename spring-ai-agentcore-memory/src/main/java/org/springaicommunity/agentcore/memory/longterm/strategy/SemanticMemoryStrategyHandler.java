@@ -41,6 +41,28 @@ public final class SemanticMemoryStrategyHandler implements MemoryStrategyHandle
 		return new Builder();
 	}
 
+	@Override
+	public String strategyId() {
+		return this.strategyId;
+	}
+
+	@Override
+	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
+		return MemoryFetchResult.primaryOnly(ctx.retriever()
+			.searchMemories(this.strategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(), this.topK,
+					this.namespacePattern));
+	}
+
+	@Override
+	public String format(MemoryFetchContext ctx, MemoryFetchResult fetched) {
+		return MemoryStrategyHandler.formatMemorySection(this.contextLabel, fetched.primary());
+	}
+
+	@Override
+	public InjectionTarget target() {
+		return InjectionTarget.SYSTEM;
+	}
+
 	public static final class Builder {
 
 		private String strategyId;
@@ -75,34 +97,13 @@ public final class SemanticMemoryStrategyHandler implements MemoryStrategyHandle
 		}
 
 		public SemanticMemoryStrategyHandler build() {
-			if (strategyId == null || strategyId.isEmpty()) {
+			if (this.strategyId == null || this.strategyId.isEmpty()) {
 				throw new IllegalArgumentException("strategyId is required");
 			}
-			return new SemanticMemoryStrategyHandler(strategyId, namespacePattern, topK, contextLabel);
+			return new SemanticMemoryStrategyHandler(this.strategyId, this.namespacePattern, this.topK,
+					this.contextLabel);
 		}
 
-	}
-
-	@Override
-	public String strategyId() {
-		return this.strategyId;
-	}
-
-	@Override
-	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
-		return MemoryFetchResult.primaryOnly(ctx.retriever()
-			.searchMemories(this.strategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(), this.topK,
-					this.namespacePattern));
-	}
-
-	@Override
-	public String format(MemoryFetchContext ctx, MemoryFetchResult fetched) {
-		return MemoryStrategyHandler.formatMemorySection(this.contextLabel, fetched.primary());
-	}
-
-	@Override
-	public InjectionTarget target() {
-		return InjectionTarget.SYSTEM;
 	}
 
 }

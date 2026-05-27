@@ -16,6 +16,7 @@
 
 package org.springaicommunity.agentcore.codeinterpreter;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -30,7 +31,14 @@ import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreAsyncClient;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
-import software.amazon.awssdk.services.bedrockagentcore.model.*;
+import software.amazon.awssdk.services.bedrockagentcore.model.CodeInterpreterResult;
+import software.amazon.awssdk.services.bedrockagentcore.model.ContentBlock;
+import software.amazon.awssdk.services.bedrockagentcore.model.InvokeCodeInterpreterRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.InvokeCodeInterpreterResponseHandler;
+import software.amazon.awssdk.services.bedrockagentcore.model.ResourceContent;
+import software.amazon.awssdk.services.bedrockagentcore.model.StartCodeInterpreterSessionRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.StopCodeInterpreterSessionRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.ToolArguments;
 
 /**
  * Low-level client for AgentCore Code Interpreter. Manages sessions and executes code.
@@ -103,8 +111,8 @@ public class AgentCoreCodeInterpreterClient {
 				.build());
 			logger.debug("Stopped session: {}", sessionId);
 		}
-		catch (Exception e) {
-			logger.warn("Failed to stop session {}: {}", sessionId, e.getMessage());
+		catch (Exception ex) {
+			logger.warn("Failed to stop session {}: {}", sessionId, ex.getMessage());
 		}
 	}
 
@@ -132,12 +140,12 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().language(language).code(code).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream(publisher -> publisher
-							.subscribe(event -> event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder()
-								.onResult(result -> processResult(result, isError, textOutput, files))
-								.onDefault(defaultEvent -> logger.trace("Default event: {}", defaultEvent))
+						.onEventStream((publisher) -> publisher
+							.subscribe((event) -> event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder()
+								.onResult((result) -> this.processResult(result, isError, textOutput, files))
+								.onDefault((defaultEvent) -> logger.trace("Default event: {}", defaultEvent))
 								.build())))
-						.onError(error -> {
+						.onError((error) -> {
 							logger.error("Stream error", error);
 							errorMessage.set(error.getMessage());
 						})
@@ -145,10 +153,10 @@ public class AgentCoreCodeInterpreterClient {
 
 			future.get(this.asyncTimeoutSeconds, TimeUnit.SECONDS);
 		}
-		catch (Exception e) {
-			logger.error("Code execution failed", e);
+		catch (Exception ex) {
+			logger.error("Code execution failed", ex);
 			isError.set(true);
-			textOutput.append("Execution error: ").append(e.getMessage());
+			textOutput.append("Execution error: ").append(ex.getMessage());
 		}
 
 		if (errorMessage.get() != null) {
@@ -171,12 +179,17 @@ public class AgentCoreCodeInterpreterClient {
 			isError.set(true);
 		}
 		if (result.content() != null) {
-			result.content().forEach(content -> processContent(content, textOutput, files));
+			result.content().forEach((content) -> this.processContent(content, textOutput, files));
 		}
 	}
 
-	private void processContent(software.amazon.awssdk.services.bedrockagentcore.model.ContentBlock content,
-			StringBuffer textOutput, List<GeneratedFile> files) {
+	private void processResult(List<String> paths, CodeInterpreterResult result, List<GeneratedFile> files) {
+		if (result.content() != null) {
+			result.content().forEach((content) -> this.processReadFileContent(content, files, paths));
+		}
+	}
+
+	private void processContent(ContentBlock content, StringBuffer textOutput, List<GeneratedFile> files) {
 		// Handle text content
 		if (content.text() != null && !content.text().isEmpty()) {
 			textOutput.append(content.text());
@@ -186,7 +199,7 @@ public class AgentCoreCodeInterpreterClient {
 		if (content.data() != null) {
 			String mimeType = content.mimeType();
 			byte[] data = content.data().asByteArray();
-			String name = generateFileName(mimeType, files.size());
+			String name = this.generateFileName(mimeType, files.size());
 			files.add(new GeneratedFile(mimeType, data, name));
 			logger.debug("Generated file: {} ({} bytes)", name, data.length);
 		}
@@ -196,8 +209,8 @@ public class AgentCoreCodeInterpreterClient {
 		if (mimeType == null) {
 			return "file_" + index;
 		}
-		String extension = getExtensionForMimeType(mimeType);
-		String prefix = mimeType.startsWith("image/") ? "chart_" : "file_";
+		String extension = this.getExtensionForMimeType(mimeType);
+		String prefix = (mimeType.startsWith("image/")) ? "chart_" : "file_";
 		return prefix + index + extension;
 	}
 
@@ -225,26 +238,26 @@ public class AgentCoreCodeInterpreterClient {
 	 */
 	public CodeExecutionResult executeInEphemeralSession(String language, String code) {
 		String sessionName = "ephemeral-" + System.currentTimeMillis();
-		String sessionId = startSession(sessionName);
+		String sessionId = this.startSession(sessionName);
 		try {
 			// Execute code
-			CodeExecutionResult execResult = executeCode(sessionId, language, code);
+			CodeExecutionResult execResult = this.executeCode(sessionId, language, code);
 
 			// Retrieve generated files
 			List<GeneratedFile> files = new ArrayList<>(execResult.files());
-			List<String> sessionFiles = listFiles(sessionId, "");
-			List<String> filesToRetrieve = filterRetrievableFiles(sessionFiles);
+			List<String> sessionFiles = this.listFiles(sessionId, "");
+			List<String> filesToRetrieve = this.filterRetrievableFiles(sessionFiles);
 
 			if (!filesToRetrieve.isEmpty()) {
 				logger.debug("Retrieving {} files from session", filesToRetrieve.size());
-				List<GeneratedFile> retrievedFiles = readFiles(sessionId, filesToRetrieve);
+				List<GeneratedFile> retrievedFiles = this.readFiles(sessionId, filesToRetrieve);
 				files.addAll(retrievedFiles);
 			}
 
 			return new CodeExecutionResult(execResult.textOutput(), execResult.isError(), files);
 		}
 		finally {
-			stopSession(sessionId);
+			this.stopSession(sessionId);
 		}
 	}
 
@@ -267,22 +280,22 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().directoryPath(directoryPath).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream(publisher -> publisher.subscribe(event -> event
-							.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder().onResult(result -> {
+						.onEventStream((publisher) -> publisher.subscribe((event) -> event
+							.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder().onResult((result) -> {
 								if (result.content() != null) {
-									result.content().forEach(content -> {
+									result.content().forEach((content) -> {
 										// Handle resource_link type - extract path from
 										// uri
 										if (content.uri() != null) {
-											String path = extractFileNameFromUri(content.uri());
-											if (path != null && !path.isEmpty() && !isExcludedPath(path)) {
+											String path = this.extractFileNameFromUri(content.uri());
+											if (path != null && !path.isEmpty() && !this.isExcludedPath(path)) {
 												filePaths.add(path);
 											}
 										}
 									});
 								}
 							}).build())))
-						.onError(error -> {
+						.onError((error) -> {
 							String errorMessage = "listFiles failed: " + error.getMessage();
 							logger.error(errorMessage, error);
 						})
@@ -290,8 +303,8 @@ public class AgentCoreCodeInterpreterClient {
 
 			future.get(this.asyncTimeoutSeconds, TimeUnit.SECONDS);
 		}
-		catch (Exception e) {
-			logger.error("listFiles failed", e);
+		catch (Exception ex) {
+			logger.error("listFiles failed", ex);
 		}
 
 		logger.debug("Listed {} files in session", filePaths.size());
@@ -306,10 +319,10 @@ public class AgentCoreCodeInterpreterClient {
 			return null;
 		}
 		// Remove file:// prefix if present
-		String path = uri.startsWith("file://") ? uri.substring(7) : uri;
+		String path = (uri.startsWith("file://")) ? uri.substring(7) : uri;
 		// Extract just the filename
 		int lastSlash = path.lastIndexOf('/');
-		return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+		return (lastSlash >= 0) ? path.substring(lastSlash + 1) : path;
 	}
 
 	/**
@@ -330,11 +343,11 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().paths(paths).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream(publisher -> publisher
-							.subscribe(event -> event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder()
-								.onResult(result -> processResult(paths, result, files))
+						.onEventStream((publisher) -> publisher
+							.subscribe((event) -> event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder()
+								.onResult((result) -> this.processResult(paths, result, files))
 								.build())))
-						.onError(error -> {
+						.onError((error) -> {
 							String errorMessage = "readFiles failed: " + error.getMessage();
 							logger.error(errorMessage, error);
 						})
@@ -342,18 +355,12 @@ public class AgentCoreCodeInterpreterClient {
 
 			future.get(this.asyncTimeoutSeconds, TimeUnit.SECONDS);
 		}
-		catch (Exception e) {
-			logger.error("readFiles failed", e);
+		catch (Exception ex) {
+			logger.error("readFiles failed", ex);
 		}
 
 		logger.debug("Read {} files from session", files.size());
 		return files;
-	}
-
-	private void processResult(List<String> paths, CodeInterpreterResult result, List<GeneratedFile> files) {
-		if (result.content() != null) {
-			result.content().forEach(content -> processReadFileContent(content, files, paths));
-		}
 	}
 
 	private boolean isExcludedPath(String path) {
@@ -380,25 +387,24 @@ public class AgentCoreCodeInterpreterClient {
 		return retrievable;
 	}
 
-	private void processReadFileContent(software.amazon.awssdk.services.bedrockagentcore.model.ContentBlock content,
-			List<GeneratedFile> files, List<String> requestedPaths) {
+	private void processReadFileContent(ContentBlock content, List<GeneratedFile> files, List<String> requestedPaths) {
 		// Handle direct binary data
 		if (content.data() != null) {
 			String mimeType = content.mimeType();
 			byte[] data = content.data().asByteArray();
-			String name = determineFileName(mimeType, files.size(), requestedPaths);
-			String sourcePath = determineSourcePath(files.size(), requestedPaths);
+			String name = this.determineFileName(mimeType, files.size(), requestedPaths);
+			String sourcePath = this.determineSourcePath(files.size(), requestedPaths);
 			files.add(CodeInterpreterArtifacts.fromPath(mimeType, data, name, sourcePath));
 			logger.debug("Read file (data): {} ({} bytes, {})", name, data.length, mimeType);
 		}
 		// Handle resource type - binary data is in resource.blob()
 		else if (content.resource() != null) {
 			var resource = content.resource();
-			String mimeType = resource.mimeType() != null ? resource.mimeType() : content.mimeType();
-			String sourcePath = resource.uri() != null ? resource.uri()
-					: determineSourcePath(files.size(), requestedPaths);
-			String name = resource.uri() != null ? extractFileNameFromUri(resource.uri())
-					: determineFileName(mimeType, files.size(), requestedPaths);
+			String mimeType = (resource.mimeType() != null) ? resource.mimeType() : content.mimeType();
+			String sourcePath = (resource.uri() != null) ? resource.uri()
+					: this.determineSourcePath(files.size(), requestedPaths);
+			String name = (resource.uri() != null) ? this.extractFileNameFromUri(resource.uri())
+					: this.determineFileName(mimeType, files.size(), requestedPaths);
 
 			if (resource.blob() != null) {
 				byte[] data = resource.blob().asByteArray();
@@ -407,7 +413,7 @@ public class AgentCoreCodeInterpreterClient {
 			}
 			else if (resource.text() != null && !resource.text().isEmpty()) {
 				// Handle text content (for CSV, TXT, etc.)
-				byte[] data = resource.text().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+				byte[] data = resource.text().getBytes(StandardCharsets.UTF_8);
 				files.add(CodeInterpreterArtifacts.fromPath(mimeType, data, name, sourcePath));
 				logger.debug("Read file (resource text): {} ({} bytes, {})", name, data.length, mimeType);
 			}
@@ -428,12 +434,12 @@ public class AgentCoreCodeInterpreterClient {
 		// If we have requested paths and index is within range, use that name
 		if (requestedPaths != null && index < requestedPaths.size()) {
 			String path = requestedPaths.get(index);
-			String name = extractFileNameFromUri(path);
+			String name = this.extractFileNameFromUri(path);
 			if (name != null && !name.isEmpty()) {
 				return name;
 			}
 		}
-		return generateFileName(mimeType, index);
+		return this.generateFileName(mimeType, index);
 	}
 
 }

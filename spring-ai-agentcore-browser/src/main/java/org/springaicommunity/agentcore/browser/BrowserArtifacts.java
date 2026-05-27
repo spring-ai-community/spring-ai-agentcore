@@ -77,7 +77,7 @@ public final class BrowserArtifacts {
 		try {
 			return Optional.of(Integer.parseInt(w));
 		}
-		catch (NumberFormatException e) {
+		catch (NumberFormatException ex) {
 			return Optional.empty();
 		}
 	}
@@ -95,7 +95,7 @@ public final class BrowserArtifacts {
 		try {
 			return Optional.of(Integer.parseInt(h));
 		}
-		catch (NumberFormatException e) {
+		catch (NumberFormatException ex) {
 			return Optional.empty();
 		}
 	}

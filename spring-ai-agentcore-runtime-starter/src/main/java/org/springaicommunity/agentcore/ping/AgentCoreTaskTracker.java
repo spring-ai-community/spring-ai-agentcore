@@ -31,17 +31,17 @@ public class AgentCoreTaskTracker {
 	private final AtomicLong activeTasks = new AtomicLong(0);
 
 	public void increment() {
-		activeTasks.incrementAndGet();
+		this.activeTasks.incrementAndGet();
 	}
 
 	public void decrement() {
-		if (activeTasks.get() > 0) {
-			activeTasks.decrementAndGet();
+		if (this.activeTasks.get() > 0) {
+			this.activeTasks.decrementAndGet();
 		}
 	}
 
 	public long getCount() {
-		return activeTasks.get();
+		return this.activeTasks.get();
 	}
 
 }

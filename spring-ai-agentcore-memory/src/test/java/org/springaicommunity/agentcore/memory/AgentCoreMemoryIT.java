@@ -16,9 +16,6 @@
 
 package org.springaicommunity.agentcore.memory;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
-
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -32,6 +29,8 @@ import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryNa
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever.MemoryRecord;
 import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -39,8 +38,10 @@ import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
 
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * Base integration test for AgentCore Memory (STM and LTM).
@@ -129,7 +130,7 @@ public abstract class AgentCoreMemoryIT {
 		System.out.println(BOLD + "User: " + userMessage + RESET);
 		var response = chatClient.prompt()
 			.user(userMessage)
-			.advisors(a -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
+			.advisors((a) -> a.param(ChatMemory.CONVERSATION_ID, conversationId))
 			.call()
 			.content();
 		System.out.println(BOLD + "Assistant: " + RESET + response);
@@ -138,14 +139,14 @@ public abstract class AgentCoreMemoryIT {
 
 	private void printMemoryRecords(String label, List<MemoryRecord> records) {
 		System.out.println(BOLD + label + " (" + records.size() + "):" + RESET);
-		records.forEach(r -> System.out.println("  - " + r.content()));
+		records.forEach((r) -> System.out.println("  - " + r.content()));
 	}
 
 	@Test
 	@Order(1)
 	@DisplayName("Should have conversation with ChatClient and STM")
 	void shouldHaveConversationWithMemory() {
-		var stmRepository = new AgentCoreShortTermMemoryRepository(memoryId, agentCoreClient, null, sessionId, 100,
+		var stmRepository = new AgentCoreShortTermMemoryRepository(memoryId, this.agentCoreClient, null, sessionId, 100,
 				true);
 
 		// Use Integer.MAX_VALUE for unlimited window - actual limit controlled by
@@ -155,7 +156,7 @@ public abstract class AgentCoreMemoryIT {
 			.maxMessages(Integer.MAX_VALUE)
 			.build();
 
-		var chatClient = ChatClient.builder(chatModel)
+		var chatClient = ChatClient.builder(this.chatModel)
 			.defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
 			.build();
 
@@ -163,9 +164,9 @@ public abstract class AgentCoreMemoryIT {
 
 		System.out.println(BOLD + "\n----- Conversation -----" + RESET);
 
-		sendMessage(chatClient, conversationId, USER_MSG_1);
-		sendMessage(chatClient, conversationId, USER_MSG_2);
-		sendMessage(chatClient, conversationId, USER_MSG_3);
+		this.sendMessage(chatClient, conversationId, USER_MSG_1);
+		this.sendMessage(chatClient, conversationId, USER_MSG_2);
+		this.sendMessage(chatClient, conversationId, USER_MSG_3);
 
 		System.out.println(BOLD + "------------------------" + RESET + "\n");
 
@@ -179,7 +180,7 @@ public abstract class AgentCoreMemoryIT {
 	@Order(2)
 	@DisplayName("Should consolidate to LTM with semantic facts, preferences, summary, and episodic")
 	void shouldConsolidateToLTM() {
-		var ltmRetriever = new AgentCoreLongTermMemoryRetriever(agentCoreClient, memoryId);
+		var ltmRetriever = new AgentCoreLongTermMemoryRetriever(this.agentCoreClient, memoryId);
 
 		// Wait for consolidation (max 3 minutes)
 		long consolidationStartTime = System.currentTimeMillis();
@@ -203,7 +204,7 @@ public abstract class AgentCoreMemoryIT {
 		String allSemantic = semanticFacts.stream().map(MemoryRecord::content).reduce("", String::concat).toLowerCase();
 		assertThat(allSemantic).containsAnyOf("alex", "engineer", "software");
 		System.out.println(BOLD + "\n=== LTM Content ===" + RESET);
-		printMemoryRecords("Semantic facts", semanticFacts);
+		this.printMemoryRecords("Semantic facts", semanticFacts);
 
 		// Verify preferences
 		List<MemoryRecord> preferences = ltmRetriever.listMemories(preferencesStrategyId, actorId,
@@ -211,14 +212,14 @@ public abstract class AgentCoreMemoryIT {
 		assertThat(preferences).isNotEmpty();
 		String allPrefs = preferences.stream().map(MemoryRecord::content).reduce("", String::concat).toLowerCase();
 		assertThat(allPrefs).containsAnyOf("dark mode", "vim", "spring");
-		printMemoryRecords("Preferences", preferences);
+		this.printMemoryRecords("Preferences", preferences);
 
 		// Verify summary
 		List<MemoryRecord> summaries = ltmRetriever.searchMemories(summaryStrategyId, actorId, sessionId,
 				"conversation", 3, AgentCoreLongTermMemoryNamespace.SESSION.getPattern());
 		assertThat(summaries).isNotEmpty();
 		assertThat(summaries.get(0).content()).isNotBlank();
-		printMemoryRecords("Summary", summaries);
+		this.printMemoryRecords("Summary", summaries);
 
 		// Try to get episodic (don't wait, just check if available)
 		List<MemoryRecord> episodes = ltmRetriever.searchMemories(episodicStrategyId, actorId, "Alex engineer", 5);
@@ -227,7 +228,7 @@ public abstract class AgentCoreMemoryIT {
 			System.out.println("  (not yet consolidated)");
 		}
 		else {
-			episodes.forEach(r -> System.out.println("  - " + r.content()));
+			episodes.forEach((r) -> System.out.println("  - " + r.content()));
 		}
 
 		System.out.println(BOLD + "===================" + RESET + "\n");
@@ -236,7 +237,7 @@ public abstract class AgentCoreMemoryIT {
 	@SpringBootApplication(scanBasePackages = "org.springaicommunity.agentcore.memory")
 	static class TestApp {
 
-		@org.springframework.context.annotation.Bean
+		@Bean
 		BedrockAgentCoreClient bedrockAgentCoreClient() {
 			return BedrockAgentCoreClient.create();
 		}

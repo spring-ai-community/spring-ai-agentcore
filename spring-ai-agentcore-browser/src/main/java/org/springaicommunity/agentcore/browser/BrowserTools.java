@@ -21,8 +21,9 @@ import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springaicommunity.agentcore.artifacts.SessionConstants;
-import org.springframework.ai.model.tool.internal.ToolCallReactiveContextHolder;
 import reactor.util.context.ContextView;
+
+import org.springframework.ai.model.tool.internal.ToolCallReactiveContextHolder;
 
 /**
  * Browser tool implementation for browsing web pages and extracting content.
@@ -98,7 +99,7 @@ public class BrowserTools {
 		this.config = config;
 		this.category = category;
 		logger.debug("BrowserTools initialized with category: {}",
-				category != null ? category : ArtifactStore.DEFAULT_CATEGORY);
+				(category != null) ? category : ArtifactStore.DEFAULT_CATEGORY);
 	}
 
 	/**
@@ -109,11 +110,11 @@ public class BrowserTools {
 	public String browseUrl(String url) {
 		logger.debug("browseUrl: {}", url);
 		try {
-			return client.browseAndExtract(url);
+			return this.client.browseAndExtract(url);
 		}
-		catch (BrowserOperationException e) {
-			logger.error("Browse failed: {}", e.getMessage());
-			return "Error: " + e.getMessage();
+		catch (BrowserOperationException ex) {
+			logger.error("Browse failed: {}", ex.getMessage());
+			return "Error: " + ex.getMessage();
 		}
 	}
 
@@ -126,7 +127,7 @@ public class BrowserTools {
 		logger.debug("takeScreenshot: {}", url);
 
 		try {
-			byte[] screenshotBytes = client.screenshotBytes(url);
+			byte[] screenshotBytes = this.client.screenshotBytes(url);
 
 			// Get session ID from Reactor context (available via
 			// ToolCallReactiveContextHolder)
@@ -134,23 +135,23 @@ public class BrowserTools {
 			String sessionId = ctx.getOrDefault(SessionConstants.SESSION_ID_KEY, SessionConstants.DEFAULT_SESSION_ID);
 
 			// Store screenshot as GeneratedFile with metadata
-			GeneratedFile screenshot = BrowserArtifacts.screenshot(screenshotBytes, url, config.viewportWidth(),
-					config.viewportHeight());
-			if (category != null) {
-				artifactStore.store(sessionId, category, screenshot);
+			GeneratedFile screenshot = BrowserArtifacts.screenshot(screenshotBytes, url, this.config.viewportWidth(),
+					this.config.viewportHeight());
+			if (this.category != null) {
+				this.artifactStore.store(sessionId, this.category, screenshot);
 			}
 			else {
-				artifactStore.store(sessionId, screenshot);
+				this.artifactStore.store(sessionId, screenshot);
 			}
 
 			logger.debug("Screenshot stored for session {}: {} bytes", sessionId, screenshotBytes.length);
 
 			return String.format("Screenshot captured: %d bytes, %dx%d from %s", screenshotBytes.length,
-					config.viewportWidth(), config.viewportHeight(), url);
+					this.config.viewportWidth(), this.config.viewportHeight(), url);
 		}
-		catch (BrowserOperationException e) {
-			logger.error("Screenshot failed: {}", e.getMessage());
-			return "Error: " + e.getMessage();
+		catch (BrowserOperationException ex) {
+			logger.error("Screenshot failed: {}", ex.getMessage());
+			return "Error: " + ex.getMessage();
 		}
 	}
 
@@ -163,11 +164,11 @@ public class BrowserTools {
 	public String clickElement(String url, String selector) {
 		logger.debug("clickElement: {} -> {}", url, selector);
 		try {
-			return client.click(url, selector);
+			return this.client.click(url, selector);
 		}
-		catch (BrowserOperationException e) {
-			logger.error("Click failed: {}", e.getMessage());
-			return "Error: " + e.getMessage();
+		catch (BrowserOperationException ex) {
+			logger.error("Click failed: {}", ex.getMessage());
+			return "Error: " + ex.getMessage();
 		}
 	}
 
@@ -181,11 +182,11 @@ public class BrowserTools {
 	public String fillForm(String url, String selector, String value) {
 		logger.debug("fillForm: {} -> {} = {}", url, selector, value);
 		try {
-			return client.fill(url, selector, value);
+			return this.client.fill(url, selector, value);
 		}
-		catch (BrowserOperationException e) {
-			logger.error("Fill failed: {}", e.getMessage());
-			return "Error: " + e.getMessage();
+		catch (BrowserOperationException ex) {
+			logger.error("Fill failed: {}", ex.getMessage());
+			return "Error: " + ex.getMessage();
 		}
 	}
 
@@ -198,11 +199,11 @@ public class BrowserTools {
 	public String evaluateScript(String url, String script) {
 		logger.debug("evaluateScript: {} -> {}", url, script);
 		try {
-			return client.evaluate(url, script);
+			return this.client.evaluate(url, script);
 		}
-		catch (BrowserOperationException e) {
-			logger.error("Evaluate failed: {}", e.getMessage());
-			return "Error: " + e.getMessage();
+		catch (BrowserOperationException ex) {
+			logger.error("Evaluate failed: {}", ex.getMessage());
+			return "Error: " + ex.getMessage();
 		}
 	}
 

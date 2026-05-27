@@ -63,6 +63,54 @@ public final class EpisodicMemoryStrategyHandler implements MemoryStrategyHandle
 		return new Builder();
 	}
 
+	@Override
+	public String strategyId() {
+		return this.strategyId;
+	}
+
+	@Override
+	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
+		List<MemoryRecord> episodes = ctx.retriever()
+			.searchMemories(this.strategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(), this.episodesTopK,
+					this.namespacePattern);
+		List<MemoryRecord> reflections = this.fetchReflections(ctx);
+		return new MemoryFetchResult(episodes, reflections);
+	}
+
+	private List<MemoryRecord> fetchReflections(MemoryFetchContext ctx) {
+		if (this.reflectionsNamespacePattern != null && !this.reflectionsNamespacePattern.isEmpty()) {
+			return ctx.retriever()
+				.searchMemories(this.strategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(), this.reflectionsTopK,
+						this.reflectionsNamespacePattern);
+		}
+		if (this.reflectionsStrategyId != null && !this.reflectionsStrategyId.isEmpty()) {
+			return ctx.retriever()
+				.searchMemories(this.reflectionsStrategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(),
+						this.reflectionsTopK, this.namespacePattern);
+		}
+		return List.of();
+	}
+
+	@Override
+	public String format(MemoryFetchContext ctx, MemoryFetchResult fetched) {
+		StringBuilder sb = new StringBuilder();
+		if (!fetched.primary().isEmpty()) {
+			sb.append(MemoryStrategyHandler.formatMemorySection("Relevant past interactions", fetched.primary()));
+		}
+		if (!fetched.secondary().isEmpty()) {
+			if (!fetched.primary().isEmpty()) {
+				sb.append("\n");
+			}
+			sb.append(MemoryStrategyHandler.formatMemorySection("Lessons learned", fetched.secondary()));
+		}
+		return sb.toString();
+	}
+
+	@Override
+	public InjectionTarget target() {
+		return InjectionTarget.SYSTEM;
+	}
+
 	public static final class Builder {
 
 		private String strategyId;
@@ -125,61 +173,13 @@ public final class EpisodicMemoryStrategyHandler implements MemoryStrategyHandle
 		}
 
 		public EpisodicMemoryStrategyHandler build() {
-			if (strategyId == null || strategyId.isEmpty()) {
+			if (this.strategyId == null || this.strategyId.isEmpty()) {
 				throw new IllegalArgumentException("strategyId is required");
 			}
-			return new EpisodicMemoryStrategyHandler(strategyId, namespacePattern, episodesTopK, reflectionsTopK,
-					reflectionsNamespacePattern, reflectionsStrategyId);
+			return new EpisodicMemoryStrategyHandler(this.strategyId, this.namespacePattern, this.episodesTopK,
+					this.reflectionsTopK, this.reflectionsNamespacePattern, this.reflectionsStrategyId);
 		}
 
-	}
-
-	@Override
-	public String strategyId() {
-		return this.strategyId;
-	}
-
-	@Override
-	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
-		List<MemoryRecord> episodes = ctx.retriever()
-			.searchMemories(this.strategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(), this.episodesTopK,
-					this.namespacePattern);
-		List<MemoryRecord> reflections = fetchReflections(ctx);
-		return new MemoryFetchResult(episodes, reflections);
-	}
-
-	private List<MemoryRecord> fetchReflections(MemoryFetchContext ctx) {
-		if (this.reflectionsNamespacePattern != null && !this.reflectionsNamespacePattern.isEmpty()) {
-			return ctx.retriever()
-				.searchMemories(this.strategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(), this.reflectionsTopK,
-						this.reflectionsNamespacePattern);
-		}
-		if (this.reflectionsStrategyId != null && !this.reflectionsStrategyId.isEmpty()) {
-			return ctx.retriever()
-				.searchMemories(this.reflectionsStrategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(),
-						this.reflectionsTopK, this.namespacePattern);
-		}
-		return List.of();
-	}
-
-	@Override
-	public String format(MemoryFetchContext ctx, MemoryFetchResult fetched) {
-		StringBuilder sb = new StringBuilder();
-		if (!fetched.primary().isEmpty()) {
-			sb.append(MemoryStrategyHandler.formatMemorySection("Relevant past interactions", fetched.primary()));
-		}
-		if (!fetched.secondary().isEmpty()) {
-			if (!fetched.primary().isEmpty()) {
-				sb.append("\n");
-			}
-			sb.append(MemoryStrategyHandler.formatMemorySection("Lessons learned", fetched.secondary()));
-		}
-		return sb.toString();
-	}
-
-	@Override
-	public InjectionTarget target() {
-		return InjectionTarget.SYSTEM;
 	}
 
 }

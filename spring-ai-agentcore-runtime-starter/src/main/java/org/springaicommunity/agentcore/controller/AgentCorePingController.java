@@ -39,7 +39,7 @@ public class AgentCorePingController implements AgentCorePingHandler {
 
 	@GetMapping("/ping")
 	public ResponseEntity<Map<String, Object>> ping() {
-		var pingStatus = agentCorePingService.getPingStatus();
+		var pingStatus = this.agentCorePingService.getPingStatus();
 
 		Map<String, Object> response = new HashMap<>();
 		response.put("status", pingStatus.status().toString());

@@ -51,20 +51,20 @@ public class StaticAgentCorePingService implements AgentCorePingService {
 	@Override
 	public AgentCorePingResponse getPingStatus() {
 		try {
-			if (agentCoreTaskTracker.getCount() > 0) {
-				return updateCachedResponse(PingStatus.HEALTHY_BUSY, HttpStatus.OK);
+			if (this.agentCoreTaskTracker.getCount() > 0) {
+				return this.updateCachedResponse(PingStatus.HEALTHY_BUSY, HttpStatus.OK);
 			}
 			else {
-				return updateCachedResponse(PingStatus.HEALTHY, HttpStatus.OK);
+				return this.updateCachedResponse(PingStatus.HEALTHY, HttpStatus.OK);
 			}
 		}
-		catch (Exception e) {
-			return updateCachedResponse(PingStatus.UNHEALTHY, HttpStatus.INTERNAL_SERVER_ERROR);
+		catch (Exception ex) {
+			return this.updateCachedResponse(PingStatus.UNHEALTHY, HttpStatus.INTERNAL_SERVER_ERROR);
 		}
 	}
 
 	private AgentCorePingResponse updateCachedResponse(PingStatus status, HttpStatus httpStatus) {
-		return cachedResponse.updateAndGet(current -> {
+		return this.cachedResponse.updateAndGet((current) -> {
 			if (current == null || !current.status().equals(status)) {
 				return new AgentCorePingResponse(status, httpStatus, System.currentTimeMillis() / 1000);
 			}

@@ -45,7 +45,7 @@ public class AgentCoreContext {
 	 * @param headers the HTTP headers from the request
 	 */
 	public AgentCoreContext(HttpHeaders headers) {
-		this.headers = headers != null ? headers : new HttpHeaders();
+		this.headers = (headers != null) ? headers : new HttpHeaders();
 	}
 
 	/**
@@ -53,7 +53,7 @@ public class AgentCoreContext {
 	 * @return the HTTP headers (read-only)
 	 */
 	public HttpHeaders getHeaders() {
-		return HttpHeaders.readOnlyHttpHeaders(headers);
+		return HttpHeaders.readOnlyHttpHeaders(this.headers);
 	}
 
 	/**
@@ -65,7 +65,7 @@ public class AgentCoreContext {
 		if (headerName == null) {
 			return null;
 		}
-		return headers.getFirst(headerName);
+		return this.headers.getFirst(headerName);
 	}
 
 }

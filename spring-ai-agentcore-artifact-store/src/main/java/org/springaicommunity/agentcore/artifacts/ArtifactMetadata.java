@@ -44,7 +44,7 @@ public final class ArtifactMetadata {
 	 */
 	public static Optional<Instant> timestamp(GeneratedFile file) {
 		String ts = file.metadata().get(META_TIMESTAMP);
-		return ts != null ? Optional.of(Instant.parse(ts)) : Optional.empty();
+		return (ts != null) ? Optional.of(Instant.parse(ts)) : Optional.empty();
 	}
 
 	/**

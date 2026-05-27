@@ -39,7 +39,7 @@ public class AgentCoreMethodScanner implements BeanPostProcessor {
 		var methods = bean.getClass().getDeclaredMethods();
 		for (var method : methods) {
 			if (method.isAnnotationPresent(AgentCoreInvocation.class)) {
-				registry.registerMethod(bean, method);
+				this.registry.registerMethod(bean, method);
 			}
 		}
 		return bean;

@@ -63,7 +63,7 @@ public final class AgentCoreMemoryConversationIdParser {
 			String[] parts = conversationId.split(":", 2);
 			return new ActorAndSession(parts[0], parts[1]);
 		}
-		return new ActorAndSession(conversationId, defaultSession != null ? defaultSession : DEFAULT_SESSION);
+		return new ActorAndSession(conversationId, (defaultSession != null) ? defaultSession : DEFAULT_SESSION);
 	}
 
 	/**

@@ -38,6 +38,32 @@ public final class UserPreferenceMemoryStrategyHandler implements MemoryStrategy
 		return new Builder();
 	}
 
+	@Override
+	public String strategyId() {
+		return this.strategyId;
+	}
+
+	@Override
+	public boolean requiresUserPrompt() {
+		return false;
+	}
+
+	@Override
+	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
+		return MemoryFetchResult
+			.primaryOnly(ctx.retriever().listMemories(this.strategyId, ctx.userId(), this.namespacePattern));
+	}
+
+	@Override
+	public String format(MemoryFetchContext ctx, MemoryFetchResult fetched) {
+		return MemoryStrategyHandler.formatMemorySection(this.contextLabel, fetched.primary());
+	}
+
+	@Override
+	public InjectionTarget target() {
+		return InjectionTarget.SYSTEM;
+	}
+
 	public static final class Builder {
 
 		private String strategyId;
@@ -65,38 +91,12 @@ public final class UserPreferenceMemoryStrategyHandler implements MemoryStrategy
 		}
 
 		public UserPreferenceMemoryStrategyHandler build() {
-			if (strategyId == null || strategyId.isEmpty()) {
+			if (this.strategyId == null || this.strategyId.isEmpty()) {
 				throw new IllegalArgumentException("strategyId is required");
 			}
-			return new UserPreferenceMemoryStrategyHandler(strategyId, namespacePattern, contextLabel);
+			return new UserPreferenceMemoryStrategyHandler(this.strategyId, this.namespacePattern, this.contextLabel);
 		}
 
-	}
-
-	@Override
-	public String strategyId() {
-		return this.strategyId;
-	}
-
-	@Override
-	public boolean requiresUserPrompt() {
-		return false;
-	}
-
-	@Override
-	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
-		return MemoryFetchResult
-			.primaryOnly(ctx.retriever().listMemories(this.strategyId, ctx.userId(), this.namespacePattern));
-	}
-
-	@Override
-	public String format(MemoryFetchContext ctx, MemoryFetchResult fetched) {
-		return MemoryStrategyHandler.formatMemorySection(this.contextLabel, fetched.primary());
-	}
-
-	@Override
-	public InjectionTarget target() {
-		return InjectionTarget.SYSTEM;
 	}
 
 }

@@ -107,7 +107,7 @@ public interface ArtifactStore<T> {
 	 * @param artifact the artifact to store
 	 */
 	default void store(String sessionId, T artifact) {
-		store(sessionId, DEFAULT_CATEGORY, artifact);
+		this.store(sessionId, DEFAULT_CATEGORY, artifact);
 	}
 
 	/**
@@ -116,7 +116,7 @@ public interface ArtifactStore<T> {
 	 * @param artifacts list of artifacts to store
 	 */
 	default void storeAll(String sessionId, List<T> artifacts) {
-		storeAll(sessionId, DEFAULT_CATEGORY, artifacts);
+		this.storeAll(sessionId, DEFAULT_CATEGORY, artifacts);
 	}
 
 	/**
@@ -125,7 +125,7 @@ public interface ArtifactStore<T> {
 	 * @return list of artifacts, or null if none stored
 	 */
 	default List<T> retrieve(String sessionId) {
-		return retrieve(sessionId, DEFAULT_CATEGORY);
+		return this.retrieve(sessionId, DEFAULT_CATEGORY);
 	}
 
 	/**
@@ -134,7 +134,7 @@ public interface ArtifactStore<T> {
 	 * @return unmodifiable list of artifacts, or null if none stored
 	 */
 	default List<T> peek(String sessionId) {
-		return peek(sessionId, DEFAULT_CATEGORY);
+		return this.peek(sessionId, DEFAULT_CATEGORY);
 	}
 
 	/**
@@ -143,7 +143,7 @@ public interface ArtifactStore<T> {
 	 * @return true if artifacts are available
 	 */
 	default boolean hasArtifacts(String sessionId) {
-		return hasArtifacts(sessionId, DEFAULT_CATEGORY);
+		return this.hasArtifacts(sessionId, DEFAULT_CATEGORY);
 	}
 
 	/**
@@ -152,7 +152,7 @@ public interface ArtifactStore<T> {
 	 * @return number of artifacts, or 0 if none stored
 	 */
 	default int count(String sessionId) {
-		return count(sessionId, DEFAULT_CATEGORY);
+		return this.count(sessionId, DEFAULT_CATEGORY);
 	}
 
 	/**
@@ -160,7 +160,7 @@ public interface ArtifactStore<T> {
 	 * @param sessionId the session ID
 	 */
 	default void clear(String sessionId) {
-		clear(sessionId, DEFAULT_CATEGORY);
+		this.clear(sessionId, DEFAULT_CATEGORY);
 	}
 
 }

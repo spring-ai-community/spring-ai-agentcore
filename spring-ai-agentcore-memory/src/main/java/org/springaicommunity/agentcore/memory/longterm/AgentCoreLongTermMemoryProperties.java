@@ -16,6 +16,9 @@
 
 package org.springaicommunity.agentcore.memory.longterm;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(AgentCoreLongTermMemoryProperties.CONFIG_PREFIX)
@@ -38,7 +41,7 @@ public class AgentCoreLongTermMemoryProperties {
 	public AgentCoreLongTermMemoryProperties(boolean autoDiscovery, Namespace namespace, Episodic episodic,
 			Semantic semantic, Summary summary, UserPreference userPreference) {
 		this.autoDiscovery = autoDiscovery;
-		this.namespace = namespace != null ? namespace : new Namespace(false);
+		this.namespace = (namespace != null) ? namespace : new Namespace(false);
 		this.episodic = episodic;
 		this.semantic = semantic;
 		this.summary = summary;
@@ -46,27 +49,27 @@ public class AgentCoreLongTermMemoryProperties {
 	}
 
 	public boolean autoDiscovery() {
-		return autoDiscovery;
+		return this.autoDiscovery;
 	}
 
 	public Namespace namespace() {
-		return namespace;
+		return this.namespace;
 	}
 
 	public Episodic episodic() {
-		return episodic;
+		return this.episodic;
 	}
 
 	public Semantic semantic() {
-		return semantic;
+		return this.semantic;
 	}
 
 	public Summary summary() {
-		return summary;
+		return this.summary;
 	}
 
 	public UserPreference userPreference() {
-		return userPreference;
+		return this.userPreference;
 	}
 
 	/**
@@ -77,10 +80,10 @@ public class AgentCoreLongTermMemoryProperties {
 	 */
 	public AgentCoreLongTermMemoryStrategy byKind(AgentCoreLongTermMemoryStrategyType kind) {
 		return switch (kind) {
-			case SEMANTIC -> semantic;
-			case USER_PREFERENCE -> userPreference;
-			case SUMMARY -> summary;
-			case EPISODIC -> episodic;
+			case SEMANTIC -> this.semantic;
+			case USER_PREFERENCE -> this.userPreference;
+			case SUMMARY -> this.summary;
+			case EPISODIC -> this.episodic;
 			case CUSTOM -> null;
 		};
 	}
@@ -92,12 +95,12 @@ public class AgentCoreLongTermMemoryProperties {
 
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".episodic";
 
-		private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(Episodic.class);
+		private static final Logger logger = LoggerFactory.getLogger(Episodic.class);
 
 		public Episodic {
-			episodesTopK = episodesTopK > 0 ? episodesTopK : 3;
-			reflectionsTopK = reflectionsTopK > 0 ? reflectionsTopK : 2;
-			namespace = namespace != null ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
+			episodesTopK = (episodesTopK > 0) ? episodesTopK : 3;
+			reflectionsTopK = (reflectionsTopK > 0) ? reflectionsTopK : 2;
+			namespace = (namespace != null) ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
 			if (reflectionsStrategyId != null && !reflectionsStrategyId.isEmpty()) {
 				boolean hasNamespaceOverride = (reflectionsNamespacePattern != null
 						&& !reflectionsNamespacePattern.isEmpty()) || reflectionsNamespace != null;
@@ -106,14 +109,15 @@ public class AgentCoreLongTermMemoryProperties {
 						+ "not a separate strategy. Migrate to 'reflections-namespace-pattern' or "
 						+ "'reflections-namespace'. See: "
 						+ "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/episodic-memory-strategy.html"
-						+ (hasNamespaceOverride ? " (Note: a reflections namespace is also set and takes precedence.)"
+						+ ((hasNamespaceOverride) ? " (Note: a reflections namespace is also set and takes precedence.)"
 								: ""));
 			}
 		}
 
+		@Override
 		public String resolveNamespacePattern() {
-			return (namespacePattern != null && !namespacePattern.isEmpty()) ? namespacePattern
-					: namespace.getPattern();
+			return (this.namespacePattern != null && !this.namespacePattern.isEmpty()) ? this.namespacePattern
+					: this.namespace.getPattern();
 		}
 
 		/**
@@ -125,7 +129,7 @@ public class AgentCoreLongTermMemoryProperties {
 		@Deprecated(forRemoval = true)
 		@Override
 		public String reflectionsStrategyId() {
-			return reflectionsStrategyId;
+			return this.reflectionsStrategyId;
 		}
 
 		/**
@@ -136,11 +140,11 @@ public class AgentCoreLongTermMemoryProperties {
 		 * disabled via the modern config
 		 */
 		public String resolveReflectionsNamespacePattern() {
-			if (reflectionsNamespacePattern != null && !reflectionsNamespacePattern.isEmpty()) {
-				return reflectionsNamespacePattern;
+			if (this.reflectionsNamespacePattern != null && !this.reflectionsNamespacePattern.isEmpty()) {
+				return this.reflectionsNamespacePattern;
 			}
-			if (reflectionsNamespace != null) {
-				return reflectionsNamespace.getPattern();
+			if (this.reflectionsNamespace != null) {
+				return this.reflectionsNamespace.getPattern();
 			}
 			return null;
 		}
@@ -151,8 +155,8 @@ public class AgentCoreLongTermMemoryProperties {
 		 * this to keep legacy behaviour alive while warning.
 		 */
 		public boolean usesLegacyReflectionsStrategy() {
-			return resolveReflectionsNamespacePattern() == null && reflectionsStrategyId != null
-					&& !reflectionsStrategyId.isEmpty();
+			return this.resolveReflectionsNamespacePattern() == null && this.reflectionsStrategyId != null
+					&& !this.reflectionsStrategyId.isEmpty();
 		}
 
 	}
@@ -163,13 +167,14 @@ public class AgentCoreLongTermMemoryProperties {
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".semantic";
 
 		public Semantic {
-			topK = topK > 0 ? topK : 3;
-			namespace = namespace != null ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
+			topK = (topK > 0) ? topK : 3;
+			namespace = (namespace != null) ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
 		}
 
+		@Override
 		public String resolveNamespacePattern() {
-			return (namespacePattern != null && !namespacePattern.isEmpty()) ? namespacePattern
-					: namespace.getPattern();
+			return (this.namespacePattern != null && !this.namespacePattern.isEmpty()) ? this.namespacePattern
+					: this.namespace.getPattern();
 		}
 
 	}
@@ -180,13 +185,14 @@ public class AgentCoreLongTermMemoryProperties {
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".summary";
 
 		public Summary {
-			topK = topK > 0 ? topK : 3;
-			namespace = namespace != null ? namespace : AgentCoreLongTermMemoryNamespace.SESSION;
+			topK = (topK > 0) ? topK : 3;
+			namespace = (namespace != null) ? namespace : AgentCoreLongTermMemoryNamespace.SESSION;
 		}
 
+		@Override
 		public String resolveNamespacePattern() {
-			return (namespacePattern != null && !namespacePattern.isEmpty()) ? namespacePattern
-					: namespace.getPattern();
+			return (this.namespacePattern != null && !this.namespacePattern.isEmpty()) ? this.namespacePattern
+					: this.namespace.getPattern();
 		}
 
 	}
@@ -197,12 +203,13 @@ public class AgentCoreLongTermMemoryProperties {
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".user-preference";
 
 		public UserPreference {
-			namespace = namespace != null ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
+			namespace = (namespace != null) ? namespace : AgentCoreLongTermMemoryNamespace.ACTOR;
 		}
 
+		@Override
 		public String resolveNamespacePattern() {
-			return (namespacePattern != null && !namespacePattern.isEmpty()) ? namespacePattern
-					: namespace.getPattern();
+			return (this.namespacePattern != null && !this.namespacePattern.isEmpty()) ? this.namespacePattern
+					: this.namespace.getPattern();
 		}
 
 	}

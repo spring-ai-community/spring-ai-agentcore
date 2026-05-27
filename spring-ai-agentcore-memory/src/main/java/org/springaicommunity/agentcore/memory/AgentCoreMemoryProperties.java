@@ -28,9 +28,9 @@ public record AgentCoreMemoryProperties(String memoryId, Integer totalEventsLimi
 			boolean ignoreUnknownRoles) {
 		this.memoryId = memoryId;
 		this.totalEventsLimit = totalEventsLimit;
-		this.defaultSession = defaultSession != null ? defaultSession
+		this.defaultSession = (defaultSession != null) ? defaultSession
 				: AgentCoreMemoryConversationIdParser.DEFAULT_SESSION;
-		this.pageSize = pageSize > 0 ? pageSize : 100;
+		this.pageSize = (pageSize > 0) ? pageSize : 100;
 		this.ignoreUnknownRoles = ignoreUnknownRoles;
 	}
 

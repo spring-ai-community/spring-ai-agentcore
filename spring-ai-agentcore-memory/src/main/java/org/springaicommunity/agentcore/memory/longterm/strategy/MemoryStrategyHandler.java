@@ -16,17 +16,17 @@
 
 package org.springaicommunity.agentcore.memory.longterm.strategy;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever.MemoryRecord;
+
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
-
-import java.util.ArrayList;
 
 /**
  * Encapsulates the fetch / format / inject behaviour of one long-term memory strategy.
@@ -39,17 +39,6 @@ import java.util.ArrayList;
  * future release.
  */
 public interface MemoryStrategyHandler {
-
-	/** Where the formatted memory context is attached to the outgoing prompt. */
-	enum InjectionTarget {
-
-		/** Prepend to (or merge into) the system message. */
-		SYSTEM,
-
-		/** Replace the current user message with a context-augmented version. */
-		USER
-
-	}
 
 	/**
 	 * Returns {@code true} when this strategy needs a non-empty user prompt to run. If
@@ -92,49 +81,10 @@ public interface MemoryStrategyHandler {
 	 * Implementations normally don't need to override this.
 	 */
 	default ChatClientRequest inject(ChatClientRequest request, String context) {
-		return switch (target()) {
+		return switch (this.target()) {
 			case SYSTEM -> mergeIntoSystemMessage(request, context);
 			case USER -> replaceUserMessage(request, context);
 		};
-	}
-
-	// ------------------------------------------------------------------
-	// Per-turn inputs (shared record; lives here so implementations in
-	// other packages can pass it without extra imports).
-	// ------------------------------------------------------------------
-
-	/**
-	 * Inputs the advisor computes once per turn and hands to the handler's
-	 * {@link #fetch(MemoryFetchContext)} and
-	 * {@link #format(MemoryFetchContext, MemoryFetchResult)}.
-	 */
-	record MemoryFetchContext(AgentCoreLongTermMemoryRetriever retriever, String userId, String sessionId,
-			String userPrompt) {
-	}
-
-	/**
-	 * Handler output: the records to render. {@code primary} is the main record set;
-	 * {@code secondary} is only used by strategies that retrieve two sets under one turn
-	 * (e.g. EPISODIC's reflections). Use {@link #primaryOnly(List)} for single-set
-	 * handlers.
-	 */
-	record MemoryFetchResult(List<MemoryRecord> primary, List<MemoryRecord> secondary) {
-
-		public static MemoryFetchResult empty() {
-			return new MemoryFetchResult(List.of(), List.of());
-		}
-
-		public static MemoryFetchResult primaryOnly(List<MemoryRecord> primary) {
-			return new MemoryFetchResult(primary != null ? primary : List.of(), List.of());
-		}
-
-		public boolean isEmpty() {
-			return primary.isEmpty() && secondary.isEmpty();
-		}
-
-		public int totalCount() {
-			return primary.size() + secondary.size();
-		}
 	}
 
 	// ------------------------------------------------------------------
@@ -193,6 +143,56 @@ public interface MemoryStrategyHandler {
 			}
 		}
 		return request.mutate().prompt(new Prompt(messages, request.prompt().getOptions())).build();
+	}
+
+	/** Where the formatted memory context is attached to the outgoing prompt. */
+	enum InjectionTarget {
+
+		/** Prepend to (or merge into) the system message. */
+		SYSTEM,
+
+		/** Replace the current user message with a context-augmented version. */
+		USER
+
+	}
+
+	// ------------------------------------------------------------------
+	// Per-turn inputs (shared record; lives here so implementations in
+	// other packages can pass it without extra imports).
+	// ------------------------------------------------------------------
+
+	/**
+	 * Inputs the advisor computes once per turn and hands to the handler's
+	 * {@link #fetch(MemoryFetchContext)} and
+	 * {@link #format(MemoryFetchContext, MemoryFetchResult)}.
+	 */
+	record MemoryFetchContext(AgentCoreLongTermMemoryRetriever retriever, String userId, String sessionId,
+			String userPrompt) {
+	}
+
+	/**
+	 * Handler output: the records to render. {@code primary} is the main record set;
+	 * {@code secondary} is only used by strategies that retrieve two sets under one turn
+	 * (e.g. EPISODIC's reflections). Use {@link #primaryOnly(List)} for single-set
+	 * handlers.
+	 */
+	record MemoryFetchResult(List<MemoryRecord> primary, List<MemoryRecord> secondary) {
+
+		public static MemoryFetchResult empty() {
+			return new MemoryFetchResult(List.of(), List.of());
+		}
+
+		public static MemoryFetchResult primaryOnly(List<MemoryRecord> primary) {
+			return new MemoryFetchResult((primary != null) ? primary : List.of(), List.of());
+		}
+
+		public boolean isEmpty() {
+			return this.primary.isEmpty() && this.secondary.isEmpty();
+		}
+
+		public int totalCount() {
+			return this.primary.size() + this.secondary.size();
+		}
 	}
 
 }

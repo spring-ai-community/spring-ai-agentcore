@@ -16,8 +16,6 @@
 
 package org.springaicommunity.agentcore.memory;
 
-import static org.awaitility.Awaitility.await;
-
 import java.time.Duration;
 import java.util.List;
 
@@ -25,8 +23,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.boot.test.context.SpringBootTest;
-
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.DeleteMemoryRequest;
@@ -40,6 +36,10 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.SemanticMem
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.SummaryMemoryStrategyInput;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.UpdateMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.UserPreferenceMemoryStrategyInput;
+
+import org.springframework.boot.test.context.SpringBootTest;
+
+import static org.awaitility.Awaitility.await;
 
 /**
  * End-to-end integration test for AgentCore Memory.
@@ -139,8 +139,8 @@ class AgentCoreMemoryE2EIT extends AgentCoreMemoryIT {
 				System.out.println("Strategies status: NONE");
 				return false;
 			}
-			var allActive = memory.strategies().stream().allMatch(s -> s.status().toString().equals("ACTIVE"));
-			System.out.println("Strategies status: " + (allActive ? "ACTIVE" : "CREATING"));
+			var allActive = memory.strategies().stream().allMatch((s) -> s.status().toString().equals("ACTIVE"));
+			System.out.println("Strategies status: " + ((allActive) ? "ACTIVE" : "CREATING"));
 			return allActive;
 		});
 
@@ -167,8 +167,8 @@ class AgentCoreMemoryE2EIT extends AgentCoreMemoryIT {
 				controlClient.deleteMemory(DeleteMemoryRequest.builder().memoryId(memoryId).build());
 				System.out.println("Memory deleted");
 			}
-			catch (Exception e) {
-				System.err.println("Failed to delete memory: " + e.getMessage());
+			catch (Exception ex) {
+				System.err.println("Failed to delete memory: " + ex.getMessage());
 			}
 			finally {
 				controlClient.close();

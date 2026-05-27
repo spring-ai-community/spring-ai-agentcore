@@ -127,9 +127,13 @@ public class SpringMethodVisibility extends Recipe {
 					modifiers.set(0, first.withPrefix(publicPrefix));
 					return md.withModifiers(modifiers);
 				}
-				// No modifiers left: transfer prefix to the return type
-				return md.withModifiers(modifiers)
-					.withReturnTypeExpression(md.getReturnTypeExpression().withPrefix(publicPrefix));
+				// No modifiers left: transfer prefix to the return type (or name for
+				// constructors)
+				if (md.getReturnTypeExpression() != null) {
+					return md.withModifiers(modifiers)
+						.withReturnTypeExpression(md.getReturnTypeExpression().withPrefix(publicPrefix));
+				}
+				return md.withModifiers(modifiers).withName(md.getName().withPrefix(publicPrefix));
 			}
 
 		};

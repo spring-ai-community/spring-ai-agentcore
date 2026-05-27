@@ -27,7 +27,6 @@ import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcore.model.EvaluateRequest;
@@ -75,9 +74,9 @@ public class AgentCoreEvaluationClient {
 			.evaluationInput(evaluationInput)
 			.build();
 
-		EvaluateResponse response = client.evaluate(request);
+		EvaluateResponse response = this.client.evaluate(request);
 
-		return mapResults(response.evaluationResults());
+		return this.mapResults(response.evaluationResults());
 	}
 
 	/**
@@ -112,8 +111,8 @@ public class AgentCoreEvaluationClient {
 		}
 		List<CompletableFuture<List<EvaluationResult>>> futures = new ArrayList<>(evaluatorIds.size());
 		for (String evaluatorId : evaluatorIds) {
-			futures.add(
-					CompletableFuture.supplyAsync(() -> evaluateWithErrorCapture(evaluatorId, sessionSpans), executor));
+			futures.add(CompletableFuture.supplyAsync(() -> this.evaluateWithErrorCapture(evaluatorId, sessionSpans),
+					executor));
 		}
 		List<EvaluationResult> allResults = new ArrayList<>();
 		for (CompletableFuture<List<EvaluationResult>> future : futures) {
@@ -136,12 +135,12 @@ public class AgentCoreEvaluationClient {
 	private List<EvaluationResult> evaluateWithErrorCapture(String evaluatorId,
 			List<Map<String, Object>> sessionSpans) {
 		try {
-			return evaluate(evaluatorId, sessionSpans);
+			return this.evaluate(evaluatorId, sessionSpans);
 		}
-		catch (Exception e) {
-			logger.error("Evaluation failed for evaluator {}: {}", evaluatorId, e.getMessage());
+		catch (Exception ex) {
+			logger.error("Evaluation failed for evaluator {}: {}", evaluatorId, ex.getMessage());
 			return List.of(new EvaluationResult(evaluatorId, null, null, null, null, null,
-					"ClientException:" + e.getClass().getSimpleName(), e.getMessage()));
+					"ClientException:" + ex.getClass().getSimpleName(), ex.getMessage()));
 		}
 	}
 

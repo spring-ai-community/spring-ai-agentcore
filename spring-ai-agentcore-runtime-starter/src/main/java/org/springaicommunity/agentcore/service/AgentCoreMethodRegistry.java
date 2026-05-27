@@ -31,7 +31,7 @@ public class AgentCoreMethodRegistry {
 	private Method agentMethod;
 
 	public void registerMethod(Object bean, Method method) {
-		if (agentBean != null) {
+		if (this.agentBean != null) {
 			throw new AgentCoreInvocationException(
 					"Multiple @AgentCoreInvocation methods found. Only one is allowed in MVP.");
 		}
@@ -40,15 +40,15 @@ public class AgentCoreMethodRegistry {
 	}
 
 	public boolean hasAgentMethod() {
-		return agentMethod != null;
+		return this.agentMethod != null;
 	}
 
 	public Object getAgentBean() {
-		return agentBean;
+		return this.agentBean;
 	}
 
 	public Method getAgentMethod() {
-		return agentMethod;
+		return this.agentMethod;
 	}
 
 }

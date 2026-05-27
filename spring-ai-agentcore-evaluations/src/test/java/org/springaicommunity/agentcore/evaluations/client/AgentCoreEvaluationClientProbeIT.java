@@ -10,7 +10,6 @@ import java.util.Random;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
@@ -31,18 +30,36 @@ class AgentCoreEvaluationClientProbeIT {
 
 	private final BedrockAgentCoreClient sdk = BedrockAgentCoreClient.builder().region(Region.of(REGION)).build();
 
-	private final AgentCoreEvaluationClient client = new AgentCoreEvaluationClient(sdk);
+	private final AgentCoreEvaluationClient client = new AgentCoreEvaluationClient(this.sdk);
 
 	@Test
 	void probe() {
-		probe("B1-nested-content", body("content"));
-		probe("B2-content-string", body("content-string"));
-		probe("B3-content-text", body("content-text"));
-		probe("B4-messages-flat", body("flat"));
-		probe("B5-messages-content-parts-array", body("parts-array"));
-		probe("B6-content-list-text-objs", body("list-text-objs"));
-		probe("B7-input-output-as-strings", body("io-strings"));
-		probe("B8-single-messages-list", body("single-messages-list"));
+		this.probe("B1-nested-content", this.body("content"));
+		this.probe("B2-content-string", this.body("content-string"));
+		this.probe("B3-content-text", this.body("content-text"));
+		this.probe("B4-messages-flat", this.body("flat"));
+		this.probe("B5-messages-content-parts-array", this.body("parts-array"));
+		this.probe("B6-content-list-text-objs", this.body("list-text-objs"));
+		this.probe("B7-input-output-as-strings", this.body("io-strings"));
+		this.probe("B8-single-messages-list", this.body("single-messages-list"));
+	}
+
+	private void probe(String name, Map<String, Object> body) {
+		String traceId = hex(16);
+		String spanId = hex(8);
+		long t = System.currentTimeMillis() * 1_000_000L;
+		Map<String, Object> span = buildSpan(traceId, spanId, t);
+		Map<String, Object> log = buildLog(traceId, spanId, t);
+		log.put("body", body);
+		try {
+			List<EvaluationResult> r = this.client.evaluate(EVALUATOR_ID, List.of(span, log));
+			EvaluationResult res = (r.isEmpty()) ? null : r.getFirst();
+			System.out.printf("[%s] size=%d score=%s err=%s%n", name, r.size(), (res != null) ? res.score() : null,
+					(res != null) ? res.errorCode() : null);
+		}
+		catch (Exception ex) {
+			System.out.printf("[%s] %s: %s%n", name, ex.getClass().getSimpleName(), ex.getMessage());
+		}
 	}
 
 	private Map<String, Object> body(String variant) {
@@ -72,24 +89,6 @@ class AgentCoreEvaluationClientProbeIT {
 					List.of(Map.of("role", "assistant", "content", ASSISTANT)));
 			default -> throw new IllegalArgumentException(variant);
 		};
-	}
-
-	private void probe(String name, Map<String, Object> body) {
-		String traceId = hex(16);
-		String spanId = hex(8);
-		long t = System.currentTimeMillis() * 1_000_000L;
-		Map<String, Object> span = buildSpan(traceId, spanId, t);
-		Map<String, Object> log = buildLog(traceId, spanId, t);
-		log.put("body", body);
-		try {
-			List<EvaluationResult> r = client.evaluate(EVALUATOR_ID, List.of(span, log));
-			EvaluationResult res = r.isEmpty() ? null : r.getFirst();
-			System.out.printf("[%s] size=%d score=%s err=%s%n", name, r.size(), res == null ? null : res.score(),
-					res == null ? null : res.errorCode());
-		}
-		catch (Exception ex) {
-			System.out.printf("[%s] %s: %s%n", name, ex.getClass().getSimpleName(), ex.getMessage());
-		}
 	}
 
 	private static Map<String, Object> buildSpan(String traceId, String spanId, long t) {

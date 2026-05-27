@@ -36,18 +36,18 @@ public record EvaluationEvent(String sessionId, String traceId, List<EvaluationR
 	 * Returns true if all evaluations passed (score >= 0.5).
 	 */
 	public boolean allPassing() {
-		return results != null && results.stream().allMatch(EvaluationResult::isPassing);
+		return this.results != null && this.results.stream().allMatch(EvaluationResult::isPassing);
 	}
 
 	/**
 	 * Returns the average score across all evaluators.
 	 */
 	public double averageScore() {
-		if (results == null || results.isEmpty()) {
+		if (this.results == null || this.results.isEmpty()) {
 			return 0.0;
 		}
-		return results.stream()
-			.filter(r -> r.score() != null)
+		return this.results.stream()
+			.filter((r) -> r.score() != null)
 			.mapToDouble(EvaluationResult::score)
 			.average()
 			.orElse(0.0);

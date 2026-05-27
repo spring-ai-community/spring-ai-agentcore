@@ -1,0 +1,324 @@
+package org.springaicommunity.agentcore.memory.longterm;
+
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryResponse;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+/**
+ * Unit tests for {@link AgentCoreLongTermMemoryNamespaceValidator}.
+ *
+ * @author Yuriy Bezsonov
+ */
+@ExtendWith(MockitoExtension.class)
+@DisplayName("AgentCore Long-Term Memory Namespace Validator Tests")
+class AgentCoreLongTermMemoryNamespaceValidatorTests {
+
+	@Mock
+	private BedrockAgentCoreControlClient controlClient;
+
+	@Mock
+	private AgentCoreLongTermMemoryNamespaceRegistrar registrar;
+
+	private AgentCoreLongTermMemoryNamespaceValidator validator;
+
+	@BeforeEach
+	void setUp() {
+		this.validator = new AgentCoreLongTermMemoryNamespaceValidator(this.controlClient, this.registrar, false);
+	}
+
+	@Test
+	@DisplayName("Should pass validation for correct actor-scoped namespace")
+	void shouldPassValidationForCorrectActorScopedNamespace() {
+		// Given
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - no exception
+		this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())));
+	}
+
+	@Test
+	@DisplayName("Should pass validation for correct session-scoped namespace")
+	void shouldPassValidationForCorrectSessionScopedNamespace() {
+		// Given
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("summary-456")
+			.namespaces(List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern()))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - no exception
+		this.validator.validateNamespaces("test-memory",
+				Map.of("summary-456", List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern())));
+	}
+
+	@Test
+	@DisplayName("Should fail validation for wrong namespace format")
+	void shouldFailValidationForWrongNamespaceFormat() {
+		// Given - wrong format: /users/{actorId}/preferences instead of expected
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.namespaces(List.of("/users/{actorId}/preferences"))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("Namespace mismatch")
+			.hasMessageContaining("semantic-123")
+			.hasMessageContaining("/users/{actorId}/preferences");
+	}
+
+	@Test
+	@DisplayName("Should fail validation when strategy not found")
+	void shouldFailValidationWhenStrategyNotFound() {
+		// Given - empty strategies
+		this.mockGetMemoryResponse(List.of());
+
+		// When/Then
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("no strategies configured");
+	}
+
+	@Test
+	@DisplayName("Should fail validation when configured strategy ID not in memory")
+	void shouldFailValidationWhenConfiguredStrategyNotInMemory() {
+		// Given - different strategy ID
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("other-strategy")
+			.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("not found")
+			.hasMessageContaining("semantic-123");
+	}
+
+	@Test
+	@DisplayName("Should fail validation when namespace is empty")
+	void shouldFailValidationWhenNamespaceIsEmpty() {
+		// Given
+		MemoryStrategy strategy = MemoryStrategy.builder().strategyId("semantic-123").namespaces(List.of()).build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("no namespaces configured");
+	}
+
+	@Test
+	@DisplayName("Should skip validation when no strategies configured")
+	void shouldSkipValidationWhenNoStrategiesConfigured() {
+		// When/Then - no exception, no API call
+		this.validator.validateNamespaces("test-memory", Map.of());
+	}
+
+	@Test
+	@DisplayName("Should pass validation for resolved namespace with actual values")
+	void shouldPassValidationForResolvedNamespaceWithActualValues() {
+		// Given - actual namespace from AWS with real strategy ID (not template)
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.namespaces(List.of("/strategies/semantic-123/actors/{actorId}"))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - should match ACTOR pattern despite having resolved strategyId
+		this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())));
+	}
+
+	@Test
+	@DisplayName("Should pass validation for fully resolved session namespace")
+	void shouldPassValidationForFullyResolvedSessionNamespace() {
+		// Given - namespace with resolved strategy ID
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("summary-456")
+			.namespaces(List.of("/strategies/summary-456/actors/{actorId}/sessions/{sessionId}"))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - should match SESSION pattern
+		this.validator.validateNamespaces("test-memory",
+				Map.of("summary-456", List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern())));
+	}
+
+	@Test
+	@DisplayName("Should pass validation for custom namespace pattern")
+	void shouldPassValidationForCustomNamespacePattern() {
+		// Given - custom namespace pattern in both AWS and config
+		String customPattern = "custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}";
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("summary-123")
+			.namespaces(List.of(customPattern))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - should pass when config matches AWS
+		this.validator.validateNamespaces("test-memory", Map.of("summary-123", List.of(customPattern)));
+	}
+
+	@Test
+	@DisplayName("Should fail when custom namespace in AWS but default in config")
+	void shouldFailWhenCustomNamespaceInAwsButDefaultInConfig() {
+		// Given - custom namespace in AWS, but default pattern in Spring config
+		String customPattern = "custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}";
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("summary-123")
+			.namespaces(List.of(customPattern))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - should fail because patterns don't match
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("summary-123", List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("Namespace mismatch")
+			.hasMessageContaining("custom-namespace");
+	}
+
+	@Test
+	@DisplayName("Should fail when actor namespace used for session scope")
+	void shouldFailWhenActorNamespaceUsedForSessionScope() {
+		// Given - actor-scoped namespace but expecting session scope
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("summary-456")
+			.namespaces(List.of("/strategies/summary-456/actors/{actorId}"))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - should fail because missing /sessions/{sessionId}
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("summary-456", List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("Namespace mismatch");
+	}
+
+	private void mockGetMemoryResponse(List<MemoryStrategy> strategies) {
+		Memory memory = Memory.builder().strategies(strategies).build();
+		GetMemoryResponse response = GetMemoryResponse.builder().memory(memory).build();
+		when(this.controlClient.getMemory(any(GetMemoryRequest.class))).thenReturn(response);
+	}
+
+	@Nested
+	@DisplayName("Auto-Registration Mode Tests")
+	class AutoRegistrationTests {
+
+		@Mock
+		private AgentCoreLongTermMemoryNamespaceRegistrar registrar;
+
+		private AgentCoreLongTermMemoryNamespaceValidator validatorWithAutoRegister;
+
+		private AgentCoreLongTermMemoryNamespaceValidator validatorWithoutAutoRegister;
+
+		@BeforeEach
+		void setUp() {
+			this.registrar = mock(AgentCoreLongTermMemoryNamespaceRegistrar.class);
+			this.validatorWithAutoRegister = new AgentCoreLongTermMemoryNamespaceValidator(
+					AgentCoreLongTermMemoryNamespaceValidatorTests.this.controlClient, this.registrar, true);
+			this.validatorWithoutAutoRegister = new AgentCoreLongTermMemoryNamespaceValidator(
+					AgentCoreLongTermMemoryNamespaceValidatorTests.this.controlClient, this.registrar, false);
+		}
+
+		@Test
+		@DisplayName("Should call registrar on namespace mismatch when autoRegister is true")
+		void shouldCallRegistrarOnMismatch() {
+			// Given
+			MemoryStrategy strategy = MemoryStrategy.builder()
+				.strategyId("semantic-123")
+				.namespaces(List.of("/wrong/namespace/{actorId}"))
+				.build();
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this.mockGetMemoryResponse(List.of(strategy));
+
+			String expectedPattern = AgentCoreLongTermMemoryNamespace.ACTOR.getPattern();
+
+			// When
+			this.validatorWithAutoRegister.validateNamespaces("test-memory",
+					Map.of("semantic-123", List.of(expectedPattern)));
+
+			// Then
+			verify(this.registrar).registerNamespace("test-memory", "semantic-123", expectedPattern);
+		}
+
+		@Test
+		@DisplayName("Should not call registrar when namespace matches")
+		void shouldNotCallRegistrarWhenMatches() {
+			// Given
+			MemoryStrategy strategy = MemoryStrategy.builder()
+				.strategyId("semantic-123")
+				.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
+				.build();
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this.mockGetMemoryResponse(List.of(strategy));
+
+			// When
+			this.validatorWithAutoRegister.validateNamespaces("test-memory",
+					Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern())));
+
+			// Then
+			verify(this.registrar, never()).registerNamespace(any(), any(), any());
+		}
+
+		@Test
+		@DisplayName("Should throw exception when autoRegister is false and mismatch occurs")
+		void shouldThrowWhenAutoRegisterDisabledAndMismatch() {
+			// Given
+			MemoryStrategy strategy = MemoryStrategy.builder()
+				.strategyId("semantic-123")
+				.namespaces(List.of("/wrong/namespace/{actorId}"))
+				.build();
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this.mockGetMemoryResponse(List.of(strategy));
+
+			// When/Then
+			assertThatThrownBy(() -> this.validatorWithoutAutoRegister.validateNamespaces("test-memory",
+					Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+				.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+				.hasMessageContaining("Namespace mismatch");
+
+			// Verify registrar was never called
+			verify(this.registrar, never()).registerNamespace(any(), any(), any());
+		}
+
+	}
+
+}

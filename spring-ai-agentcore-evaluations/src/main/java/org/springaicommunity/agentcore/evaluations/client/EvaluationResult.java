@@ -46,14 +46,14 @@ public record EvaluationResult(String evaluatorId, Double score, String label, S
 	 * Returns true if this result indicates a passing score (>= 0.5).
 	 */
 	public boolean isPassing() {
-		return score != null && score >= 0.5;
+		return this.score != null && this.score >= 0.5;
 	}
 
 	/**
 	 * Returns true if the API returned an error for this evaluation instead of a score.
 	 */
 	public boolean isError() {
-		return errorCode != null;
+		return this.errorCode != null;
 	}
 
 }

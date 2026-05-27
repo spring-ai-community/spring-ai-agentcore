@@ -40,8 +40,8 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 * Canonical constructor with defensive copy of data array and immutable metadata.
 	 */
 	public GeneratedFile {
-		data = data != null ? Arrays.copyOf(data, data.length) : new byte[0];
-		metadata = metadata != null ? Map.copyOf(metadata) : Map.of();
+		data = (data != null) ? Arrays.copyOf(data, data.length) : new byte[0];
+		metadata = (metadata != null) ? Map.copyOf(metadata) : Map.of();
 	}
 
 	/**
@@ -69,7 +69,7 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 */
 	@Override
 	public byte[] data() {
-		return Arrays.copyOf(data, data.length);
+		return Arrays.copyOf(this.data, data.length);
 	}
 
 	/**
@@ -77,7 +77,7 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 * @return true if MIME type starts with "image/"
 	 */
 	public boolean isImage() {
-		return mimeType != null && mimeType.startsWith("image/");
+		return this.mimeType != null && this.mimeType.startsWith("image/");
 	}
 
 	/**
@@ -85,12 +85,12 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 * @return true if MIME type indicates text content
 	 */
 	public boolean isText() {
-		if (mimeType == null) {
+		if (this.mimeType == null) {
 			return false;
 		}
-		return mimeType.startsWith("text/") || mimeType.equals("application/json") || mimeType.equals("application/xml")
-				|| mimeType.equals("application/javascript") || mimeType.equals("application/yaml")
-				|| mimeType.equals("application/x-yaml");
+		return this.mimeType.startsWith("text/") || this.mimeType.equals("application/json")
+				|| this.mimeType.equals("application/xml") || this.mimeType.equals("application/javascript")
+				|| this.mimeType.equals("application/yaml") || this.mimeType.equals("application/x-yaml");
 	}
 
 	/**
@@ -100,7 +100,7 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 * @return data URL string (e.g., "data:image/png;base64,...")
 	 */
 	public String toDataUrl() {
-		return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(this.data);
+		return "data:" + this.mimeType + ";base64," + Base64.getEncoder().encodeToString(this.data);
 	}
 
 	/**
