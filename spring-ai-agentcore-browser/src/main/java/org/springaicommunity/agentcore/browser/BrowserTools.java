@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,26 +42,41 @@ public class BrowserTools {
 	 */
 	public static final String CATEGORY = "browser";
 
+	/**
+	 * tool description for the browse-and-extract tool advertised to LLMs.
+	 */
 	public static final String BROWSE_URL_DESCRIPTION = """
 			Browse a web page and extract its text content.
 			Returns the page title and body text.
 			""";
 
+	/**
+	 * tool description for the screenshot tool advertised to LLMs.
+	 */
 	public static final String SCREENSHOT_DESCRIPTION = """
 			Take a screenshot of a web page.
 			Returns metadata about the captured image. Screenshot is stored for retrieval.
 			""";
 
+	/**
+	 * tool description for the click tool advertised to LLMs.
+	 */
 	public static final String CLICK_DESCRIPTION = """
 			Click an element on a web page.
 			Selector is a CSS selector (for example, 'button', '#submit', '.btn-primary').
 			""";
 
+	/**
+	 * tool description for the fill-form tool advertised to LLMs.
+	 */
 	public static final String FILL_DESCRIPTION = """
 			Fill a form field on a web page.
 			Selector is a CSS selector for the input field.
 			""";
 
+	/**
+	 * tool description for the evaluate-script tool advertised to LLMs.
+	 */
 	public static final String EVALUATE_DESCRIPTION = """
 			Execute JavaScript on a web page and return the result.
 			""";
@@ -158,7 +173,7 @@ public class BrowserTools {
 	/**
 	 * Click an element on a web page.
 	 * @param url the URL to navigate to
-	 * @param selector CSS selector for the element
+	 * @param selector the CSS selector for the element
 	 * @return result message
 	 */
 	public String clickElement(String url, String selector) {
@@ -175,7 +190,7 @@ public class BrowserTools {
 	/**
 	 * Fill a form field on a web page.
 	 * @param url the URL to navigate to
-	 * @param selector CSS selector for the input
+	 * @param selector the CSS selector for the input
 	 * @param value value to fill
 	 * @return result message
 	 */
@@ -193,7 +208,7 @@ public class BrowserTools {
 	/**
 	 * Execute JavaScript on a web page.
 	 * @param url the URL to navigate to
-	 * @param script JavaScript code
+	 * @param script the JavaScript code
 	 * @return script result
 	 */
 	public String evaluateScript(String url, String script) {

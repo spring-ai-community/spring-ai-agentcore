@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AgentCoreMemoryProperties(String memoryId, Integer totalEventsLimit, String defaultSession, int pageSize,
 		boolean ignoreUnknownRoles) {
 
+	/**
+	 * configuration prefix for memory properties.
+	 */
 	public static final String CONFIG_PREFIX = "agentcore.memory";
 
 	public AgentCoreMemoryProperties(String memoryId, Integer totalEventsLimit, String defaultSession, int pageSize,

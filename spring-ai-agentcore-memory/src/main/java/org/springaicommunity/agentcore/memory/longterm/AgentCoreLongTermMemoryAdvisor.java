@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
  *
  * @author Yuriy Bezsonov
  */
-public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdvisor {
+public final class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryAdvisor.class);
 
@@ -166,7 +166,7 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 		return this.order;
 	}
 
-	public static class Builder {
+	public static final class Builder {
 
 		private final AgentCoreLongTermMemoryRetriever retriever;
 
@@ -185,6 +185,8 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 		 * Supply the strategy handler that drives fetch / format / inject. Use one of the
 		 * built-in handlers or a user-provided implementation of
 		 * {@link MemoryStrategyHandler}.
+		 * @param handler the strategy handler
+		 * @return this builder
 		 */
 		public Builder handler(MemoryStrategyHandler handler) {
 			Objects.requireNonNull(handler, "handler is required");
@@ -198,6 +200,8 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 		 * {@code AgentCoreLongTermMemoryAdvisor-SEMANTIC}) and the default advisor order.
 		 * Custom handlers can leave this unset; the advisor defaults to
 		 * {@link AgentCoreLongTermMemoryStrategyType#CUSTOM}.
+		 * @param memoryStrategy the built-in strategy type
+		 * @return this builder
 		 */
 		public Builder memoryStrategy(AgentCoreLongTermMemoryStrategyType memoryStrategy) {
 			Objects.requireNonNull(memoryStrategy, "memoryStrategy is required");

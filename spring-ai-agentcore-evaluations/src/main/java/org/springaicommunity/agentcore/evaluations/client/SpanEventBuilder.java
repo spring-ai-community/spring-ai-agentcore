@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *
  * @author Andrei Shakirin
  */
-public class SpanEventBuilder {
+public final class SpanEventBuilder {
 
 	/**
 	 * Instrumentation scope the Evaluate API recognises as a Strands agent source. We
@@ -136,6 +136,8 @@ public class SpanEventBuilder {
 	/**
 	 * Set the model id recorded on the agent span's {@code gen_ai.request.model}
 	 * attribute.
+	 * @param modelId the model identifier
+	 * @return this builder
 	 */
 	public SpanEventBuilder modelId(String modelId) {
 		if (modelId != null && !modelId.isBlank()) {
@@ -148,6 +150,8 @@ public class SpanEventBuilder {
 	 * Set the finish reason emitted in the assistant message's body (e.g.
 	 * {@code "end_turn"}, {@code "tool_use"}, {@code "max_tokens"}). Defaults to
 	 * {@code "end_turn"} when not set or when the value is blank.
+	 * @param finishReason the finish reason value
+	 * @return this builder
 	 */
 	public SpanEventBuilder finishReason(String finishReason) {
 		if (finishReason != null && !finishReason.isBlank()) {
@@ -162,6 +166,9 @@ public class SpanEventBuilder {
 	 * values are skipped — the corresponding attribute is omitted rather than set to
 	 * zero, since many providers return {@code null} when usage data is unavailable and a
 	 * hard zero would be misleading.
+	 * @param inputTokens prompt tokens consumed (may be {@code null})
+	 * @param outputTokens completion tokens produced (may be {@code null})
+	 * @return this builder
 	 */
 	public SpanEventBuilder tokenUsage(Integer inputTokens, Integer outputTokens) {
 		this.inputTokens = inputTokens;
@@ -175,6 +182,8 @@ public class SpanEventBuilder {
 	 * shape (keys {@code role} and {@code content}). Callers build this from Spring AI's
 	 * {@code List<Message>} before passing in. Passing {@code null} or an empty list is a
 	 * no-op and preserves the single-message baseline shape.
+	 * @param history prior messages in ADOT body shape
+	 * @return this builder
 	 */
 	public SpanEventBuilder history(List<Map<String, Object>> history) {
 		this.history = (history != null) ? history : List.of();

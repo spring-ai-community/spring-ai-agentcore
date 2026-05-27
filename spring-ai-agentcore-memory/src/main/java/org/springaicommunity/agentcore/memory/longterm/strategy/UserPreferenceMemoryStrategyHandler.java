@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package org.springaicommunity.agentcore.memory.longterm.strategy;
 /**
  * User preference strategy. Lists all preferences under the user's namespace without a
  * semantic query, so it does <em>not</em> require a user prompt to run.
+ *
+ * @author Maximilian Schellhorn
  */
 public final class UserPreferenceMemoryStrategyHandler implements MemoryStrategyHandler {
 

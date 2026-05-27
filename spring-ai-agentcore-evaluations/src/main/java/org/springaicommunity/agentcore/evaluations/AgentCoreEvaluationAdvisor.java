@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ import org.springframework.ai.chat.model.Generation;
  *
  * @author Andrei Shakirin
  */
-public class AgentCoreEvaluationAdvisor implements CallAdvisor, StreamAdvisor {
+public final class AgentCoreEvaluationAdvisor implements CallAdvisor, StreamAdvisor {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreEvaluationAdvisor.class);
 
@@ -295,6 +295,8 @@ public class AgentCoreEvaluationAdvisor implements CallAdvisor, StreamAdvisor {
 	 * advisor), and {@code ToolResponseMessage} entries are included. Any intermediate
 	 * {@code AssistantMessage.toolCalls} from the current turn are not visible here, see
 	 * design doc Extension 5.1.
+	 * @param request the chat client request whose prompt history is being extracted
+	 * @return body-message entries for prior history (excluding the trailing user prompt)
 	 */
 	private List<Map<String, Object>> extractHistory(ChatClientRequest request) {
 		List<Message> all = request.prompt().getInstructions();
@@ -386,7 +388,7 @@ public class AgentCoreEvaluationAdvisor implements CallAdvisor, StreamAdvisor {
 		return this.order;
 	}
 
-	public static class Builder {
+	public static final class Builder {
 
 		private final AgentCoreEvaluationClient client;
 

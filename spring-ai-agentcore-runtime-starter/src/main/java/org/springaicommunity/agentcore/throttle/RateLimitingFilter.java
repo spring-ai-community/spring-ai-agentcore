@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,8 @@ import org.springframework.http.MediaType;
  * part of the public API. Tests that assert on cache size should call
  * {@code buckets.cleanUp()} first so eviction work is applied before reading
  * {@code estimatedSize()}.
+ *
+ * @author Maximilian Schellhorn
  */
 public class RateLimitingFilter implements Filter {
 

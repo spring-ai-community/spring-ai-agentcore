@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,13 +41,20 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * — preserves the single-message baseline wire shape verified against the Evaluate API.
  * Opt-in because the multi-message payload grows with conversation length; long sessions
  * at high sample rates produce O(n²) bytes on the wire.
+ * @author Andrei Shakirin
  */
 @ConfigurationProperties(AgentCoreEvaluationProperties.CONFIG_PREFIX)
 public record AgentCoreEvaluationProperties(boolean enabled, String region, List<String> evaluatorIds, Boolean async,
 		Boolean metricsEnabled, Double sampleRate, Boolean includeHistory) {
 
+	/**
+	 * configuration prefix for evaluation properties.
+	 */
 	public static final String CONFIG_PREFIX = "spring.ai.agentcore.evaluations";
 
+	/**
+	 * default evaluator IDs used when none are configured.
+	 */
 	public static final List<String> DEFAULT_EVALUATOR_IDS = List.of("Builtin.Helpfulness");
 
 	public AgentCoreEvaluationProperties {

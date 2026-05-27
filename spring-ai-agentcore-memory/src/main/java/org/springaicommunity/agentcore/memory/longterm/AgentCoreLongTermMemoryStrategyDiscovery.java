@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -129,6 +129,8 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 	 * list when any link is missing or when the reflection variant is
 	 * {@code customReflectionConfiguration} (handled separately, not supported by
 	 * auto-discovery yet).
+	 * @param strategy the AWS memory strategy descriptor
+	 * @return the configured reflection namespaces, or empty when not applicable
 	 */
 	private List<String> extractReflectionsNamespaces(MemoryStrategy strategy) {
 		StrategyConfiguration configuration = strategy.configuration();
@@ -176,6 +178,7 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 
 		/**
 		 * Returns the first namespace (default for episodes).
+		 * @return the default namespace
 		 */
 		public String defaultNamespace() {
 			return this.namespaces.get(0);
@@ -184,6 +187,7 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 		/**
 		 * Returns the first reflections namespace, or {@code null} if none are
 		 * configured.
+		 * @return the default reflections namespace, or {@code null}
 		 */
 		public String defaultReflectionsNamespace() {
 			return (this.reflectionsNamespaces.isEmpty()) ? null : this.reflectionsNamespaces.get(0);

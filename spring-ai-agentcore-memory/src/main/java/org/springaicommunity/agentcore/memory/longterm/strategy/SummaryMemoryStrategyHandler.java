@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ package org.springaicommunity.agentcore.memory.longterm.strategy;
  * Summary strategy. Retrieves prior-session summaries and augments the user message with
  * them (rather than the system message) so the LLM treats them as grounding for the
  * current question.
+ *
+ * @author Maximilian Schellhorn
  */
 public final class SummaryMemoryStrategyHandler implements MemoryStrategyHandler {
 

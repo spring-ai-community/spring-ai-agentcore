@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -112,8 +112,8 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 				yield b.build();
 			}
 			case EPISODIC -> this.buildEpisodicHandler(discovered, explicitConfig, namespace);
-			case CUSTOM -> throw new IllegalStateException(
-					"Auto-discovery should never produce CUSTOM; AgentCoreLongTermMemoryStrategyType.fromAwsType filters it out.");
+			case CUSTOM -> throw new IllegalStateException("Auto-discovery should never produce CUSTOM; "
+					+ "AgentCoreLongTermMemoryStrategyType.fromAwsType filters it out.");
 		};
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,14 @@ import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParse
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
-import software.amazon.awssdk.services.bedrockagentcore.model.*;
+import software.amazon.awssdk.services.bedrockagentcore.model.Content;
+import software.amazon.awssdk.services.bedrockagentcore.model.Conversational;
+import software.amazon.awssdk.services.bedrockagentcore.model.CreateEventRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.DeleteEventRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.Event;
+import software.amazon.awssdk.services.bedrockagentcore.model.ListEventsRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.PayloadType;
+import software.amazon.awssdk.services.bedrockagentcore.model.Role;
 
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -56,6 +63,8 @@ import org.springframework.ai.chat.messages.UserMessage;
  * <li>saveAll: Only saves messages without eventId (new messages)</li>
  * <li>After save: Marks saved messages with the returned eventId</li>
  * </ul>
+ *
+ * @author Maximilian Schellhorn
  */
 public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository {
 
@@ -114,7 +123,8 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 							yield null;
 						}
 						else {
-							throw new IllegalStateException("Unsupported role: " + payload.conversational().role());
+							Role role = payload.conversational().role();
+							throw new IllegalStateException("Unsupported role: " + role);
 						}
 					}
 				});
@@ -132,6 +142,9 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 	/**
 	 * Create AssistantMessage with eventId in metadata for delta tracking.
+	 * @param payload the AgentCore payload
+	 * @param eventId the AgentCore event id, or {@code null} for unsaved messages
+	 * @return assistant message with eventId in its metadata
 	 */
 	private AssistantMessage createAssistantMessage(PayloadType payload, String eventId) {
 		return AssistantMessage.builder()
@@ -142,6 +155,9 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 
 	/**
 	 * Create UserMessage with eventId in metadata for delta tracking.
+	 * @param payload the AgentCore payload
+	 * @param eventId the AgentCore event id, or {@code null} for unsaved messages
+	 * @return user message with eventId in its metadata
 	 */
 	private UserMessage createUserMessage(PayloadType payload, String eventId) {
 		return UserMessage.builder()
@@ -288,6 +304,10 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 	 * Iterate all events for a conversation page by page. Centralizes pagination so
 	 * callers decide whether to include payloads and whether to honor
 	 * {@link #totalEventsLimit} (retrieval respects the limit; delete must not).
+	 * @param actorAndSession the parsed actor/session pair
+	 * @param includePayloads whether to fetch event payloads
+	 * @param respectLimit whether to honor {@link #totalEventsLimit}
+	 * @param handler callback invoked once per fetched page
 	 */
 	private void forEachEventPage(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
 			boolean includePayloads, boolean respectLimit, Consumer<List<Event>> handler) {

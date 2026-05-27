@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ public class AgentCoreBrowserClient implements BrowserClient {
 	/**
 	 * Take a screenshot of a web page and return raw bytes.
 	 * @param url the URL to navigate to
-	 * @return PNG bytes
+	 * @return raw PNG bytes
 	 * @throws BrowserOperationException if screenshot capture fails
 	 */
 	@Override
@@ -115,7 +115,7 @@ public class AgentCoreBrowserClient implements BrowserClient {
 	/**
 	 * Click an element on a web page.
 	 * @param url the URL to navigate to
-	 * @param selector CSS selector for the element to click
+	 * @param selector the CSS selector for the element to click
 	 * @return result message
 	 */
 	@Override
@@ -133,7 +133,7 @@ public class AgentCoreBrowserClient implements BrowserClient {
 	/**
 	 * Fill a form field on a web page.
 	 * @param url the URL to navigate to
-	 * @param selector CSS selector for the input field
+	 * @param selector the CSS selector for the input field
 	 * @param value value to fill
 	 * @return result message
 	 */
@@ -149,7 +149,7 @@ public class AgentCoreBrowserClient implements BrowserClient {
 	/**
 	 * Execute JavaScript on a web page.
 	 * @param url the URL to navigate to
-	 * @param script JavaScript code to execute
+	 * @param script the JavaScript code to execute
 	 * @return script result as string
 	 */
 	@Override

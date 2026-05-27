@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.springframework.http.HttpStatus;
  * @param status the current status enum (HEALTHY, HEALTHY_BUSY, UNHEALTHY)
  * @param httpStatus the HTTP status code to return with the response
  * @param timeOfLastUpdate timestamp in seconds when the status last changed
+ * @author Andrei Shakirin
  * @since 1.0.0
  */
 public record AgentCorePingResponse(PingStatus status, HttpStatus httpStatus, long timeOfLastUpdate) {

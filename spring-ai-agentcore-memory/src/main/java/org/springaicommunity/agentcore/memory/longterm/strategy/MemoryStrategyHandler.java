@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,8 @@ import org.springframework.ai.chat.prompt.Prompt;
  * (semantic / user preference / summary / episodic) cover the standard AWS AgentCore
  * memory strategy types; the same interface will be reused by custom strategies in a
  * future release.
+ *
+ * @author Maximilian Schellhorn
  */
 public interface MemoryStrategyHandler {
 
@@ -44,12 +46,14 @@ public interface MemoryStrategyHandler {
 	 * Returns {@code true} when this strategy needs a non-empty user prompt to run. If
 	 * {@code false} (e.g. USER_PREFERENCE) the advisor will invoke this handler even on
 	 * empty prompts.
+	 * @return {@code true} if a non-empty user prompt is required
 	 */
 	default boolean requiresUserPrompt() {
 		return true;
 	}
 
 	/**
+	 * Returns the AgentCore Memory strategy id this handler reads from.
 	 * @return the AgentCore Memory strategy id this handler reads from.
 	 */
 	String strategyId();
@@ -67,11 +71,13 @@ public interface MemoryStrategyHandler {
 	 * @param context the same per-call inputs that drove the fetch, provided again so
 	 * implementations can interpolate the user prompt into the output if needed
 	 * @param fetched the non-empty result of {@link #fetch(MemoryFetchContext)}
+	 * @return the rendered memory section
 	 */
 	String format(MemoryFetchContext context, MemoryFetchResult fetched);
 
 	/**
 	 * Where the formatted context is placed on the outgoing request.
+	 * @return the injection target
 	 */
 	InjectionTarget target();
 
@@ -79,6 +85,9 @@ public interface MemoryStrategyHandler {
 	 * Default injection helper. Attaches {@code context} to the system message (creating
 	 * one if missing) or replaces the user message, per {@link #target()}.
 	 * Implementations normally don't need to override this.
+	 * @param request the chat client request being processed
+	 * @param context the rendered memory context
+	 * @return the request with the memory context injected
 	 */
 	default ChatClientRequest inject(ChatClientRequest request, String context) {
 		return switch (this.target()) {
@@ -100,6 +109,9 @@ public interface MemoryStrategyHandler {
 	 *
 	 * Built-in handlers use this to produce consistent prompt output; custom handlers may
 	 * reuse or replace it.
+	 * @param header the section header
+	 * @param records the records to render
+	 * @return the rendered memory section
 	 */
 	static String formatMemorySection(String header, List<MemoryRecord> records) {
 		StringBuilder sb = new StringBuilder();
@@ -165,6 +177,12 @@ public interface MemoryStrategyHandler {
 	 * Inputs the advisor computes once per turn and hands to the handler's
 	 * {@link #fetch(MemoryFetchContext)} and
 	 * {@link #format(MemoryFetchContext, MemoryFetchResult)}.
+	 *
+	 * @param retriever retriever used to query AgentCore Memory
+	 * @param userId resolved user (actor) id for the current turn
+	 * @param sessionId resolved session id for the current turn
+	 * @param userPrompt latest user prompt (may be empty for handlers that do not require
+	 * one)
 	 */
 	record MemoryFetchContext(AgentCoreLongTermMemoryRetriever retriever, String userId, String sessionId,
 			String userPrompt) {
@@ -175,6 +193,9 @@ public interface MemoryStrategyHandler {
 	 * {@code secondary} is only used by strategies that retrieve two sets under one turn
 	 * (e.g. EPISODIC's reflections). Use {@link #primaryOnly(List)} for single-set
 	 * handlers.
+	 *
+	 * @param primary primary record set
+	 * @param secondary optional secondary record set (e.g. EPISODIC reflections)
 	 */
 	record MemoryFetchResult(List<MemoryRecord> primary, List<MemoryRecord> secondary) {
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -131,6 +131,9 @@ public class AgentCoreEvaluationClient {
 	 * resulting {@link EvaluationResult} carries an
 	 * {@code errorCode}/{@code errorMessage} instead of a score so {@link #evaluateAll}
 	 * never aborts because of a single evaluator failure.
+	 * @param evaluatorId the evaluator to invoke
+	 * @param sessionSpans the session spans payload
+	 * @return per-evaluator results, with an error entry on failure
 	 */
 	private List<EvaluationResult> evaluateWithErrorCapture(String evaluatorId,
 			List<Map<String, Object>> sessionSpans) {
@@ -184,7 +187,8 @@ public class AgentCoreEvaluationClient {
 		List<EvaluationResult> mapped = new ArrayList<>();
 		for (EvaluationResultContent result : results) {
 			logger.debug(
-					"API result - evaluatorId: {}, value: {}, label: {}, explanation: {}, errorCode: {}, errorMessage: {}",
+					"API result - evaluatorId: {}, value: {}, label: {}, explanation: {}, "
+							+ "errorCode: {}, errorMessage: {}",
 					result.evaluatorId(), result.value(), result.label(), result.explanation(), result.errorCode(),
 					result.errorMessage());
 

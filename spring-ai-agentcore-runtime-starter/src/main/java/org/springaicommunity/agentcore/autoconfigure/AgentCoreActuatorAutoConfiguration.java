@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@ import org.springframework.context.annotation.Bean;
 /**
  * Auto-configuration for AgentCore Actuator integration. Only loaded when Spring Boot
  * Actuator is on the classpath.
+ *
+ * @author Andrei Shakirin
  */
 @AutoConfiguration
 @ConditionalOnClass(HealthEndpoint.class)
@@ -37,6 +39,7 @@ public class AgentCoreActuatorAutoConfiguration {
 
 	/**
 	 * Provides RequestCounter bean when not already available.
+	 * @return the task tracker bean
 	 */
 	@Bean
 	@ConditionalOnMissingBean
@@ -46,6 +49,9 @@ public class AgentCoreActuatorAutoConfiguration {
 
 	/**
 	 * Provides Actuator-based ping service when Spring Boot Actuator is available.
+	 * @param healthEndpoint the actuator health endpoint
+	 * @param agentCoreTaskTracker the task tracker
+	 * @return the ping service bean
 	 */
 	@Bean
 	@ConditionalOnBean(HealthEndpoint.class)

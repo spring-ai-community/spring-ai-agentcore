@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import software.amazon.awssdk.services.bedrockagentcore.model.CodeInterpreterRes
 import software.amazon.awssdk.services.bedrockagentcore.model.ContentBlock;
 import software.amazon.awssdk.services.bedrockagentcore.model.InvokeCodeInterpreterRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.InvokeCodeInterpreterResponseHandler;
-import software.amazon.awssdk.services.bedrockagentcore.model.ResourceContent;
+import software.amazon.awssdk.services.bedrockagentcore.model.InvokeCodeInterpreterResponseHandler.Visitor;
 import software.amazon.awssdk.services.bedrockagentcore.model.StartCodeInterpreterSessionRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.StopCodeInterpreterSessionRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.ToolArguments;
@@ -140,11 +140,10 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().language(language).code(code).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream((publisher) -> publisher
-							.subscribe((event) -> event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder()
-								.onResult((result) -> this.processResult(result, isError, textOutput, files))
-								.onDefault((defaultEvent) -> logger.trace("Default event: {}", defaultEvent))
-								.build())))
+						.onEventStream((publisher) -> publisher.subscribe((event) -> event.accept(Visitor.builder()
+							.onResult((result) -> this.processResult(result, isError, textOutput, files))
+							.onDefault((defaultEvent) -> logger.trace("Default event: {}", defaultEvent))
+							.build())))
 						.onError((error) -> {
 							logger.error("Stream error", error);
 							errorMessage.set(error.getMessage());
@@ -280,21 +279,9 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().directoryPath(directoryPath).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream((publisher) -> publisher.subscribe((event) -> event
-							.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder().onResult((result) -> {
-								if (result.content() != null) {
-									result.content().forEach((content) -> {
-										// Handle resource_link type - extract path from
-										// uri
-										if (content.uri() != null) {
-											String path = this.extractFileNameFromUri(content.uri());
-											if (path != null && !path.isEmpty() && !this.isExcludedPath(path)) {
-												filePaths.add(path);
-											}
-										}
-									});
-								}
-							}).build())))
+						.onEventStream((publisher) -> publisher.subscribe((event) -> event.accept(Visitor.builder()
+							.onResult((result) -> this.collectFilePathsFromResult(result, filePaths))
+							.build())))
 						.onError((error) -> {
 							String errorMessage = "listFiles failed: " + error.getMessage();
 							logger.error(errorMessage, error);
@@ -311,8 +298,26 @@ public class AgentCoreCodeInterpreterClient {
 		return filePaths;
 	}
 
+	private void collectFilePathsFromResult(CodeInterpreterResult result, List<String> filePaths) {
+		if (result.content() == null) {
+			return;
+		}
+		result.content().forEach((content) -> {
+			// Handle resource_link type - extract path from uri
+			if (content.uri() != null) {
+				String path = this.extractFileNameFromUri(content.uri());
+				if (path != null && !path.isEmpty() && !this.isExcludedPath(path)) {
+					filePaths.add(path);
+				}
+			}
+		});
+	}
+
 	/**
 	 * Extract filename from a URI (handles file:// scheme and plain paths).
+	 * @param uri the URI or path to extract the filename from
+	 * @return the extracted filename, or {@code null} if the input is {@code null} or
+	 * empty
 	 */
 	private String extractFileNameFromUri(String uri) {
 		if (uri == null || uri.isEmpty()) {
@@ -343,10 +348,9 @@ public class AgentCoreCodeInterpreterClient {
 						.arguments(ToolArguments.builder().paths(paths).build())
 						.build(),
 					InvokeCodeInterpreterResponseHandler.builder()
-						.onEventStream((publisher) -> publisher
-							.subscribe((event) -> event.accept(InvokeCodeInterpreterResponseHandler.Visitor.builder()
-								.onResult((result) -> this.processResult(paths, result, files))
-								.build())))
+						.onEventStream((publisher) -> publisher.subscribe((event) -> event.accept(Visitor.builder()
+							.onResult((result) -> this.processResult(paths, result, files))
+							.build())))
 						.onError((error) -> {
 							String errorMessage = "readFiles failed: " + error.getMessage();
 							logger.error(errorMessage, error);

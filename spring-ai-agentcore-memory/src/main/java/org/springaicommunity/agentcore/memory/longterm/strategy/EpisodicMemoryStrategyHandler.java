@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,8 @@ import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRe
  * namespace as episodes. Kept for one release; construction-time warning comes from the
  * properties record.</li>
  * </ul>
+ *
+ * @author Maximilian Schellhorn
  */
 public final class EpisodicMemoryStrategyHandler implements MemoryStrategyHandler {
 
@@ -154,6 +156,8 @@ public final class EpisodicMemoryStrategyHandler implements MemoryStrategyHandle
 		 * same {@code strategyId} as episodes but live under a (typically less nested)
 		 * namespace. Takes precedence over the deprecated
 		 * {@link #reflectionsStrategyId(String)}.
+		 * @param reflectionsNamespacePattern the namespace pattern for reflections
+		 * @return this builder
 		 */
 		public Builder reflectionsNamespacePattern(String reflectionsNamespacePattern) {
 			this.reflectionsNamespacePattern = reflectionsNamespacePattern;
@@ -164,6 +168,8 @@ public final class EpisodicMemoryStrategyHandler implements MemoryStrategyHandle
 		 * Legacy setter. In AWS AgentCore Memory, reflections are a namespace within the
 		 * same episodic strategy, not a separate strategy. Use
 		 * {@link #reflectionsNamespacePattern(String)} instead.
+		 * @param reflectionsStrategyId the legacy reflections strategy id
+		 * @return this builder
 		 * @deprecated will be removed in a future release
 		 */
 		@Deprecated(forRemoval = true)

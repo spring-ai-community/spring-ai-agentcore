@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,6 +69,11 @@ public class AgentCoreLongTermMemoryRetriever {
 
 	/**
 	 * Semantic search for memories (actor-scoped, searches all sessions).
+	 * @param strategyId the memory strategy id
+	 * @param actorId the actor id
+	 * @param query the natural-language query
+	 * @param topK the maximum number of records to return
+	 * @return matching memory records
 	 */
 	public List<MemoryRecord> searchMemories(String strategyId, String actorId, String query, int topK) {
 		return this.searchMemories(strategyId, actorId, null, query, topK,
@@ -77,6 +82,10 @@ public class AgentCoreLongTermMemoryRetriever {
 
 	/**
 	 * List all memories for an actor (no semantic search). Used for preferences.
+	 * @param strategyId the memory strategy id
+	 * @param actorId the actor id
+	 * @param namespacePattern the namespace pattern to scope the listing
+	 * @return all matching memory records
 	 */
 	public List<MemoryRecord> listMemories(String strategyId, String actorId, String namespacePattern) {
 		String namespace = AgentCoreLongTermMemoryNamespace.buildNamespace(namespacePattern, strategyId, actorId, null);

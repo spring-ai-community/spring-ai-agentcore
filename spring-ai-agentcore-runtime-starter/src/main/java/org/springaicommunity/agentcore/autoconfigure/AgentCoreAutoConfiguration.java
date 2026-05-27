@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Auto-configuration for AgentCore runtime support. Automatically configures all
  * necessary beans when AgentCoreInvocation is on the classpath.
+ *
+ * @author Andrei Shakirin
  */
 @Configuration
 @ConditionalOnClass({ AgentCoreInvocation.class, RestController.class })

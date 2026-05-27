@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package org.springaicommunity.agentcore.memory.longterm.strategy;
 /**
  * Semantic-search strategy. Fetches facts by semantic similarity against the user prompt
  * and merges them into the system message.
+ *
+ * @author Maximilian Schellhorn
  */
 public final class SemanticMemoryStrategyHandler implements MemoryStrategyHandler {
 

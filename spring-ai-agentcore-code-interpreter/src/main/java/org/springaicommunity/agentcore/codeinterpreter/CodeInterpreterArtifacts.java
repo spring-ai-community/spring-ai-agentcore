@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,11 +37,11 @@ public final class CodeInterpreterArtifacts {
 
 	/**
 	 * Create a file from code interpreter with source path metadata.
-	 * @param mimeType MIME type
+	 * @param mimeType the MIME type
 	 * @param data file bytes
 	 * @param name filename
 	 * @param sourcePath original path in sandbox
-	 * @return GeneratedFile with source path metadata
+	 * @return generated file with source path metadata
 	 */
 	public static GeneratedFile fromPath(String mimeType, byte[] data, String name, String sourcePath) {
 		Map<String, String> meta = ArtifactMetadata.withTimestamp(META_SOURCE_PATH, sourcePath);

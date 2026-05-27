@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ package org.springaicommunity.agentcore.evaluations.client;
  * @param errorCode error code when the API could not produce a score (null on success)
  * @param errorMessage human-readable error detail when {@code errorCode} is set (null on
  * success)
+ * @author Maximilian Schellhorn
  */
 public record EvaluationResult(String evaluatorId, Double score, String label, String explanation, Integer inputTokens,
 		Integer outputTokens, String errorCode, String errorMessage) {

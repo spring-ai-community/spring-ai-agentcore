@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(AgentCoreLongTermMemoryProperties.CONFIG_PREFIX)
 public class AgentCoreLongTermMemoryProperties {
 
+	/**
+	 * configuration prefix for long-term memory properties.
+	 */
 	public static final String CONFIG_PREFIX = "agentcore.memory.long-term";
 
 	private final boolean autoDiscovery;
@@ -77,6 +80,8 @@ public class AgentCoreLongTermMemoryProperties {
 	 * strategy kind, or {@code null} if no config applies.
 	 * {@link AgentCoreLongTermMemoryStrategyType#CUSTOM} has no matching config record by
 	 * design — user-defined handlers provide their own configuration.
+	 * @param kind the memory strategy kind
+	 * @return the matching strategy config record, or {@code null} if none applies
 	 */
 	public AgentCoreLongTermMemoryStrategy byKind(AgentCoreLongTermMemoryStrategyType kind) {
 		return switch (kind) {
@@ -93,6 +98,9 @@ public class AgentCoreLongTermMemoryProperties {
 			AgentCoreLongTermMemoryNamespace reflectionsNamespace,
 			String reflectionsNamespacePattern) implements AgentCoreLongTermMemoryStrategy {
 
+		/**
+		 * configuration prefix for the episodic strategy.
+		 */
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".episodic";
 
 		private static final Logger logger = LoggerFactory.getLogger(Episodic.class);
@@ -104,14 +112,21 @@ public class AgentCoreLongTermMemoryProperties {
 			if (reflectionsStrategyId != null && !reflectionsStrategyId.isEmpty()) {
 				boolean hasNamespaceOverride = (reflectionsNamespacePattern != null
 						&& !reflectionsNamespacePattern.isEmpty()) || reflectionsNamespace != null;
-				logger.warn("'reflections-strategy-id' is deprecated and will be removed in a future release. "
-						+ "In AWS AgentCore Memory, reflections are a namespace under the same episodic strategy, "
-						+ "not a separate strategy. Migrate to 'reflections-namespace-pattern' or "
-						+ "'reflections-namespace'. See: "
-						+ "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/episodic-memory-strategy.html"
-						+ ((hasNamespaceOverride) ? " (Note: a reflections namespace is also set and takes precedence.)"
-								: ""));
+				logger.warn(buildDeprecatedReflectionsWarning(hasNamespaceOverride));
 			}
+		}
+
+		private static String buildDeprecatedReflectionsWarning(boolean hasNamespaceOverride) {
+			String message = "'reflections-strategy-id' is deprecated and will be removed in a future release. "
+					+ "In AWS AgentCore Memory, reflections are a namespace under the same episodic strategy, "
+					+ "not a separate strategy. Migrate to 'reflections-namespace-pattern' or "
+					+ "'reflections-namespace'. See: "
+					+ "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+					+ "episodic-memory-strategy.html";
+			if (hasNamespaceOverride) {
+				message += " (Note: a reflections namespace is also set and takes precedence.)";
+			}
+			return message;
 		}
 
 		@Override
@@ -121,6 +136,7 @@ public class AgentCoreLongTermMemoryProperties {
 		}
 
 		/**
+		 * Returns the deprecated reflections strategy id.
 		 * @deprecated Reflections in AWS AgentCore Memory are a namespace of the same
 		 * episodic strategy, not a separate strategy. Use {@link #reflectionsNamespace()}
 		 * or {@link #reflectionsNamespacePattern()} instead. Kept for one release for
@@ -153,6 +169,7 @@ public class AgentCoreLongTermMemoryProperties {
 		 * Returns true if reflections are configured via the deprecated separate-strategy
 		 * path and no modern configuration overrides it. Advisor + auto-config branch on
 		 * this to keep legacy behaviour alive while warning.
+		 * @return {@code true} if the legacy reflections strategy path is in use
 		 */
 		public boolean usesLegacyReflectionsStrategy() {
 			return this.resolveReflectionsNamespacePattern() == null && this.reflectionsStrategyId != null
@@ -164,6 +181,9 @@ public class AgentCoreLongTermMemoryProperties {
 	public record Semantic(String strategyId, int topK, AgentCoreLongTermMemoryNamespace namespace,
 			String namespacePattern) implements AgentCoreLongTermMemoryStrategy {
 
+		/**
+		 * configuration prefix for the semantic strategy.
+		 */
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".semantic";
 
 		public Semantic {
@@ -182,6 +202,9 @@ public class AgentCoreLongTermMemoryProperties {
 	public record Summary(String strategyId, int topK, AgentCoreLongTermMemoryNamespace namespace,
 			String namespacePattern) implements AgentCoreLongTermMemoryStrategy {
 
+		/**
+		 * configuration prefix for the summary strategy.
+		 */
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".summary";
 
 		public Summary {
@@ -200,6 +223,9 @@ public class AgentCoreLongTermMemoryProperties {
 	public record UserPreference(String strategyId, AgentCoreLongTermMemoryNamespace namespace,
 			String namespacePattern) implements AgentCoreLongTermMemoryStrategy {
 
+		/**
+		 * configuration prefix for the user-preference strategy.
+		 */
 		public static final String CONFIG_PREFIX = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".user-preference";
 
 		public UserPreference {

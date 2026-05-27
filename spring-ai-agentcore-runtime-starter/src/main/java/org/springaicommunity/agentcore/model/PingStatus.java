@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,19 @@
 
 package org.springaicommunity.agentcore.model;
 
+/**
+ * AgentCore Runtime ping status values.
+ *
+ * @author Maximilian Schellhorn
+ */
 public enum PingStatus {
 
-	HEALTHY("Healthy"), HEALTHY_BUSY("HealthyBusy"), UNHEALTHY("Unhealthy");
+	/** ping status when the runtime is idle and ready to accept requests. */
+	HEALTHY("Healthy"),
+	/** ping status when the runtime is processing a long-running task. */
+	HEALTHY_BUSY("HealthyBusy"),
+	/** ping status when the runtime cannot serve traffic. */
+	UNHEALTHY("Unhealthy");
 
 	private final String value;
 
