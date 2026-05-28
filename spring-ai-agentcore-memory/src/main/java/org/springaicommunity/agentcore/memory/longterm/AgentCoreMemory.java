@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,21 @@
 
 package org.springaicommunity.agentcore.memory.longterm;
 
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.api.Advisor;
-
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.api.Advisor;
+
 public class AgentCoreMemory {
 
+	/** combined short-term memory advisor backed by the chat memory repository. */
 	public final MessageChatMemoryAdvisor shortTermMemoryAdvisor;
 
+	/** ordered list of long-term memory advisors, one per configured strategy. */
 	public final List<AgentCoreLongTermMemoryAdvisor> longTermMemoryAdvisors;
 
+	/** combined advisor list (short-term plus long-term) for chaining. */
 	public final List<Advisor> advisors;
 
 	public AgentCoreMemory(MessageChatMemoryAdvisor stmAdvisor, List<AgentCoreLongTermMemoryAdvisor> ltmAdvisors) {

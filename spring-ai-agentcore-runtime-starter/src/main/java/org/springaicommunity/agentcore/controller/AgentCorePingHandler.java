@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ package org.springaicommunity.agentcore.controller;
  * Marker interface for AgentCore ping controllers. Implement this interface to provide
  * custom ping/health handling and prevent the auto-configured ping controller from being
  * created.
+ *
+ * @author Andrei Shakirin
  */
 public interface AgentCorePingHandler {
 

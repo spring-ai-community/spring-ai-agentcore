@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,5 +30,5 @@ public record ExecuteCodeRequest(@JsonProperty(
 		required = true) @JsonPropertyDescription("Programming language: python, javascript, or typescript") String language,
 
 		@JsonProperty(
-				required = true) @JsonPropertyDescription("Code to execute. Use print()/console.log() for output.") String code) {
+				required = true) @JsonPropertyDescription("Code to execute. Use print() for stdout output.") String code) {
 }

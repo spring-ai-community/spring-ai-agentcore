@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 
 package org.springaicommunity.agentcore.codeinterpreter;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +25,10 @@ import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStore;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springaicommunity.agentcore.artifacts.SessionConstants;
+import reactor.core.publisher.Flux;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreAsyncClient;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+
 import org.springframework.ai.bedrock.converse.BedrockChatOptions;
 import org.springframework.ai.bedrock.converse.BedrockProxyChatModel;
 import org.springframework.ai.chat.client.ChatClient;
@@ -38,9 +40,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
-import reactor.core.publisher.Flux;
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreAsyncClient;
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration test that verifies session context propagation through the full ChatClient
@@ -69,12 +70,12 @@ class CodeInterpreterChatFlowIT {
 		String sessionId = "chat-flow-test-session";
 
 		ToolCallbackProvider toolProvider = ToolCallbackProvider.from(FunctionToolCallback
-			.builder("executeCode", (ExecuteCodeRequest req) -> tools.executeCode(req.language(), req.code()))
+			.builder("executeCode", (ExecuteCodeRequest req) -> this.tools.executeCode(req.language(), req.code()))
 			.description("Execute Python code")
 			.inputType(ExecuteCodeRequest.class)
 			.build());
 
-		ChatClient chatClient = ChatClient.builder(chatModel)
+		ChatClient chatClient = ChatClient.builder(this.chatModel)
 			.defaultToolCallbacks(toolProvider)
 			.defaultSystem("You are a helpful assistant. Use executeCode tool when asked to run code.")
 			.build();
@@ -85,9 +86,9 @@ class CodeInterpreterChatFlowIT {
 			.user("Execute this Python code: print(2 + 2)")
 			.stream()
 			.content()
-			.contextWrite(ctx -> ctx.put(SessionConstants.SESSION_ID_KEY, sessionId))
+			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, sessionId))
 			.collectList()
-			.map(chunks -> String.join("", chunks))
+			.map((chunks) -> String.join("", chunks))
 			.block();
 
 		assertThat(response).isNotNull();
@@ -103,12 +104,12 @@ class CodeInterpreterChatFlowIT {
 		String sessionId = "chart-flow-test-session";
 
 		ToolCallbackProvider toolProvider = ToolCallbackProvider.from(FunctionToolCallback
-			.builder("executeCode", (ExecuteCodeRequest req) -> tools.executeCode(req.language(), req.code()))
+			.builder("executeCode", (ExecuteCodeRequest req) -> this.tools.executeCode(req.language(), req.code()))
 			.description("Execute Python code to create charts")
 			.inputType(ExecuteCodeRequest.class)
 			.build());
 
-		ChatClient chatClient = ChatClient.builder(chatModel)
+		ChatClient chatClient = ChatClient.builder(this.chatModel)
 			.defaultToolCallbacks(toolProvider)
 			.defaultSystem("You are a helpful assistant. Use executeCode to create charts when asked.")
 			.build();
@@ -118,17 +119,17 @@ class CodeInterpreterChatFlowIT {
 			.user("Create a simple bar chart with matplotlib showing values A=10, B=20. Save it as chart.png")
 			.stream()
 			.content()
-			.contextWrite(ctx -> ctx.put(SessionConstants.SESSION_ID_KEY, sessionId));
+			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, sessionId));
 
-		String response = responseFlux.collectList().map(chunks -> String.join("", chunks)).block();
+		String response = responseFlux.collectList().map((chunks) -> String.join("", chunks)).block();
 
 		assertThat(response).isNotNull();
 
 		// Verify files were stored under the correct session ID
-		assertThat(artifactStore.hasArtifacts(sessionId))
+		assertThat(this.artifactStore.hasArtifacts(sessionId))
 			.as("Expected artifacts to be stored for session %s", sessionId)
 			.isTrue();
-		List<GeneratedFile> files = artifactStore.retrieve(sessionId);
+		List<GeneratedFile> files = this.artifactStore.retrieve(sessionId);
 		assertThat(files).isNotEmpty();
 		assertThat(files.stream().anyMatch(GeneratedFile::isImage)).isTrue();
 	}
@@ -140,56 +141,59 @@ class CodeInterpreterChatFlowIT {
 		String session2 = "isolation-session-2";
 
 		ToolCallbackProvider toolProvider = ToolCallbackProvider.from(FunctionToolCallback
-			.builder("executeCode", (ExecuteCodeRequest req) -> tools.executeCode(req.language(), req.code()))
+			.builder("executeCode", (ExecuteCodeRequest req) -> this.tools.executeCode(req.language(), req.code()))
 			.description("Execute Python code")
 			.inputType(ExecuteCodeRequest.class)
 			.build());
 
-		ChatClient chatClient = ChatClient.builder(chatModel)
+		ChatClient chatClient = ChatClient.builder(this.chatModel)
 			.defaultToolCallbacks(toolProvider)
 			.defaultSystem("Execute the code exactly as requested using executeCode tool.")
 			.build();
 
 		// Session 1: create chart1.png
 		chatClient.prompt()
-			.user("Execute: import matplotlib.pyplot as plt; plt.figure(); plt.bar(['A'], [10]); plt.savefig('chart1.png'); print('done1')")
+			.user("Execute: import matplotlib.pyplot as plt; plt.figure(); "
+					+ "plt.bar(['A'], [10]); plt.savefig('chart1.png'); print('done1')")
 			.stream()
 			.content()
-			.contextWrite(ctx -> ctx.put(SessionConstants.SESSION_ID_KEY, session1))
+			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, session1))
 			.collectList()
 			.block();
 
 		// Session 2: create chart2.png
 		chatClient.prompt()
-			.user("Execute: import matplotlib.pyplot as plt; plt.figure(); plt.bar(['B'], [20]); plt.savefig('chart2.png'); print('done2')")
+			.user("Execute: import matplotlib.pyplot as plt; plt.figure(); "
+					+ "plt.bar(['B'], [20]); plt.savefig('chart2.png'); print('done2')")
 			.stream()
 			.content()
-			.contextWrite(ctx -> ctx.put(SessionConstants.SESSION_ID_KEY, session2))
+			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, session2))
 			.collectList()
 			.block();
 
 		// Verify session isolation
-		assertThat(artifactStore.hasArtifacts(session1)).as("Expected artifacts to be stored for session1").isTrue();
-		List<GeneratedFile> files1 = artifactStore.retrieve(session1);
-		assertThat(files1.stream().anyMatch(f -> f.name().contains("chart1"))).isTrue();
-		assertThat(files1.stream().noneMatch(f -> f.name().contains("chart2"))).isTrue();
+		assertThat(this.artifactStore.hasArtifacts(session1)).as("Expected artifacts to be stored for session1")
+			.isTrue();
+		List<GeneratedFile> files1 = this.artifactStore.retrieve(session1);
+		assertThat(files1.stream().anyMatch((f) -> f.name().contains("chart1"))).isTrue();
+		assertThat(files1.stream().noneMatch((f) -> f.name().contains("chart2"))).isTrue();
 
-		assertThat(artifactStore.hasArtifacts(session2)).as("Expected artifacts to be stored for session2").isTrue();
-		List<GeneratedFile> files2 = artifactStore.retrieve(session2);
-		assertThat(files2.stream().anyMatch(f -> f.name().contains("chart2"))).isTrue();
-		assertThat(files2.stream().noneMatch(f -> f.name().contains("chart1"))).isTrue();
+		assertThat(this.artifactStore.hasArtifacts(session2)).as("Expected artifacts to be stored for session2")
+			.isTrue();
+		List<GeneratedFile> files2 = this.artifactStore.retrieve(session2);
+		assertThat(files2.stream().anyMatch((f) -> f.name().contains("chart2"))).isTrue();
+		assertThat(files2.stream().noneMatch((f) -> f.name().contains("chart1"))).isTrue();
 	}
 
-	@SpringBootApplication(exclude = {
-			org.springaicommunity.agentcore.codeinterpreter.AgentCoreCodeInterpreterAutoConfiguration.class })
+	@SpringBootApplication(exclude = { AgentCoreCodeInterpreterAutoConfiguration.class })
 	static class TestApp {
 
 		@Bean
 		ChatModel chatModel() {
-			return BedrockProxyChatModel.builder()
-				.defaultOptions(
-						BedrockChatOptions.builder().model("global.anthropic.claude-sonnet-4-5-20250929-v1:0").build())
+			BedrockChatOptions options = BedrockChatOptions.builder()
+				.model("global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 				.build();
+			return BedrockProxyChatModel.builder().defaultOptions(options).build();
 		}
 
 		@Bean

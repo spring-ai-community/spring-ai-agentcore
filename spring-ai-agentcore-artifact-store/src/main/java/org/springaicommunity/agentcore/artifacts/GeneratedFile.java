@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,8 +40,8 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 * Canonical constructor with defensive copy of data array and immutable metadata.
 	 */
 	public GeneratedFile {
-		data = data != null ? Arrays.copyOf(data, data.length) : new byte[0];
-		metadata = metadata != null ? Map.copyOf(metadata) : Map.of();
+		data = (data != null) ? Arrays.copyOf(data, data.length) : new byte[0];
+		metadata = (metadata != null) ? Map.copyOf(metadata) : Map.of();
 	}
 
 	/**
@@ -53,10 +53,10 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 
 	/**
 	 * Create a GeneratedFile with automatic timestamp metadata.
-	 * @param mimeType MIME type of the file
+	 * @param mimeType the MIME type of the file
 	 * @param data raw bytes of the file content
 	 * @param name filename
-	 * @return GeneratedFile with timestamp in metadata
+	 * @return generated file with timestamp in metadata
 	 */
 	public static GeneratedFile withTimestamp(String mimeType, byte[] data, String name) {
 		return new GeneratedFile(mimeType, data, name,
@@ -69,7 +69,7 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 */
 	@Override
 	public byte[] data() {
-		return Arrays.copyOf(data, data.length);
+		return Arrays.copyOf(this.data, this.data.length);
 	}
 
 	/**
@@ -77,7 +77,7 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 * @return true if MIME type starts with "image/"
 	 */
 	public boolean isImage() {
-		return mimeType != null && mimeType.startsWith("image/");
+		return this.mimeType != null && this.mimeType.startsWith("image/");
 	}
 
 	/**
@@ -85,12 +85,12 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 * @return true if MIME type indicates text content
 	 */
 	public boolean isText() {
-		if (mimeType == null) {
+		if (this.mimeType == null) {
 			return false;
 		}
-		return mimeType.startsWith("text/") || mimeType.equals("application/json") || mimeType.equals("application/xml")
-				|| mimeType.equals("application/javascript") || mimeType.equals("application/yaml")
-				|| mimeType.equals("application/x-yaml");
+		return this.mimeType.startsWith("text/") || this.mimeType.equals("application/json")
+				|| this.mimeType.equals("application/xml") || this.mimeType.equals("application/javascript")
+				|| this.mimeType.equals("application/yaml") || this.mimeType.equals("application/x-yaml");
 	}
 
 	/**
@@ -100,7 +100,7 @@ public record GeneratedFile(String mimeType, byte[] data, String name, Map<Strin
 	 * @return data URL string (e.g., "data:image/png;base64,...")
 	 */
 	public String toDataUrl() {
-		return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(this.data);
+		return "data:" + this.mimeType + ";base64," + Base64.getEncoder().encodeToString(this.data);
 	}
 
 	/**

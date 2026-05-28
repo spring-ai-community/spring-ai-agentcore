@@ -1,0 +1,18 @@
+### Chat with evaluation
+POST http://localhost:8080/chat
+Content-Type: application/json
+
+{
+  "message": "What is the capital of France?"
+}
+
+### Another chat request
+POST http://localhost:8080/chat
+Content-Type: application/json
+
+{
+  "message": "Explain quantum computing in simple terms"
+}
+
+### Check metrics
+GET http://localhost:8080/actuator/prometheus

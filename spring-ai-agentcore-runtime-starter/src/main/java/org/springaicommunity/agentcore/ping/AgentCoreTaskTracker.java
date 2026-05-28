@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,11 @@ import org.springframework.stereotype.Component;
 
 /**
  * AgentCore Task Tracker to report HEALTHY_BUSY status to AgentCore Runtime during health
- * check See:
- * https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-long-run.html
+ * check. See <a href=
+ * "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-long-run.html">long-running
+ * tasks</a>.
+ *
+ * @author Maximilian Schellhorn
  */
 @Component
 public class AgentCoreTaskTracker {
@@ -31,17 +34,17 @@ public class AgentCoreTaskTracker {
 	private final AtomicLong activeTasks = new AtomicLong(0);
 
 	public void increment() {
-		activeTasks.incrementAndGet();
+		this.activeTasks.incrementAndGet();
 	}
 
 	public void decrement() {
-		if (activeTasks.get() > 0) {
-			activeTasks.decrementAndGet();
+		if (this.activeTasks.get() > 0) {
+			this.activeTasks.decrementAndGet();
 		}
 	}
 
 	public long getCount() {
-		return activeTasks.get();
+		return this.activeTasks.get();
 	}
 
 }

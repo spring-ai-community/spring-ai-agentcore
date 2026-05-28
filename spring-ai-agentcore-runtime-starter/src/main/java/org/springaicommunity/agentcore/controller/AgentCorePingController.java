@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * REST controller implementing the AgentCore /ping health check endpoint.
+ *
+ * @author Maximilian Schellhorn
  */
 @RestController
 public class AgentCorePingController implements AgentCorePingHandler {
@@ -39,7 +41,7 @@ public class AgentCorePingController implements AgentCorePingHandler {
 
 	@GetMapping("/ping")
 	public ResponseEntity<Map<String, Object>> ping() {
-		var pingStatus = agentCorePingService.getPingStatus();
+		var pingStatus = this.agentCorePingService.getPingStatus();
 
 		Map<String, Object> response = new HashMap<>();
 		response.put("status", pingStatus.status().toString());

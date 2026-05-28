@@ -1,0 +1,8 @@
+# CODEOWNERS — auto-requests review from listed maintainers on every PR.
+# To make their approval *required* (not just requested), enable
+# "Require review from Code Owners" in branch protection on `main`.
+#
+# Syntax: <pattern>  <@user-or-team> ...
+# Last matching pattern wins, so add narrower rules below the default.
+
+* @maschnetwork @ashakirin @ybezsonov @jamesward

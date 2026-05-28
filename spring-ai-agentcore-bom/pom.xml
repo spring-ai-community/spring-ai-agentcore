@@ -59,6 +59,11 @@
         <dependencies>
             <dependency>
                 <groupId>org.springaicommunity</groupId>
+                <artifactId>spring-ai-agentcore-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springaicommunity</groupId>
                 <artifactId>spring-ai-agentcore-artifact-store</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -80,6 +85,11 @@
             <dependency>
                 <groupId>org.springaicommunity</groupId>
                 <artifactId>spring-ai-agentcore-code-interpreter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springaicommunity</groupId>
+                <artifactId>spring-ai-agentcore-evaluations</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

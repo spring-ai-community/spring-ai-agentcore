@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,8 +34,8 @@ public record CodeExecutionResult(String textOutput, boolean isError, List<Gener
 	 * Canonical constructor with null-safe defaults.
 	 */
 	public CodeExecutionResult {
-		textOutput = textOutput != null ? textOutput : "";
-		files = files != null ? List.copyOf(files) : List.of();
+		textOutput = (textOutput != null) ? textOutput : "";
+		files = (files != null) ? List.copyOf(files) : List.of();
 	}
 
 	/**
@@ -43,7 +43,7 @@ public record CodeExecutionResult(String textOutput, boolean isError, List<Gener
 	 * @return true if files list is non-empty
 	 */
 	public boolean hasFiles() {
-		return !files.isEmpty();
+		return !this.files.isEmpty();
 	}
 
 	/**
@@ -51,7 +51,7 @@ public record CodeExecutionResult(String textOutput, boolean isError, List<Gener
 	 * @return true if at least one file is an image
 	 */
 	public boolean hasImages() {
-		return files.stream().anyMatch(GeneratedFile::isImage);
+		return this.files.stream().anyMatch(GeneratedFile::isImage);
 	}
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ import org.springframework.http.HttpHeaders;
  *     return "Processing for session: " + sessionId;
  * }
  * }</pre>
+ *
+ * @author Maximilian Schellhorn
  */
 public class AgentCoreContext {
 
@@ -45,7 +47,7 @@ public class AgentCoreContext {
 	 * @param headers the HTTP headers from the request
 	 */
 	public AgentCoreContext(HttpHeaders headers) {
-		this.headers = headers != null ? headers : new HttpHeaders();
+		this.headers = (headers != null) ? headers : new HttpHeaders();
 	}
 
 	/**
@@ -53,7 +55,7 @@ public class AgentCoreContext {
 	 * @return the HTTP headers (read-only)
 	 */
 	public HttpHeaders getHeaders() {
-		return HttpHeaders.readOnlyHttpHeaders(headers);
+		return HttpHeaders.readOnlyHttpHeaders(this.headers);
 	}
 
 	/**
@@ -65,7 +67,7 @@ public class AgentCoreContext {
 		if (headerName == null) {
 			return null;
 		}
-		return headers.getFirst(headerName);
+		return this.headers.getFirst(headerName);
 	}
 
 }

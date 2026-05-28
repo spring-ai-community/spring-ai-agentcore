@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,11 +43,11 @@ public final class BrowserArtifacts {
 
 	/**
 	 * Create a browser screenshot with full metadata.
-	 * @param data PNG bytes
+	 * @param data raw PNG bytes
 	 * @param url source URL
 	 * @param width viewport width
 	 * @param height viewport height
-	 * @return GeneratedFile with screenshot metadata
+	 * @return generated file with screenshot metadata
 	 */
 	public static GeneratedFile screenshot(byte[] data, String url, int width, int height) {
 		Map<String, String> meta = ArtifactMetadata.withTimestamp(META_URL, url, META_WIDTH, String.valueOf(width),
@@ -77,7 +77,7 @@ public final class BrowserArtifacts {
 		try {
 			return Optional.of(Integer.parseInt(w));
 		}
-		catch (NumberFormatException e) {
+		catch (NumberFormatException ex) {
 			return Optional.empty();
 		}
 	}
@@ -95,7 +95,7 @@ public final class BrowserArtifacts {
 		try {
 			return Optional.of(Integer.parseInt(h));
 		}
-		catch (NumberFormatException e) {
+		catch (NumberFormatException ex) {
 			return Optional.empty();
 		}
 	}

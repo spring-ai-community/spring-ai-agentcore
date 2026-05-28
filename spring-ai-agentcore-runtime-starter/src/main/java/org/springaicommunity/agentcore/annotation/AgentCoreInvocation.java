@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import java.lang.annotation.Target;
 /**
  * Marks a method as an agent invocation handler for the AgentCore runtime. Only one
  * method per application can be annotated with this annotation.
+ *
+ * @author Andrei Shakirin
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

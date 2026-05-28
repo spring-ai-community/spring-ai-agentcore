@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ package org.springaicommunity.agentcore.memory.longterm.strategy;
  * Summary strategy. Retrieves prior-session summaries and augments the user message with
  * them (rather than the system message) so the LLM treats them as grounding for the
  * current question.
+ *
+ * @author Maximilian Schellhorn
  */
 public final class SummaryMemoryStrategyHandler implements MemoryStrategyHandler {
 
@@ -40,6 +42,29 @@ public final class SummaryMemoryStrategyHandler implements MemoryStrategyHandler
 
 	public static Builder builder() {
 		return new Builder();
+	}
+
+	@Override
+	public String strategyId() {
+		return this.strategyId;
+	}
+
+	@Override
+	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
+		return MemoryFetchResult.primaryOnly(ctx.retriever()
+			.searchMemories(this.strategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(), this.topK,
+					this.namespacePattern));
+	}
+
+	@Override
+	public String format(MemoryFetchContext ctx, MemoryFetchResult fetched) {
+		return MemoryStrategyHandler.formatMemorySection(this.contextLabel, fetched.primary()) + "\nUser question: "
+				+ ctx.userPrompt();
+	}
+
+	@Override
+	public InjectionTarget target() {
+		return InjectionTarget.USER;
 	}
 
 	public static final class Builder {
@@ -76,35 +101,13 @@ public final class SummaryMemoryStrategyHandler implements MemoryStrategyHandler
 		}
 
 		public SummaryMemoryStrategyHandler build() {
-			if (strategyId == null || strategyId.isEmpty()) {
+			if (this.strategyId == null || this.strategyId.isEmpty()) {
 				throw new IllegalArgumentException("strategyId is required");
 			}
-			return new SummaryMemoryStrategyHandler(strategyId, namespacePattern, topK, contextLabel);
+			return new SummaryMemoryStrategyHandler(this.strategyId, this.namespacePattern, this.topK,
+					this.contextLabel);
 		}
 
-	}
-
-	@Override
-	public String strategyId() {
-		return this.strategyId;
-	}
-
-	@Override
-	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
-		return MemoryFetchResult.primaryOnly(ctx.retriever()
-			.searchMemories(this.strategyId, ctx.userId(), ctx.sessionId(), ctx.userPrompt(), this.topK,
-					this.namespacePattern));
-	}
-
-	@Override
-	public String format(MemoryFetchContext ctx, MemoryFetchResult fetched) {
-		return MemoryStrategyHandler.formatMemorySection(this.contextLabel, fetched.primary()) + "\nUser question: "
-				+ ctx.userPrompt();
-	}
-
-	@Override
-	public InjectionTarget target() {
-		return InjectionTarget.USER;
 	}
 
 }

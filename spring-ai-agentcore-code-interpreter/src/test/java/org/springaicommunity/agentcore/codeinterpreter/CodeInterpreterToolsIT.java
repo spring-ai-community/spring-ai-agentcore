@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@
  */
 
 package org.springaicommunity.agentcore.codeinterpreter;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -36,15 +34,17 @@ import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStore;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springaicommunity.agentcore.artifacts.SessionConstants;
+import reactor.util.context.Context;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreAsyncClient;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+
 import org.springframework.ai.model.tool.internal.ToolCallReactiveContextHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
-import reactor.util.context.Context;
 
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreAsyncClient;
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for CodeInterpreterTools.
@@ -66,8 +66,8 @@ class CodeInterpreterToolsIT {
 
 	@BeforeEach
 	void setUp() {
-		artifactStore = new CaffeineArtifactStore<>(300, "CodeInterpreterArtifactStore");
-		tools = new CodeInterpreterTools(client, artifactStore);
+		this.artifactStore = new CaffeineArtifactStore<>(300, "CodeInterpreterArtifactStore");
+		this.tools = new CodeInterpreterTools(this.client, this.artifactStore);
 	}
 
 	@AfterEach
@@ -76,7 +76,7 @@ class CodeInterpreterToolsIT {
 	}
 
 	private void setSessionId(String sessionId) {
-		Context ctx = sessionId != null ? Context.of(SessionConstants.SESSION_ID_KEY, sessionId) : Context.empty();
+		Context ctx = (sessionId != null) ? Context.of(SessionConstants.SESSION_ID_KEY, sessionId) : Context.empty();
 		ToolCallReactiveContextHolder.setContext(ctx);
 	}
 
@@ -86,9 +86,9 @@ class CodeInterpreterToolsIT {
 	@Order(1)
 	@DisplayName("Should execute Python code")
 	void shouldExecutePythonCode() {
-		setSessionId("python-test");
+		this.setSessionId("python-test");
 
-		String result = tools.executeCode("python", "print(2 + 2)");
+		String result = this.tools.executeCode("python", "print(2 + 2)");
 
 		assertThat(result).contains("4");
 	}
@@ -97,9 +97,9 @@ class CodeInterpreterToolsIT {
 	@Order(2)
 	@DisplayName("Should execute JavaScript code")
 	void shouldExecuteJavaScriptCode() {
-		setSessionId("js-test");
+		this.setSessionId("js-test");
 
-		String result = tools.executeCode("javascript", "console.log(5 * 5)");
+		String result = this.tools.executeCode("javascript", "console.log(5 * 5)");
 
 		assertThat(result).contains("25");
 	}
@@ -108,9 +108,9 @@ class CodeInterpreterToolsIT {
 	@Order(3)
 	@DisplayName("Should execute TypeScript code")
 	void shouldExecuteTypeScriptCode() {
-		setSessionId("ts-test");
+		this.setSessionId("ts-test");
 
-		String result = tools.executeCode("typescript", "const x: number = 10; console.log(x * 3);");
+		String result = this.tools.executeCode("typescript", "const x: number = 10; console.log(x * 3);");
 
 		assertThat(result).contains("30");
 	}
@@ -121,7 +121,7 @@ class CodeInterpreterToolsIT {
 	@Order(4)
 	@DisplayName("Should store image file by session ID")
 	void shouldStoreImageFileBySessionId() {
-		setSessionId("image-session");
+		this.setSessionId("image-session");
 
 		String code = """
 				import matplotlib.pyplot as plt
@@ -131,12 +131,12 @@ class CodeInterpreterToolsIT {
 				print('done')
 				""";
 
-		String result = tools.executeCode("python", code);
+		String result = this.tools.executeCode("python", code);
 
 		assertThat(result).contains("done");
-		assertThat(artifactStore.hasArtifacts("image-session")).isTrue();
+		assertThat(this.artifactStore.hasArtifacts("image-session")).isTrue();
 
-		List<GeneratedFile> files = artifactStore.retrieve("image-session");
+		List<GeneratedFile> files = this.artifactStore.retrieve("image-session");
 		assertThat(files).isNotEmpty();
 
 		GeneratedFile imageFile = files.stream().filter(GeneratedFile::isImage).findFirst().orElse(null);
@@ -148,7 +148,7 @@ class CodeInterpreterToolsIT {
 	@Order(5)
 	@DisplayName("Should store CSV file by session ID")
 	void shouldStoreCsvFileBySessionId() {
-		setSessionId("csv-session");
+		this.setSessionId("csv-session");
 
 		String code = """
 				import csv
@@ -159,12 +159,12 @@ class CodeInterpreterToolsIT {
 				print('csv created')
 				""";
 
-		String result = tools.executeCode("python", code);
+		String result = this.tools.executeCode("python", code);
 
 		assertThat(result).contains("csv created");
-		assertThat(artifactStore.hasArtifacts("csv-session")).isTrue();
+		assertThat(this.artifactStore.hasArtifacts("csv-session")).isTrue();
 
-		List<GeneratedFile> files = artifactStore.retrieve("csv-session");
+		List<GeneratedFile> files = this.artifactStore.retrieve("csv-session");
 		assertThat(files).isNotEmpty();
 	}
 
@@ -174,7 +174,7 @@ class CodeInterpreterToolsIT {
 	@Order(6)
 	@DisplayName("Should use default session when null")
 	void shouldUseDefaultSessionWhenNull() {
-		setSessionId(null);
+		this.setSessionId(null);
 
 		String code = """
 				import matplotlib.pyplot as plt
@@ -184,17 +184,17 @@ class CodeInterpreterToolsIT {
 				print('ok')
 				""";
 
-		tools.executeCode("python", code);
+		this.tools.executeCode("python", code);
 
-		assertThat(artifactStore.hasArtifacts(SessionConstants.DEFAULT_SESSION_ID)).isTrue();
+		assertThat(this.artifactStore.hasArtifacts(SessionConstants.DEFAULT_SESSION_ID)).isTrue();
 	}
 
 	@Test
 	@Order(7)
 	@DisplayName("Should retrieve files only from own session")
 	void shouldRetrieveFilesOnlyFromOwnSession() {
-		setSessionId("session-1");
-		tools.executeCode("python", """
+		this.setSessionId("session-1");
+		this.tools.executeCode("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([1])
@@ -202,8 +202,8 @@ class CodeInterpreterToolsIT {
 				print('s1')
 				""");
 
-		setSessionId("session-2");
-		tools.executeCode("python", """
+		this.setSessionId("session-2");
+		this.tools.executeCode("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([2])
@@ -211,22 +211,22 @@ class CodeInterpreterToolsIT {
 				print('s2')
 				""");
 
-		List<GeneratedFile> files1 = artifactStore.retrieve("session-1");
-		List<GeneratedFile> files2 = artifactStore.retrieve("session-2");
+		List<GeneratedFile> files1 = this.artifactStore.retrieve("session-1");
+		List<GeneratedFile> files2 = this.artifactStore.retrieve("session-2");
 
 		assertThat(files1).isNotEmpty();
 		assertThat(files2).isNotEmpty();
-		assertThat(artifactStore.hasArtifacts("session-1")).isFalse();
-		assertThat(artifactStore.hasArtifacts("session-2")).isFalse();
+		assertThat(this.artifactStore.hasArtifacts("session-1")).isFalse();
+		assertThat(this.artifactStore.hasArtifacts("session-2")).isFalse();
 	}
 
 	@Test
 	@Order(8)
 	@DisplayName("Should clear files after retrieve")
 	void shouldClearFilesAfterRetrieve() {
-		setSessionId("clear-session");
+		this.setSessionId("clear-session");
 
-		tools.executeCode("python", """
+		this.tools.executeCode("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([1])
@@ -234,19 +234,19 @@ class CodeInterpreterToolsIT {
 				print('ok')
 				""");
 
-		assertThat(artifactStore.hasArtifacts("clear-session")).isTrue();
-		artifactStore.retrieve("clear-session");
-		assertThat(artifactStore.hasArtifacts("clear-session")).isFalse();
-		assertThat(artifactStore.retrieve("clear-session")).isNull();
+		assertThat(this.artifactStore.hasArtifacts("clear-session")).isTrue();
+		this.artifactStore.retrieve("clear-session");
+		assertThat(this.artifactStore.hasArtifacts("clear-session")).isFalse();
+		assertThat(this.artifactStore.retrieve("clear-session")).isNull();
 	}
 
 	@Test
 	@Order(9)
 	@DisplayName("Should accumulate files in same session")
 	void shouldAccumulateFilesInSameSession() {
-		setSessionId("accumulate-session");
+		this.setSessionId("accumulate-session");
 
-		tools.executeCode("python", """
+		this.tools.executeCode("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([1])
@@ -254,7 +254,7 @@ class CodeInterpreterToolsIT {
 				print('first')
 				""");
 
-		tools.executeCode("python", """
+		this.tools.executeCode("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([2])
@@ -262,7 +262,7 @@ class CodeInterpreterToolsIT {
 				print('second')
 				""");
 
-		List<GeneratedFile> files = artifactStore.retrieve("accumulate-session");
+		List<GeneratedFile> files = this.artifactStore.retrieve("accumulate-session");
 		assertThat(files.size()).isGreaterThanOrEqualTo(2);
 	}
 
@@ -270,10 +270,10 @@ class CodeInterpreterToolsIT {
 	@Order(10)
 	@DisplayName("Should hasArtifacts return correctly")
 	void shouldHasArtifactsReturnCorrectly() {
-		assertThat(artifactStore.hasArtifacts("nonexistent-session")).isFalse();
+		assertThat(this.artifactStore.hasArtifacts("nonexistent-session")).isFalse();
 
-		setSessionId("has-files-session");
-		tools.executeCode("python", """
+		this.setSessionId("has-files-session");
+		this.tools.executeCode("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([1])
@@ -281,7 +281,7 @@ class CodeInterpreterToolsIT {
 				print('ok')
 				""");
 
-		assertThat(artifactStore.hasArtifacts("has-files-session")).isTrue();
+		assertThat(this.artifactStore.hasArtifacts("has-files-session")).isTrue();
 	}
 
 	// ========== GeneratedFile helper tests ==========
@@ -290,9 +290,9 @@ class CodeInterpreterToolsIT {
 	@Order(11)
 	@DisplayName("Should GeneratedFile toDataUrl return valid format")
 	void shouldGeneratedFileToDataUrlReturnValidFormat() {
-		setSessionId("dataurl-session");
+		this.setSessionId("dataurl-session");
 
-		tools.executeCode("python", """
+		this.tools.executeCode("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([1, 2, 3])
@@ -300,7 +300,7 @@ class CodeInterpreterToolsIT {
 				print('ok')
 				""");
 
-		List<GeneratedFile> files = artifactStore.retrieve("dataurl-session");
+		List<GeneratedFile> files = this.artifactStore.retrieve("dataurl-session");
 		GeneratedFile imageFile = files.stream().filter(GeneratedFile::isImage).findFirst().orElse(null);
 
 		assertThat(imageFile).isNotNull();
@@ -313,9 +313,9 @@ class CodeInterpreterToolsIT {
 	@Order(12)
 	@DisplayName("Should GeneratedFile size return correct value")
 	void shouldGeneratedFileSizeReturnCorrectValue() {
-		setSessionId("size-session");
+		this.setSessionId("size-session");
 
-		tools.executeCode("python", """
+		this.tools.executeCode("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([1, 2])
@@ -323,7 +323,7 @@ class CodeInterpreterToolsIT {
 				print('ok')
 				""");
 
-		List<GeneratedFile> files = artifactStore.retrieve("size-session");
+		List<GeneratedFile> files = this.artifactStore.retrieve("size-session");
 		GeneratedFile file = files.stream().filter(GeneratedFile::isImage).findFirst().orElse(null);
 
 		assertThat(file).isNotNull();
@@ -334,7 +334,7 @@ class CodeInterpreterToolsIT {
 	@Order(13)
 	@DisplayName("Should CodeExecutionResult hasFiles work")
 	void shouldCodeExecutionResultHasFilesWork() {
-		CodeExecutionResult resultWithFiles = client.executeInEphemeralSession("python", """
+		CodeExecutionResult resultWithFiles = this.client.executeInEphemeralSession("python", """
 				import matplotlib.pyplot as plt
 				plt.figure()
 				plt.plot([1])
@@ -342,7 +342,7 @@ class CodeInterpreterToolsIT {
 				print('ok')
 				""");
 
-		CodeExecutionResult resultWithoutFiles = client.executeInEphemeralSession("python", "print('no files')");
+		CodeExecutionResult resultWithoutFiles = this.client.executeInEphemeralSession("python", "print('no files')");
 
 		assertThat(resultWithFiles.hasFiles()).isTrue();
 		assertThat(resultWithoutFiles.hasFiles()).isFalse();
@@ -354,7 +354,7 @@ class CodeInterpreterToolsIT {
 	@Order(14)
 	@DisplayName("Should reject null language")
 	void shouldRejectNullLanguage() {
-		String result = tools.executeCode(null, "print('test')");
+		String result = this.tools.executeCode(null, "print('test')");
 
 		assertThat(result).startsWith("Error:");
 		assertThat(result).contains("language");
@@ -364,7 +364,7 @@ class CodeInterpreterToolsIT {
 	@Order(15)
 	@DisplayName("Should reject blank language")
 	void shouldRejectBlankLanguage() {
-		String result = tools.executeCode("  ", "print('test')");
+		String result = this.tools.executeCode("  ", "print('test')");
 
 		assertThat(result).startsWith("Error:");
 		assertThat(result).contains("language");
@@ -374,7 +374,7 @@ class CodeInterpreterToolsIT {
 	@Order(16)
 	@DisplayName("Should reject unsupported language")
 	void shouldRejectUnsupportedLanguage() {
-		String result = tools.executeCode("ruby", "puts 'test'");
+		String result = this.tools.executeCode("ruby", "puts 'test'");
 
 		assertThat(result).startsWith("Error:");
 		assertThat(result).contains("unsupported");
@@ -384,7 +384,7 @@ class CodeInterpreterToolsIT {
 	@Order(17)
 	@DisplayName("Should reject null code")
 	void shouldRejectNullCode() {
-		String result = tools.executeCode("python", null);
+		String result = this.tools.executeCode("python", null);
 
 		assertThat(result).startsWith("Error:");
 		assertThat(result).contains("code");
@@ -394,7 +394,7 @@ class CodeInterpreterToolsIT {
 	@Order(18)
 	@DisplayName("Should reject blank code")
 	void shouldRejectBlankCode() {
-		String result = tools.executeCode("python", "   ");
+		String result = this.tools.executeCode("python", "   ");
 
 		assertThat(result).startsWith("Error:");
 		assertThat(result).contains("code");
@@ -406,9 +406,9 @@ class CodeInterpreterToolsIT {
 	@Order(19)
 	@DisplayName("Should handle execution error")
 	void shouldHandleExecutionError() {
-		setSessionId("error-session");
+		this.setSessionId("error-session");
 
-		String result = tools.executeCode("python", "print(undefined_variable)");
+		String result = this.tools.executeCode("python", "print(undefined_variable)");
 
 		assertThat(result).containsAnyOf("Error", "NameError", "undefined");
 	}
@@ -417,9 +417,9 @@ class CodeInterpreterToolsIT {
 	@Order(20)
 	@DisplayName("Should format error output correctly")
 	void shouldFormatErrorOutputCorrectly() {
-		setSessionId("format-error-session");
+		this.setSessionId("format-error-session");
 
-		String result = tools.executeCode("python", "raise ValueError('test error')");
+		String result = this.tools.executeCode("python", "raise ValueError('test error')");
 
 		assertThat(result).contains("Error executing code:");
 	}
@@ -441,58 +441,24 @@ class CodeInterpreterToolsIT {
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 
 		// Session 1: generates chart1.png
-		executor.submit(() -> {
-			try {
-				ToolCallReactiveContextHolder
-					.setContext(Context.of(SessionConstants.SESSION_ID_KEY, "parallel-session-1"));
-				CodeInterpreterTools tools1 = new CodeInterpreterTools(client, sharedStore);
-
-				startLatch.await();
-				tools1.executeCode("python", """
-						import matplotlib.pyplot as plt
-						plt.figure()
-						plt.bar(['A'], [10])
-						plt.title('Session 1')
-						plt.savefig('chart1.png')
-						print('session1')
-						""");
-				session1Files.set(sharedStore.retrieve("parallel-session-1"));
-			}
-			catch (Exception e) {
-				e.printStackTrace();
-			}
-			finally {
-				ToolCallReactiveContextHolder.clearContext();
-				doneLatch.countDown();
-			}
-		});
+		executor.submit(() -> this.runSessionFixture(sharedStore, "parallel-session-1", """
+				import matplotlib.pyplot as plt
+				plt.figure()
+				plt.bar(['A'], [10])
+				plt.title('Session 1')
+				plt.savefig('chart1.png')
+				print('session1')
+				""", session1Files, startLatch, doneLatch));
 
 		// Session 2: generates chart2.png
-		executor.submit(() -> {
-			try {
-				ToolCallReactiveContextHolder
-					.setContext(Context.of(SessionConstants.SESSION_ID_KEY, "parallel-session-2"));
-				CodeInterpreterTools tools2 = new CodeInterpreterTools(client, sharedStore);
-
-				startLatch.await();
-				tools2.executeCode("python", """
-						import matplotlib.pyplot as plt
-						plt.figure()
-						plt.bar(['B'], [20])
-						plt.title('Session 2')
-						plt.savefig('chart2.png')
-						print('session2')
-						""");
-				session2Files.set(sharedStore.retrieve("parallel-session-2"));
-			}
-			catch (Exception e) {
-				e.printStackTrace();
-			}
-			finally {
-				ToolCallReactiveContextHolder.clearContext();
-				doneLatch.countDown();
-			}
-		});
+		executor.submit(() -> this.runSessionFixture(sharedStore, "parallel-session-2", """
+				import matplotlib.pyplot as plt
+				plt.figure()
+				plt.bar(['B'], [20])
+				plt.title('Session 2')
+				plt.savefig('chart2.png')
+				print('session2')
+				""", session2Files, startLatch, doneLatch));
 
 		// Start both threads simultaneously
 		startLatch.countDown();
@@ -501,18 +467,36 @@ class CodeInterpreterToolsIT {
 
 		// Verify each session got only its own file
 		assertThat(session1Files.get()).isNotEmpty();
-		assertThat(session1Files.get().stream().anyMatch(f -> f.name().contains("chart1"))).isTrue();
+		assertThat(session1Files.get().stream().anyMatch((f) -> f.name().contains("chart1"))).isTrue();
 
 		assertThat(session2Files.get()).isNotEmpty();
-		assertThat(session2Files.get().stream().anyMatch(f -> f.name().contains("chart2"))).isTrue();
+		assertThat(session2Files.get().stream().anyMatch((f) -> f.name().contains("chart2"))).isTrue();
 
 		// Verify store is empty for both sessions
 		assertThat(sharedStore.hasArtifacts("parallel-session-1")).isFalse();
 		assertThat(sharedStore.hasArtifacts("parallel-session-2")).isFalse();
 	}
 
-	@SpringBootApplication(exclude = {
-			org.springaicommunity.agentcore.codeinterpreter.AgentCoreCodeInterpreterAutoConfiguration.class })
+	private void runSessionFixture(ArtifactStore<GeneratedFile> sharedStore, String sessionId, String code,
+			AtomicReference<List<GeneratedFile>> capturedFiles, CountDownLatch startLatch, CountDownLatch doneLatch) {
+		try {
+			ToolCallReactiveContextHolder.setContext(Context.of(SessionConstants.SESSION_ID_KEY, sessionId));
+			CodeInterpreterTools tools = new CodeInterpreterTools(this.client, sharedStore);
+
+			startLatch.await();
+			tools.executeCode("python", code);
+			capturedFiles.set(sharedStore.retrieve(sessionId));
+		}
+		catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		finally {
+			ToolCallReactiveContextHolder.clearContext();
+			doneLatch.countDown();
+		}
+	}
+
+	@SpringBootApplication(exclude = { AgentCoreCodeInterpreterAutoConfiguration.class })
 	static class TestApp {
 
 		@Bean

@@ -12,11 +12,14 @@
     <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
     <modules>
         <module>spring-ai-agentcore-bom</module>
+        <module>spring-ai-agentcore-common</module>
         <module>spring-ai-agentcore-artifact-store</module>
         <module>spring-ai-agentcore-runtime-starter</module>
         <module>spring-ai-agentcore-memory</module>
         <module>spring-ai-agentcore-code-interpreter</module>
         <module>spring-ai-agentcore-browser</module>
+        <module>spring-ai-agentcore-evaluations</module>
+        <module>build-tools/spring-ai-agentcore-rewrite-recipes</module>
     </modules>
 
     <scm>
@@ -67,25 +70,26 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <java.version>17</java.version>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.release>21</maven.compiler.release>
 
         <spring-boot.version>3.5.9</spring-boot.version>
-        <bucket4j-core.version>8.7.0</bucket4j-core.version>
+        <bucket4j-core.version>8.10.1</bucket4j-core.version>
 
         <!-- plugin versions -->
         <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
-        <maven-surefire-plugin.version>3.1.2</maven-surefire-plugin.version>
-        <maven-javadoc-plugin.version>3.5.0</maven-javadoc-plugin.version>
+        <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
+        <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
         <maven-source-plugin.version>3.3.0</maven-source-plugin.version>
-        <flatten-maven-plugin.version>1.5.0</flatten-maven-plugin.version>
+        <flatten-maven-plugin.version>1.7.3</flatten-maven-plugin.version>
         <maven-deploy-plugin.version>3.1.1</maven-deploy-plugin.version>
         <maven-site-plugin.version>4.0.0-M13</maven-site-plugin.version>
         <maven-jar-plugin.version>3.3.0</maven-jar-plugin.version>
-        <spring-javaformat-maven-plugin.version>0.0.43</spring-javaformat-maven-plugin.version>
-        <spring-ai.version>1.1.2</spring-ai.version>
-        <awssdk.version>2.43.2</awssdk.version>
+        <spring-javaformat-maven-plugin.version>0.0.47</spring-javaformat-maven-plugin.version>
+        <spring-ai.version>1.1.7</spring-ai.version>
+        <awssdk.version>2.44.12</awssdk.version>
     </properties>
 
 
@@ -127,6 +131,35 @@
                         <inherited>true</inherited>
                         <goals>
                             <goal>validate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.6.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>io.spring.javaformat</groupId>
+                        <artifactId>spring-javaformat-checkstyle</artifactId>
+                        <version>${spring-javaformat-maven-plugin.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <id>checkstyle-validation</id>
+                        <phase>validate</phase>
+                        <inherited>true</inherited>
+                        <configuration>
+                            <configLocation>${maven.multiModuleProjectDirectory}/build-tools/checkstyle/checkstyle.xml</configLocation>
+                            <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                            <failOnViolation>true</failOnViolation>
+                            <consoleOutput>true</consoleOutput>
+                            <logViolationsToConsole>true</logViolationsToConsole>
+                        </configuration>
+                        <goals>
+                            <goal>check</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -257,6 +290,70 @@
                 <artifactId>maven-deploy-plugin</artifactId>
                 <version>${maven-deploy-plugin.version}</version>
             </plugin>
+            <plugin>
+                <groupId>com.mycila</groupId>
+                <artifactId>license-maven-plugin</artifactId>
+                <version>4.5</version>
+                <configuration>
+                    <licenseSets>
+                        <licenseSet>
+                            <header>${maven.multiModuleProjectDirectory}/build-tools/license/apache-2.0-header.txt</header>
+                            <includes>
+                                <include>**/*.java</include>
+                            </includes>
+                            <excludes>
+                                <exclude>**/target/**</exclude>
+                            </excludes>
+                        </licenseSet>
+                    </licenseSets>
+                    <strictCheck>true</strictCheck>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>license-check</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.openrewrite.maven</groupId>
+                <artifactId>rewrite-maven-plugin</artifactId>
+                <version>6.40.0</version>
+                <configuration>
+                    <activeRecipes>
+                        <recipe>org.openrewrite.staticanalysis.ExplicitThis</recipe>
+                        <recipe>org.openrewrite.staticanalysis.LambdaBlockToExpression</recipe>
+                        <recipe>org.openrewrite.staticanalysis.SimplifyBooleanExpression</recipe>
+                        <recipe>org.openrewrite.staticanalysis.SimplifyBooleanReturn</recipe>
+                        <recipe>org.openrewrite.staticanalysis.MissingOverrideAnnotation</recipe>
+                        <recipe>org.openrewrite.staticanalysis.NoFinalizer</recipe>
+                        <recipe>org.springaicommunity.agentcore.rewrite.SpringImportOrder</recipe>
+                        <recipe>org.springaicommunity.agentcore.rewrite.SpringLambda</recipe>
+                        <recipe>org.springaicommunity.agentcore.rewrite.InnerTypeLast</recipe>
+                        <recipe>org.springaicommunity.agentcore.rewrite.SpringTernary</recipe>
+                        <recipe>org.springaicommunity.agentcore.rewrite.SpringCatch</recipe>
+                        <recipe>org.springaicommunity.agentcore.rewrite.SpringMethodVisibility</recipe>
+                        <recipe>org.springaicommunity.agentcore.rewrite.OverloadMethodsDeclarationOrder</recipe>
+                        <recipe>org.openrewrite.java.RemoveUnusedImports</recipe>
+                        <recipe>org.openrewrite.java.ShortenFullyQualifiedTypeReferences</recipe>
+                    </activeRecipes>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.openrewrite.recipe</groupId>
+                        <artifactId>rewrite-static-analysis</artifactId>
+                        <version>2.35.0</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.springaicommunity</groupId>
+                        <artifactId>spring-ai-agentcore-rewrite-recipes</artifactId>
+                        <version>${project.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
         </plugins>
     </build>
 
@@ -323,7 +420,7 @@
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.7.0</version>
+                        <version>0.10.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
@@ -336,7 +433,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.2.7</version>
+                        <version>3.2.8</version>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>

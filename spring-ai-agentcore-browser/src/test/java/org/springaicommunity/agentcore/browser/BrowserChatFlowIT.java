@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 
 package org.springaicommunity.agentcore.browser;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +25,7 @@ import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStore;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springaicommunity.agentcore.artifacts.SessionConstants;
+
 import org.springframework.ai.bedrock.converse.BedrockChatOptions;
 import org.springframework.ai.bedrock.converse.BedrockProxyChatModel;
 import org.springframework.ai.chat.client.ChatClient;
@@ -40,6 +39,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration test that verifies session context propagation through the full ChatClient
@@ -68,12 +69,12 @@ class BrowserChatFlowIT {
 		String sessionId = "browser-chat-flow-session";
 
 		ToolCallback screenshotCallback = FunctionToolCallback
-			.builder("takeScreenshot", (ScreenshotRequest req) -> tools.takeScreenshot(req.url()))
+			.builder("takeScreenshot", (ScreenshotRequest req) -> this.tools.takeScreenshot(req.url()))
 			.description("Take a screenshot of a web page")
 			.inputType(ScreenshotRequest.class)
 			.build();
 
-		ChatClient chatClient = ChatClient.builder(chatModel)
+		ChatClient chatClient = ChatClient.builder(this.chatModel)
 			.defaultToolCallbacks(ToolCallbackProvider.from(screenshotCallback))
 			.defaultSystem("You are a helpful assistant. Use takeScreenshot when asked to capture a web page.")
 			.build();
@@ -83,17 +84,17 @@ class BrowserChatFlowIT {
 			.user("Take a screenshot of https://docs.aws.amazon.com")
 			.stream()
 			.content()
-			.contextWrite(ctx -> ctx.put(SessionConstants.SESSION_ID_KEY, sessionId))
+			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, sessionId))
 			.collectList()
-			.map(chunks -> String.join("", chunks))
+			.map((chunks) -> String.join("", chunks))
 			.block();
 
 		assertThat(response).isNotNull();
 
 		// Verify screenshot was stored under correct session ID
-		assertThat(artifactStore.hasArtifacts(sessionId)).isTrue();
+		assertThat(this.artifactStore.hasArtifacts(sessionId)).isTrue();
 
-		List<GeneratedFile> screenshots = artifactStore.retrieve(sessionId);
+		List<GeneratedFile> screenshots = this.artifactStore.retrieve(sessionId);
 		assertThat(screenshots).hasSize(1);
 		assertThat(screenshots.get(0).isImage()).isTrue();
 		assertThat(BrowserArtifacts.url(screenshots.get(0))).hasValue("https://docs.aws.amazon.com");
@@ -106,12 +107,12 @@ class BrowserChatFlowIT {
 		String session2 = "browser-isolation-session-2";
 
 		ToolCallback screenshotCallback = FunctionToolCallback
-			.builder("takeScreenshot", (ScreenshotRequest req) -> tools.takeScreenshot(req.url()))
+			.builder("takeScreenshot", (ScreenshotRequest req) -> this.tools.takeScreenshot(req.url()))
 			.description("Take a screenshot of a web page")
 			.inputType(ScreenshotRequest.class)
 			.build();
 
-		ChatClient chatClient = ChatClient.builder(chatModel)
+		ChatClient chatClient = ChatClient.builder(this.chatModel)
 			.defaultToolCallbacks(ToolCallbackProvider.from(screenshotCallback))
 			.defaultSystem("Take screenshots when asked.")
 			.build();
@@ -121,7 +122,7 @@ class BrowserChatFlowIT {
 			.user("Take a screenshot of https://docs.aws.amazon.com")
 			.stream()
 			.content()
-			.contextWrite(ctx -> ctx.put(SessionConstants.SESSION_ID_KEY, session1))
+			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, session1))
 			.collectList()
 			.block();
 
@@ -130,19 +131,19 @@ class BrowserChatFlowIT {
 			.user("Take a screenshot of https://aws.amazon.com")
 			.stream()
 			.content()
-			.contextWrite(ctx -> ctx.put(SessionConstants.SESSION_ID_KEY, session2))
+			.contextWrite((ctx) -> ctx.put(SessionConstants.SESSION_ID_KEY, session2))
 			.collectList()
 			.block();
 
 		// Verify session isolation
-		assertThat(artifactStore.hasArtifacts(session1)).isTrue();
-		assertThat(artifactStore.hasArtifacts(session2)).isTrue();
+		assertThat(this.artifactStore.hasArtifacts(session1)).isTrue();
+		assertThat(this.artifactStore.hasArtifacts(session2)).isTrue();
 
-		List<GeneratedFile> screenshots1 = artifactStore.retrieve(session1);
+		List<GeneratedFile> screenshots1 = this.artifactStore.retrieve(session1);
 		assertThat(screenshots1).hasSize(1);
 		assertThat(screenshots1.get(0).isImage()).isTrue();
 
-		List<GeneratedFile> screenshots2 = artifactStore.retrieve(session2);
+		List<GeneratedFile> screenshots2 = this.artifactStore.retrieve(session2);
 		assertThat(screenshots2).hasSize(1);
 		assertThat(screenshots2.get(0).isImage()).isTrue();
 	}
@@ -153,10 +154,10 @@ class BrowserChatFlowIT {
 
 		@Bean
 		ChatModel chatModel() {
-			return BedrockProxyChatModel.builder()
-				.defaultOptions(
-						BedrockChatOptions.builder().model("global.anthropic.claude-sonnet-4-5-20250929-v1:0").build())
+			BedrockChatOptions options = BedrockChatOptions.builder()
+				.model("global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 				.build();
+			return BedrockProxyChatModel.builder().defaultOptions(options).build();
 		}
 
 		@Bean

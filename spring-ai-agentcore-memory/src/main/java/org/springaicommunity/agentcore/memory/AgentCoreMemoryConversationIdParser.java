@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,11 +63,14 @@ public final class AgentCoreMemoryConversationIdParser {
 			String[] parts = conversationId.split(":", 2);
 			return new ActorAndSession(parts[0], parts[1]);
 		}
-		return new ActorAndSession(conversationId, defaultSession != null ? defaultSession : DEFAULT_SESSION);
+		return new ActorAndSession(conversationId, (defaultSession != null) ? defaultSession : DEFAULT_SESSION);
 	}
 
 	/**
 	 * Represents parsed actor and session from a conversationId.
+	 *
+	 * @param actor parsed actor identifier
+	 * @param session parsed session identifier
 	 */
 	public record ActorAndSession(String actor, String session) {
 	}

@@ -13,6 +13,7 @@ An open-source library that brings Amazon Bedrock AgentCore capabilities into Sp
 | [Browser](spring-ai-agentcore-browser/) | Web navigation, content extraction, screenshots, form interaction via Playwright |
 | [Code Interpreter](spring-ai-agentcore-code-interpreter/) | Secure Python/JavaScript/TypeScript execution with file retrieval |
 | [Artifact Store](spring-ai-agentcore-artifact-store/) | Session-scoped, TTL-based storage for generated files |
+| [Common](spring-ai-agentcore-common/) | Shared utilities — automatic User-Agent tagging for AWS SDK clients |
 | [BOM](spring-ai-agentcore-bom/) | Bill of Materials for version alignment |
 
 ## Quick Start
