@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 
 package org.springaicommunity.agentcore.browser;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -26,18 +24,21 @@ import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springaicommunity.agentcore.artifacts.SessionConstants;
+import reactor.util.context.Context;
+
 import org.springframework.ai.model.tool.internal.ToolCallReactiveContextHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
-import reactor.util.context.Context;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration test verifying auto-configuration wiring and screenshot storage with
  * {@code agentcore.browser.mode=local}. Lets {@link AgentCoreBrowserAutoConfiguration}
  * create all beans — no manual wiring. Browser operation behavior is covered by
- * {@link LocalBrowserClientTest}.
+ * {@link LocalBrowserClientTests}.
  *
  * @author Yuriy Bezsonov
  */
@@ -63,7 +64,7 @@ class LocalBrowserToolsIT {
 	@Test
 	@DisplayName("Should wire LocalBrowserClient when mode is local")
 	void shouldWireLocalBrowserClient() {
-		assertThat(client).isInstanceOf(LocalBrowserClient.class);
+		assertThat(this.client).isInstanceOf(LocalBrowserClient.class);
 	}
 
 	@Test
@@ -72,15 +73,15 @@ class LocalBrowserToolsIT {
 		String sessionId = "local-wiring-session";
 		ToolCallReactiveContextHolder.setContext(Context.of(SessionConstants.SESSION_ID_KEY, sessionId));
 
-		String result = tools.takeScreenshot("https://example.com");
+		String result = this.tools.takeScreenshot("https://example.com");
 
 		assertThat(result).contains("Screenshot captured:");
-		assertThat(artifactStore.hasArtifacts(sessionId)).isTrue();
+		assertThat(this.artifactStore.hasArtifacts(sessionId)).isTrue();
 
-		List<GeneratedFile> screenshots = artifactStore.retrieve(sessionId);
+		List<GeneratedFile> screenshots = this.artifactStore.retrieve(sessionId);
 		assertThat(screenshots).hasSize(1);
 		assertThat(screenshots.get(0).isImage()).isTrue();
-		assertThat(artifactStore.hasArtifacts(sessionId)).isFalse();
+		assertThat(this.artifactStore.hasArtifacts(sessionId)).isFalse();
 	}
 
 	@SpringBootApplication

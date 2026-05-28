@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@ import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
 import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStoreFactory;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreAsyncClient;
+import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.function.FunctionToolCallback;
@@ -30,8 +33,6 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreAsyncClient;
-import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
 /**
  * Auto-configuration for AgentCore Code Interpreter.
@@ -95,7 +96,7 @@ public class AgentCoreCodeInterpreterAutoConfiguration {
 	@ConditionalOnMissingBean(name = "codeInterpreterToolCallbackProvider")
 	ToolCallbackProvider codeInterpreterToolCallbackProvider(CodeInterpreterTools tools,
 			AgentCoreCodeInterpreterConfiguration config) {
-		String description = config.toolDescription() != null && !config.toolDescription().isBlank()
+		String description = (config.toolDescription() != null && !config.toolDescription().isBlank())
 				? config.toolDescription() : CodeInterpreterTools.DEFAULT_TOOL_DESCRIPTION;
 
 		logger.debug("Creating CodeInterpreter ToolCallbackProvider with description: {}...",

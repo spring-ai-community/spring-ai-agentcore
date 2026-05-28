@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * Actuator-based implementation of AgentCorePingService.
+ *
+ * @author Maximilian Schellhorn
  */
 @Service
 public class ActuatorAgentCorePingService implements AgentCorePingService {
@@ -45,17 +47,17 @@ public class ActuatorAgentCorePingService implements AgentCorePingService {
 	@Override
 	public AgentCorePingResponse getPingStatus() {
 		try {
-			var health = healthEndpoint.health();
-			var mapping = mapActuatorStatus(health.getStatus().getCode());
-			return updateCachedResponse(mapping.status(), mapping.httpStatus());
+			var health = this.healthEndpoint.health();
+			var mapping = this.mapActuatorStatus(health.getStatus().getCode());
+			return this.updateCachedResponse(mapping.status(), mapping.httpStatus());
 		}
-		catch (Exception e) {
-			return updateCachedResponse(PingStatus.UNHEALTHY, HttpStatus.INTERNAL_SERVER_ERROR);
+		catch (Exception ex) {
+			return this.updateCachedResponse(PingStatus.UNHEALTHY, HttpStatus.INTERNAL_SERVER_ERROR);
 		}
 	}
 
 	private AgentCorePingResponse updateCachedResponse(PingStatus status, HttpStatus httpStatus) {
-		return cachedResponse.updateAndGet(current -> {
+		return this.cachedResponse.updateAndGet((current) -> {
 			if (current == null || !current.status().equals(status)) {
 				return new AgentCorePingResponse(status, httpStatus, System.currentTimeMillis() / 1000);
 			}
@@ -66,7 +68,7 @@ public class ActuatorAgentCorePingService implements AgentCorePingService {
 	private StatusMapping mapActuatorStatus(String statusCode) {
 		return switch (statusCode) {
 			case "UP" ->
-				(agentCoreTaskTracker.getCount() > 0) ? new StatusMapping(PingStatus.HEALTHY_BUSY, HttpStatus.OK)
+				(this.agentCoreTaskTracker.getCount() > 0) ? new StatusMapping(PingStatus.HEALTHY_BUSY, HttpStatus.OK)
 						: new StatusMapping(PingStatus.HEALTHY, HttpStatus.OK);
 			default -> new StatusMapping(PingStatus.UNHEALTHY, HttpStatus.SERVICE_UNAVAILABLE);
 		};

@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParse
 import org.springaicommunity.agentcore.memory.longterm.strategy.MemoryStrategyHandler;
 import org.springaicommunity.agentcore.memory.longterm.strategy.MemoryStrategyHandler.MemoryFetchContext;
 import org.springaicommunity.agentcore.memory.longterm.strategy.MemoryStrategyHandler.MemoryFetchResult;
+import reactor.core.publisher.Flux;
+
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
@@ -32,8 +34,6 @@ import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisor;
 import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
 import org.springframework.ai.chat.memory.ChatMemory;
-
-import reactor.core.publisher.Flux;
 
 /**
  * Unified advisor for long-term memory retrieval. Holds a single
@@ -51,7 +51,7 @@ import reactor.core.publisher.Flux;
  *
  * @author Yuriy Bezsonov
  */
-public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdvisor {
+public final class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdvisor {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryAdvisor.class);
 
@@ -75,7 +75,7 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 		this.retriever = builder.retriever;
 		this.handler = builder.handler;
 		this.memoryStrategy = builder.memoryStrategy;
-		this.order = builder.order != null ? builder.order : this.memoryStrategy.getOrder();
+		this.order = (builder.order != null) ? builder.order : this.memoryStrategy.getOrder();
 		logger.info("AgentCoreLongTermMemoryAdvisor initialized: mode={}, strategyId={}", this.memoryStrategy,
 				this.handler.strategyId());
 	}
@@ -84,71 +84,18 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 		return new Builder(retriever);
 	}
 
-	public static class Builder {
-
-		private final AgentCoreLongTermMemoryRetriever retriever;
-
-		private MemoryStrategyHandler handler;
-
-		private AgentCoreLongTermMemoryStrategyType memoryStrategy = AgentCoreLongTermMemoryStrategyType.CUSTOM;
-
-		private Integer order;
-
-		private Builder(AgentCoreLongTermMemoryRetriever retriever) {
-			Objects.requireNonNull(retriever, "AgentCore Long-Term memory retriever is required");
-			this.retriever = retriever;
-		}
-
-		/**
-		 * Supply the strategy handler that drives fetch / format / inject. Use one of the
-		 * built-in handlers or a user-provided implementation of
-		 * {@link MemoryStrategyHandler}.
-		 */
-		public Builder handler(MemoryStrategyHandler handler) {
-			Objects.requireNonNull(handler, "handler is required");
-			this.handler = handler;
-			return this;
-		}
-
-		/**
-		 * Declares which built-in strategy type this advisor represents. Auto-config and
-		 * auto-discovery use this to set the advisor name (e.g.
-		 * {@code AgentCoreLongTermMemoryAdvisor-SEMANTIC}) and the default advisor order.
-		 * Custom handlers can leave this unset; the advisor defaults to
-		 * {@link AgentCoreLongTermMemoryStrategyType#CUSTOM}.
-		 */
-		public Builder memoryStrategy(AgentCoreLongTermMemoryStrategyType memoryStrategy) {
-			Objects.requireNonNull(memoryStrategy, "memoryStrategy is required");
-			this.memoryStrategy = memoryStrategy;
-			return this;
-		}
-
-		public Builder order(int order) {
-			this.order = order;
-			return this;
-		}
-
-		public AgentCoreLongTermMemoryAdvisor build() {
-			if (this.handler == null) {
-				throw new IllegalArgumentException("handler is required (call .handler(...) on the Builder)");
-			}
-			return new AgentCoreLongTermMemoryAdvisor(this);
-		}
-
-	}
-
 	// ------------------------------------------------------------------
 	// Advisor API (call + stream entry points)
 	// ------------------------------------------------------------------
 
 	@Override
 	public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
-		return chain.nextCall(enrichRequest(request));
+		return chain.nextCall(this.enrichRequest(request));
 	}
 
 	@Override
 	public Flux<ChatClientResponse> adviseStream(ChatClientRequest request, StreamAdvisorChain chain) {
-		return chain.nextStream(enrichRequest(request));
+		return chain.nextStream(this.enrichRequest(request));
 	}
 
 	// ------------------------------------------------------------------
@@ -156,10 +103,10 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 	// ------------------------------------------------------------------
 
 	private ChatClientRequest enrichRequest(ChatClientRequest request) {
-		AgentCoreMemoryConversationIdParser.ActorAndSession parsed = parseConversationId(request);
+		AgentCoreMemoryConversationIdParser.ActorAndSession parsed = this.parseConversationId(request);
 		String userId = parsed.actor();
 		String sessionId = parsed.session();
-		String userPrompt = extractUserText(request);
+		String userPrompt = this.extractUserText(request);
 
 		if (this.handler.requiresUserPrompt() && (userPrompt == null || userPrompt.isEmpty())) {
 			return request;
@@ -183,7 +130,7 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 	// ------------------------------------------------------------------
 
 	private AgentCoreMemoryConversationIdParser.ActorAndSession parseConversationId(ChatClientRequest request) {
-		String conversationId = extractParam(request, ChatMemory.CONVERSATION_ID);
+		String conversationId = this.extractParam(request, ChatMemory.CONVERSATION_ID);
 		if (conversationId == null || conversationId.isEmpty()) {
 			throw new IllegalStateException("LTM advisor requires '" + ChatMemory.CONVERSATION_ID
 					+ "' parameter (format: 'userId' or 'userId:sessionId'). "
@@ -194,7 +141,7 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 
 	private String extractUserText(ChatClientRequest request) {
 		var userMessage = request.prompt().getUserMessage();
-		return userMessage != null ? userMessage.getText() : null;
+		return (userMessage != null) ? userMessage.getText() : null;
 	}
 
 	private String extractParam(ChatClientRequest request, String paramName) {
@@ -217,6 +164,63 @@ public class AgentCoreLongTermMemoryAdvisor implements CallAdvisor, StreamAdviso
 	@Override
 	public int getOrder() {
 		return this.order;
+	}
+
+	public static final class Builder {
+
+		private final AgentCoreLongTermMemoryRetriever retriever;
+
+		private MemoryStrategyHandler handler;
+
+		private AgentCoreLongTermMemoryStrategyType memoryStrategy = AgentCoreLongTermMemoryStrategyType.CUSTOM;
+
+		private Integer order;
+
+		private Builder(AgentCoreLongTermMemoryRetriever retriever) {
+			Objects.requireNonNull(retriever, "AgentCore Long-Term memory retriever is required");
+			this.retriever = retriever;
+		}
+
+		/**
+		 * Supply the strategy handler that drives fetch / format / inject. Use one of the
+		 * built-in handlers or a user-provided implementation of
+		 * {@link MemoryStrategyHandler}.
+		 * @param handler the strategy handler
+		 * @return this builder
+		 */
+		public Builder handler(MemoryStrategyHandler handler) {
+			Objects.requireNonNull(handler, "handler is required");
+			this.handler = handler;
+			return this;
+		}
+
+		/**
+		 * Declares which built-in strategy type this advisor represents. Auto-config and
+		 * auto-discovery use this to set the advisor name (e.g.
+		 * {@code AgentCoreLongTermMemoryAdvisor-SEMANTIC}) and the default advisor order.
+		 * Custom handlers can leave this unset; the advisor defaults to
+		 * {@link AgentCoreLongTermMemoryStrategyType#CUSTOM}.
+		 * @param memoryStrategy the built-in strategy type
+		 * @return this builder
+		 */
+		public Builder memoryStrategy(AgentCoreLongTermMemoryStrategyType memoryStrategy) {
+			Objects.requireNonNull(memoryStrategy, "memoryStrategy is required");
+			this.memoryStrategy = memoryStrategy;
+			return this;
+		}
+
+		public Builder order(int order) {
+			this.order = order;
+			return this;
+		}
+
+		public AgentCoreLongTermMemoryAdvisor build() {
+			if (this.handler == null) {
+				throw new IllegalArgumentException("handler is required (call .handler(...) on the Builder)");
+			}
+			return new AgentCoreLongTermMemoryAdvisor(this);
+		}
+
 	}
 
 }

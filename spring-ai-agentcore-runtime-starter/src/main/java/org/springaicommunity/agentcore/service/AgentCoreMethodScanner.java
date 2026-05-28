@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import org.springframework.context.annotation.Lazy;
 /**
  * BeanPostProcessor that scans for @AgentCoreInvocation annotated methods and registers
  * them with the AgentCoreMethodRegistry.
+ *
+ * @author Maximilian Schellhorn
  */
 public class AgentCoreMethodScanner implements BeanPostProcessor {
 
@@ -39,7 +41,7 @@ public class AgentCoreMethodScanner implements BeanPostProcessor {
 		var methods = bean.getClass().getDeclaredMethods();
 		for (var method : methods) {
 			if (method.isAnnotationPresent(AgentCoreInvocation.class)) {
-				registry.registerMethod(bean, method);
+				this.registry.registerMethod(bean, method);
 			}
 		}
 		return bean;

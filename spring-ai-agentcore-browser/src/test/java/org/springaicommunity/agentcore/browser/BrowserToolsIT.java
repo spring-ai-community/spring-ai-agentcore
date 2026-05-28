@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 
 package org.springaicommunity.agentcore.browser;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -32,12 +30,15 @@ import org.springaicommunity.agentcore.artifacts.ArtifactStore;
 import org.springaicommunity.agentcore.artifacts.CaffeineArtifactStore;
 import org.springaicommunity.agentcore.artifacts.GeneratedFile;
 import org.springaicommunity.agentcore.artifacts.SessionConstants;
+import reactor.util.context.Context;
+
 import org.springframework.ai.model.tool.internal.ToolCallReactiveContextHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import reactor.util.context.Context;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for BrowserTools.
@@ -62,8 +63,8 @@ class BrowserToolsIT {
 
 	@BeforeEach
 	void setUp() {
-		store = new CaffeineArtifactStore<>(300, "BrowserArtifactStore");
-		tools = new BrowserTools(client, store, config);
+		this.store = new CaffeineArtifactStore<>(300, "BrowserArtifactStore");
+		this.tools = new BrowserTools(this.client, this.store, this.config);
 	}
 
 	@AfterEach
@@ -72,7 +73,7 @@ class BrowserToolsIT {
 	}
 
 	private void setSessionId(String sessionId) {
-		Context ctx = sessionId != null ? Context.of(SessionConstants.SESSION_ID_KEY, sessionId) : Context.empty();
+		Context ctx = (sessionId != null) ? Context.of(SessionConstants.SESSION_ID_KEY, sessionId) : Context.empty();
 		ToolCallReactiveContextHolder.setContext(ctx);
 	}
 
@@ -82,7 +83,7 @@ class BrowserToolsIT {
 	@Order(1)
 	@DisplayName("Should browse URL and return content")
 	void shouldBrowseUrlAndReturnContent() {
-		String result = tools.browseUrl("https://docs.aws.amazon.com");
+		String result = this.tools.browseUrl("https://docs.aws.amazon.com");
 
 		assertThat(result).contains("Title:");
 		assertThat(result).containsIgnoringCase("aws");
@@ -92,7 +93,7 @@ class BrowserToolsIT {
 	@Order(2)
 	@DisplayName("Should return error for invalid URL")
 	void shouldBrowseUrlReturnErrorForInvalidUrl() {
-		String result = tools.browseUrl("https://this-domain-does-not-exist-12345.com");
+		String result = this.tools.browseUrl("https://this-domain-does-not-exist-12345.com");
 
 		assertThat(result).startsWith("Error:");
 	}
@@ -103,32 +104,32 @@ class BrowserToolsIT {
 	@Order(3)
 	@DisplayName("Should take screenshot and store by session ID")
 	void shouldTakeScreenshotAndStoreBySessionId() {
-		setSessionId("session-A");
+		this.setSessionId("session-A");
 
-		String result = tools.takeScreenshot("https://docs.aws.amazon.com");
+		String result = this.tools.takeScreenshot("https://docs.aws.amazon.com");
 
 		assertThat(result).contains("Screenshot captured:");
 		assertThat(result).contains("bytes");
-		assertThat(store.hasArtifacts("session-A")).isTrue();
+		assertThat(this.store.hasArtifacts("session-A")).isTrue();
 	}
 
 	@Test
 	@Order(4)
 	@DisplayName("Should use default session when null")
 	void shouldTakeScreenshotUseDefaultSessionWhenNull() {
-		setSessionId(null);
+		this.setSessionId(null);
 
-		String result = tools.takeScreenshot("https://docs.aws.amazon.com");
+		String result = this.tools.takeScreenshot("https://docs.aws.amazon.com");
 
 		assertThat(result).contains("Screenshot captured:");
-		assertThat(store.hasArtifacts(SessionConstants.DEFAULT_SESSION_ID)).isTrue();
+		assertThat(this.store.hasArtifacts(SessionConstants.DEFAULT_SESSION_ID)).isTrue();
 	}
 
 	@Test
 	@Order(5)
 	@DisplayName("Should return error on screenshot failure")
 	void shouldTakeScreenshotReturnErrorOnFailure() {
-		String result = tools.takeScreenshot("https://this-domain-does-not-exist-12345.com");
+		String result = this.tools.takeScreenshot("https://this-domain-does-not-exist-12345.com");
 
 		assertThat(result).startsWith("Error:");
 	}
@@ -139,54 +140,54 @@ class BrowserToolsIT {
 	@Order(6)
 	@DisplayName("Should retrieve screenshot only from own session")
 	void shouldRetrieveScreenshotOnlyFromOwnSession() {
-		setSessionId("session-X");
-		tools.takeScreenshot("https://docs.aws.amazon.com");
+		this.setSessionId("session-X");
+		this.tools.takeScreenshot("https://docs.aws.amazon.com");
 
-		setSessionId("session-Y");
-		tools.takeScreenshot("https://docs.aws.amazon.com");
+		this.setSessionId("session-Y");
+		this.tools.takeScreenshot("https://docs.aws.amazon.com");
 
-		List<GeneratedFile> xScreenshots = store.retrieve("session-X");
-		List<GeneratedFile> yScreenshots = store.retrieve("session-Y");
+		List<GeneratedFile> xScreenshots = this.store.retrieve("session-X");
+		List<GeneratedFile> yScreenshots = this.store.retrieve("session-Y");
 
 		assertThat(xScreenshots).hasSize(1);
 		assertThat(yScreenshots).hasSize(1);
-		assertThat(store.hasArtifacts("session-X")).isFalse();
-		assertThat(store.hasArtifacts("session-Y")).isFalse();
+		assertThat(this.store.hasArtifacts("session-X")).isFalse();
+		assertThat(this.store.hasArtifacts("session-Y")).isFalse();
 	}
 
 	@Test
 	@Order(7)
 	@DisplayName("Should clear screenshots after retrieve")
 	void shouldClearScreenshotsAfterRetrieve() {
-		setSessionId("session-clear");
-		tools.takeScreenshot("https://docs.aws.amazon.com");
+		this.setSessionId("session-clear");
+		this.tools.takeScreenshot("https://docs.aws.amazon.com");
 
-		assertThat(store.hasArtifacts("session-clear")).isTrue();
-		store.retrieve("session-clear");
-		assertThat(store.hasArtifacts("session-clear")).isFalse();
-		assertThat(store.retrieve("session-clear")).isNull();
+		assertThat(this.store.hasArtifacts("session-clear")).isTrue();
+		this.store.retrieve("session-clear");
+		assertThat(this.store.hasArtifacts("session-clear")).isFalse();
+		assertThat(this.store.retrieve("session-clear")).isNull();
 	}
 
 	@Test
 	@Order(8)
 	@DisplayName("Should hasArtifacts return correctly")
 	void shouldHasArtifactsReturnCorrectly() {
-		assertThat(store.hasArtifacts("nonexistent")).isFalse();
+		assertThat(this.store.hasArtifacts("nonexistent")).isFalse();
 
-		setSessionId("session-has");
-		tools.takeScreenshot("https://docs.aws.amazon.com");
+		this.setSessionId("session-has");
+		this.tools.takeScreenshot("https://docs.aws.amazon.com");
 
-		assertThat(store.hasArtifacts("session-has")).isTrue();
+		assertThat(this.store.hasArtifacts("session-has")).isTrue();
 	}
 
 	@Test
 	@Order(9)
 	@DisplayName("Should screenshot toDataUrl return valid format")
 	void shouldScreenshotToDataUrlReturnValidFormat() {
-		setSessionId("session-dataurl");
-		tools.takeScreenshot("https://docs.aws.amazon.com");
+		this.setSessionId("session-dataurl");
+		this.tools.takeScreenshot("https://docs.aws.amazon.com");
 
-		List<GeneratedFile> screenshots = store.retrieve("session-dataurl");
+		List<GeneratedFile> screenshots = this.store.retrieve("session-dataurl");
 		assertThat(screenshots).hasSize(1);
 
 		GeneratedFile screenshot = screenshots.get(0);
@@ -204,7 +205,7 @@ class BrowserToolsIT {
 	@DisplayName("Should click element")
 	void shouldClickElement() {
 		// Use httpbin which has a simple, reliable link structure
-		String result = tools.clickElement("https://httpbin.org", "a[href='/forms/post']");
+		String result = this.tools.clickElement("https://httpbin.org", "a[href='/forms/post']");
 
 		assertThat(result).containsIgnoringCase("clicked");
 	}
@@ -213,7 +214,7 @@ class BrowserToolsIT {
 	@Order(11)
 	@DisplayName("Should return error on click failure")
 	void shouldClickElementReturnErrorOnFailure() {
-		String result = tools.clickElement("https://this-domain-does-not-exist-12345.com", "a");
+		String result = this.tools.clickElement("https://this-domain-does-not-exist-12345.com", "a");
 
 		assertThat(result).startsWith("Error:");
 	}
@@ -224,7 +225,7 @@ class BrowserToolsIT {
 	@Order(12)
 	@DisplayName("Should fill form")
 	void shouldFillForm() {
-		String result = tools.fillForm("https://duckduckgo.com", "input[name='q']", "test query");
+		String result = this.tools.fillForm("https://duckduckgo.com", "input[name='q']", "test query");
 
 		assertThat(result).containsIgnoringCase("filled");
 	}
@@ -233,7 +234,7 @@ class BrowserToolsIT {
 	@Order(13)
 	@DisplayName("Should return error on fill failure")
 	void shouldFillFormReturnErrorOnFailure() {
-		String result = tools.fillForm("https://this-domain-does-not-exist-12345.com", "input", "value");
+		String result = this.tools.fillForm("https://this-domain-does-not-exist-12345.com", "input", "value");
 
 		assertThat(result).startsWith("Error:");
 	}
@@ -244,7 +245,7 @@ class BrowserToolsIT {
 	@Order(14)
 	@DisplayName("Should evaluate script")
 	void shouldEvaluateScript() {
-		String result = tools.evaluateScript("https://docs.aws.amazon.com", "document.title");
+		String result = this.tools.evaluateScript("https://docs.aws.amazon.com", "document.title");
 
 		assertThat(result).containsIgnoringCase("aws");
 	}
@@ -253,7 +254,7 @@ class BrowserToolsIT {
 	@Order(15)
 	@DisplayName("Should return error on evaluate failure")
 	void shouldEvaluateScriptReturnErrorOnFailure() {
-		String result = tools.evaluateScript("https://this-domain-does-not-exist-12345.com", "document.title");
+		String result = this.tools.evaluateScript("https://this-domain-does-not-exist-12345.com", "document.title");
 
 		assertThat(result).startsWith("Error:");
 	}
@@ -268,13 +269,13 @@ class BrowserToolsIT {
 
 		// Session 1: takes screenshot
 		ToolCallReactiveContextHolder.setContext(Context.of(SessionConstants.SESSION_ID_KEY, "concurrent-session-1"));
-		BrowserTools tools1 = new BrowserTools(client, sharedStore, config);
+		BrowserTools tools1 = new BrowserTools(this.client, sharedStore, this.config);
 		tools1.takeScreenshot("https://docs.aws.amazon.com");
 		ToolCallReactiveContextHolder.clearContext();
 
 		// Session 2: takes screenshot (before session 1 retrieves)
 		ToolCallReactiveContextHolder.setContext(Context.of(SessionConstants.SESSION_ID_KEY, "concurrent-session-2"));
-		BrowserTools tools2 = new BrowserTools(client, sharedStore, config);
+		BrowserTools tools2 = new BrowserTools(this.client, sharedStore, this.config);
 		tools2.takeScreenshot("https://aws.amazon.com");
 		ToolCallReactiveContextHolder.clearContext();
 

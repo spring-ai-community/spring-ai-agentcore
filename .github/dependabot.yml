@@ -1,0 +1,84 @@
+version: 2
+updates:
+  # Maven dependencies — the root entry recursively covers the library
+  # submodules listed in the root POM's <modules> via Dependabot's transitive
+  # POM discovery. The `examples/` reactor is standalone (its parent is
+  # spring-boot-starter-parent, not this repo's root POM), so it needs its
+  # own entry below.
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    groups:
+      # Group patch/minor bumps into a single PR per ecosystem to reduce noise.
+      spring:
+        patterns:
+          - "org.springframework*"
+          - "io.spring.*:*"
+        update-types:
+          - "minor"
+          - "patch"
+      aws-sdk:
+        patterns:
+          - "software.amazon.awssdk:*"
+        update-types:
+          - "minor"
+          - "patch"
+      spring-ai:
+        patterns:
+          - "org.springframework.ai:*"
+        update-types:
+          - "minor"
+          - "patch"
+      test-dependencies:
+        patterns:
+          - "org.junit*:*"
+          - "org.mockito:*"
+          - "org.assertj:*"
+          - "org.testcontainers:*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Example applications have their own reactor (examples/pom.xml) and are not
+  # reachable from the root POM's <modules>, so they need a separate entry.
+  - package-ecosystem: "maven"
+    directory: "/examples"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "examples"
+    groups:
+      examples:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions versions in .github/workflows/*
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # Example Dockerfiles — `directories` supports globs so one entry covers all
+  # example apps. If you add a Dockerfile outside /examples, extend the list.
+  - package-ecosystem: "docker"
+    directories:
+      - "/examples/*"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "examples"

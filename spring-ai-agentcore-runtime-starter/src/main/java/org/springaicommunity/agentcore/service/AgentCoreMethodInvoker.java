@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,30 +36,30 @@ public class AgentCoreMethodInvoker {
 	}
 
 	public Object invokeAgentMethod(Object request, HttpHeaders headers) throws Exception {
-		if (!registry.hasAgentMethod()) {
+		if (!this.registry.hasAgentMethod()) {
 			throw new AgentCoreInvocationException("No @AgentCoreInvocation method found");
 		}
 
-		var method = registry.getAgentMethod();
-		var bean = registry.getAgentBean();
+		var method = this.registry.getAgentMethod();
+		var bean = this.registry.getAgentBean();
 		var paramTypes = method.getParameterTypes();
 
-		Object[] args = prepareArguments(request, headers, paramTypes);
+		Object[] args = this.prepareArguments(request, headers, paramTypes);
 
 		try {
 			return method.invoke(bean, args);
 		}
 
-		catch (InvocationTargetException e) {
-			if (e.getCause() instanceof Exception exception) {
+		catch (InvocationTargetException ex) {
+			if (ex.getCause() instanceof Exception exception) {
 				throw exception;
 			}
-			throw new AgentCoreInvocationException("Method invocation failed", e);
+			throw new AgentCoreInvocationException("Method invocation failed", ex);
 		}
 	}
 
 	public Object invokeAgentMethod(Object request) throws Exception {
-		return invokeAgentMethod(request, new HttpHeaders());
+		return this.invokeAgentMethod(request, new HttpHeaders());
 	}
 
 	private Object[] prepareArguments(Object request, HttpHeaders headers, Class<?>[] paramTypes) {
@@ -90,7 +90,7 @@ public class AgentCoreMethodInvoker {
 			}
 
 			// JSON conversion for complex types
-			return new Object[] { convertRequest(request, paramType) };
+			return new Object[] { this.convertRequest(request, paramType) };
 		}
 
 		if (paramTypes.length == 2 && contextIndex != -1) {
@@ -100,7 +100,7 @@ public class AgentCoreMethodInvoker {
 			args[contextIndex] = new AgentCoreContext(headers);
 
 			// Set request parameter
-			int requestIndex = contextIndex == 0 ? 1 : 0;
+			int requestIndex = (contextIndex != 0) ? 0 : 1;
 			Class<?> requestType = paramTypes[requestIndex];
 
 			if (requestType.isAssignableFrom(request.getClass())) {
@@ -108,7 +108,7 @@ public class AgentCoreMethodInvoker {
 			}
 
 			else {
-				args[requestIndex] = convertRequest(request, requestType);
+				args[requestIndex] = this.convertRequest(request, requestType);
 			}
 
 			return args;
@@ -120,16 +120,16 @@ public class AgentCoreMethodInvoker {
 	private Object convertRequest(Object request, Class<?> targetType) {
 		try {
 			if (request instanceof String json) {
-				return objectMapper.readValue(json, targetType);
+				return this.objectMapper.readValue(json, targetType);
 			}
 
 			// Object to JSON to target type conversion
-			String json = objectMapper.writeValueAsString(request);
-			return objectMapper.readValue(json, targetType);
+			String json = this.objectMapper.writeValueAsString(request);
+			return this.objectMapper.readValue(json, targetType);
 		}
 
-		catch (Exception e) {
-			throw new AgentCoreInvocationException("Type conversion failed", e);
+		catch (Exception ex) {
+			throw new AgentCoreInvocationException("Type conversion failed", ex);
 		}
 	}
 

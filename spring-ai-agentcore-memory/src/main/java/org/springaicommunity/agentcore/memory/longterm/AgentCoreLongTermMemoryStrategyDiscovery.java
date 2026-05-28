@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.EpisodicReflectionConfiguration;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
@@ -53,7 +52,7 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 	public List<DiscoveredStrategy> discoverStrategies(String memoryId) {
 		logger.info("Discovering strategies for memory: {}", memoryId);
 
-		var response = controlClient.getMemory(GetMemoryRequest.builder().memoryId(memoryId).build());
+		var response = this.controlClient.getMemory(GetMemoryRequest.builder().memoryId(memoryId).build());
 		var strategies = response.memory().strategies();
 
 		if (strategies == null || strategies.isEmpty()) {
@@ -64,7 +63,7 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 		List<DiscoveredStrategy> discovered = new ArrayList<>();
 		int skipped = 0;
 		for (MemoryStrategy strategy : strategies) {
-			var mapped = mapStrategy(strategy);
+			var mapped = this.mapStrategy(strategy);
 			if (mapped != null) {
 				discovered.add(mapped);
 				logger.info("Discovered strategy: {} (type={}, namespaces={}, reflectionsNamespaces={})",
@@ -75,7 +74,7 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 			}
 		}
 
-		logDiscoveryOverview(memoryId, strategies.size(), discovered, skipped);
+		this.logDiscoveryOverview(memoryId, strategies.size(), discovered, skipped);
 		return discovered;
 	}
 
@@ -89,11 +88,11 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 		table.append(String.format("  %-20s %-45s %s%n", "TYPE", "STRATEGY ID", "REFLECTIONS"));
 		table.append("  ").append("-".repeat(80)).append(System.lineSeparator());
 		for (DiscoveredStrategy ds : discovered) {
-			String refl = ds.reflectionsNamespaces().isEmpty() ? "no" : "yes";
+			String refl = (ds.reflectionsNamespaces().isEmpty()) ? "no" : "yes";
 			table.append(String.format("  %-20s %-45s %s%n", ds.type(), ds.strategyId(), refl));
 		}
 		table.append(String.format("  %d usable / %d total%s", discovered.size(), total,
-				skipped > 0 ? " (" + skipped + " skipped)" : ""));
+				(skipped > 0) ? " (" + skipped + " skipped)" : ""));
 		logger.info(table.toString());
 	}
 
@@ -117,8 +116,8 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 			return null;
 		}
 
-		List<String> reflectionsNamespaces = type == AgentCoreLongTermMemoryStrategyType.EPISODIC
-				? extractReflectionsNamespaces(strategy) : List.of();
+		List<String> reflectionsNamespaces = (type != AgentCoreLongTermMemoryStrategyType.EPISODIC) ? List.of()
+				: this.extractReflectionsNamespaces(strategy);
 
 		return new DiscoveredStrategy(strategy.strategyId(), type, List.copyOf(namespaces), reflectionsNamespaces);
 	}
@@ -130,6 +129,8 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 	 * list when any link is missing or when the reflection variant is
 	 * {@code customReflectionConfiguration} (handled separately, not supported by
 	 * auto-discovery yet).
+	 * @param strategy the AWS memory strategy descriptor
+	 * @return the configured reflection namespaces, or empty when not applicable
 	 */
 	private List<String> extractReflectionsNamespaces(MemoryStrategy strategy) {
 		StrategyConfiguration configuration = strategy.configuration();
@@ -152,7 +153,7 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 			return List.of();
 		}
 		List<String> reflectionNamespaces = episodic.namespaces();
-		return reflectionNamespaces != null ? List.copyOf(reflectionNamespaces) : List.of();
+		return (reflectionNamespaces != null) ? List.copyOf(reflectionNamespaces) : List.of();
 	}
 
 	/**
@@ -171,23 +172,25 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 			List<String> namespaces, List<String> reflectionsNamespaces) {
 
 		public DiscoveredStrategy {
-			namespaces = namespaces != null ? List.copyOf(namespaces) : List.of();
-			reflectionsNamespaces = reflectionsNamespaces != null ? List.copyOf(reflectionsNamespaces) : List.of();
+			namespaces = (namespaces != null) ? List.copyOf(namespaces) : List.of();
+			reflectionsNamespaces = (reflectionsNamespaces != null) ? List.copyOf(reflectionsNamespaces) : List.of();
 		}
 
 		/**
 		 * Returns the first namespace (default for episodes).
+		 * @return the default namespace
 		 */
 		public String defaultNamespace() {
-			return namespaces.get(0);
+			return this.namespaces.get(0);
 		}
 
 		/**
 		 * Returns the first reflections namespace, or {@code null} if none are
 		 * configured.
+		 * @return the default reflections namespace, or {@code null}
 		 */
 		public String defaultReflectionsNamespace() {
-			return reflectionsNamespaces.isEmpty() ? null : reflectionsNamespaces.get(0);
+			return (this.reflectionsNamespaces.isEmpty()) ? null : this.reflectionsNamespaces.get(0);
 		}
 
 	}

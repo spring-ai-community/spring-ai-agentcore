@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,12 +38,16 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrat
  */
 public enum AgentCoreLongTermMemoryStrategyType {
 
+	/** known facts about the user. */
 	SEMANTIC(100, "Known facts about the user (use naturally in conversation)"),
 
+	/** user preferences applied during conversation. */
 	USER_PREFERENCE(200, "User preferences (apply when relevant)"),
 
+	/** previous conversation summaries used for continuity. */
 	SUMMARY(300, "Previous conversation summaries (use for continuity)"),
 
+	/** past interactions and reflections referenced when relevant. */
 	EPISODIC(400, "Past interactions and reflections (reference when relevant)"),
 
 	/**
@@ -61,6 +65,10 @@ public enum AgentCoreLongTermMemoryStrategyType {
 		this.contextLabel = contextLabel;
 	}
 
+	/**
+	 * Returns the relative ordering of this strategy in injected prompt sections.
+	 * @return the ordering value
+	 */
 	public int getOrder() {
 		return this.order;
 	}
@@ -68,6 +76,7 @@ public enum AgentCoreLongTermMemoryStrategyType {
 	/**
 	 * Human-readable label prefixing the injected memory section. Empty for
 	 * {@link #CUSTOM}.
+	 * @return the context label
 	 */
 	public String contextLabel() {
 		return this.contextLabel;
@@ -77,6 +86,8 @@ public enum AgentCoreLongTermMemoryStrategyType {
 	 * Maps an AWS SDK {@link MemoryStrategyType} to this enum. Returns {@code null} for
 	 * AWS types that have no direct advisor-side counterpart ({@code CUSTOM} on the AWS
 	 * side, or unknown SDK versions) — callers should skip such strategies.
+	 * @param awsType the AWS SDK strategy type
+	 * @return the matching advisor-side strategy type, or {@code null}
 	 */
 	public static AgentCoreLongTermMemoryStrategyType fromAwsType(MemoryStrategyType awsType) {
 		if (awsType == null) {

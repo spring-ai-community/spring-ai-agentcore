@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ public interface ArtifactStoreFactory {
 	 * @return configured artifact store
 	 */
 	default ArtifactStore<GeneratedFile> create(String storeName) {
-		return create(storeName, DEFAULT_TTL_SECONDS, DEFAULT_MAX_SIZE);
+		return this.create(storeName, DEFAULT_TTL_SECONDS, DEFAULT_MAX_SIZE);
 	}
 
 	/**
@@ -48,7 +48,7 @@ public interface ArtifactStoreFactory {
 	 * @return configured artifact store
 	 */
 	default ArtifactStore<GeneratedFile> create(String storeName, int ttlSeconds) {
-		return create(storeName, ttlSeconds, DEFAULT_MAX_SIZE);
+		return this.create(storeName, ttlSeconds, DEFAULT_MAX_SIZE);
 	}
 
 	/**
