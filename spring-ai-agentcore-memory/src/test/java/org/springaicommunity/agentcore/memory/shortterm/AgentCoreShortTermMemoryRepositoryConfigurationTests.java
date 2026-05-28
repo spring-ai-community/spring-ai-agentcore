@@ -18,13 +18,14 @@ package org.springaicommunity.agentcore.memory.shortterm;
 
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
+import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class AgentCoreShortTermMemoryRepositoryConfigurationTests {
 
 	@Test
-	void shouldHaveDefaultValues() {
+	void shouldExposeRawValuesOnLegacyRecord() {
 		var config = new AgentCoreMemoryProperties(null, null, "default-session", 100, false);
 
 		assertThat(config.defaultSession()).isEqualTo("default-session");
@@ -32,7 +33,7 @@ public class AgentCoreShortTermMemoryRepositoryConfigurationTests {
 	}
 
 	@Test
-	void shouldCreateWithAllProperties() {
+	void shouldCreateWithAllLegacyProperties() {
 		var config = new AgentCoreMemoryProperties("test-memory-id", 500, "custom-session", 50, true);
 
 		assertThat(config.memoryId()).isEqualTo("test-memory-id");
@@ -40,6 +41,26 @@ public class AgentCoreShortTermMemoryRepositoryConfigurationTests {
 		assertThat(config.defaultSession()).isEqualTo("custom-session");
 		assertThat(config.pageSize()).isEqualTo(50);
 		assertThat(config.ignoreUnknownRoles()).isTrue();
+	}
+
+	@Test
+	void shouldCreateShortTermPropertiesWithAllValues() {
+		var stm = new AgentCoreShortTermMemoryProperties(500, "custom-session", 50, true);
+
+		assertThat(stm.totalEventsLimit()).isEqualTo(500);
+		assertThat(stm.defaultSession()).isEqualTo("custom-session");
+		assertThat(stm.pageSize()).isEqualTo(50);
+		assertThat(stm.ignoreUnknownRoles()).isTrue();
+	}
+
+	@Test
+	void shouldExposeNullsOnUnsetShortTermProperties() {
+		var stm = new AgentCoreShortTermMemoryProperties(null, null, null, null);
+
+		assertThat(stm.totalEventsLimit()).isNull();
+		assertThat(stm.defaultSession()).isNull();
+		assertThat(stm.pageSize()).isNull();
+		assertThat(stm.ignoreUnknownRoles()).isNull();
 	}
 
 }

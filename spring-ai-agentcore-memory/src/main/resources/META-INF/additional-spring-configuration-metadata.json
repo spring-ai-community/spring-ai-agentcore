@@ -1,0 +1,44 @@
+{
+  "properties": [
+    {
+      "name": "agentcore.memory.total-events-limit",
+      "type": "java.lang.Integer",
+      "description": "Maximum number of short-term memory events to retrieve.",
+      "deprecation": {
+        "level": "warning",
+        "reason": "Moved to the short-term memory namespace for consistency with agentcore.memory.long-term.*. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/49.",
+        "replacement": "agentcore.memory.short-term.total-events-limit"
+      }
+    },
+    {
+      "name": "agentcore.memory.default-session",
+      "type": "java.lang.String",
+      "description": "Default session id used when none is supplied in the conversation id.",
+      "deprecation": {
+        "level": "warning",
+        "reason": "Moved to the short-term memory namespace for consistency with agentcore.memory.long-term.*. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/49.",
+        "replacement": "agentcore.memory.short-term.default-session"
+      }
+    },
+    {
+      "name": "agentcore.memory.page-size",
+      "type": "java.lang.Integer",
+      "description": "Page size used when listing short-term memory events.",
+      "deprecation": {
+        "level": "warning",
+        "reason": "Moved to the short-term memory namespace for consistency with agentcore.memory.long-term.*. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/49.",
+        "replacement": "agentcore.memory.short-term.page-size"
+      }
+    },
+    {
+      "name": "agentcore.memory.ignore-unknown-roles",
+      "type": "java.lang.Boolean",
+      "description": "Whether to silently skip messages with unsupported roles instead of failing.",
+      "deprecation": {
+        "level": "warning",
+        "reason": "Moved to the short-term memory namespace for consistency with agentcore.memory.long-term.*. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/49.",
+        "replacement": "agentcore.memory.short-term.ignore-unknown-roles"
+      }
+    }
+  ]
+}

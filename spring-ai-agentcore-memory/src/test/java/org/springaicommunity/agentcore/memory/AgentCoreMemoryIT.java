@@ -150,7 +150,7 @@ public abstract class AgentCoreMemoryIT {
 				true);
 
 		// Use Integer.MAX_VALUE for unlimited window - actual limit controlled by
-		// agentcore.memory.total-events-limit property
+		// agentcore.memory.short-term.total-events-limit property
 		var chatMemory = MessageWindowChatMemory.builder()
 			.chatMemoryRepository(stmRepository)
 			.maxMessages(Integer.MAX_VALUE)

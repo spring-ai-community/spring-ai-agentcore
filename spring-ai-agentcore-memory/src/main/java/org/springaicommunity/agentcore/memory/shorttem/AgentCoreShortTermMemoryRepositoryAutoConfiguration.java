@@ -18,6 +18,7 @@ package org.springaicommunity.agentcore.memory.shorttem;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
@@ -30,11 +31,13 @@ import org.springframework.context.annotation.Bean;
 
 @AutoConfiguration
 @ConfigurationPropertiesScan
-@EnableConfigurationProperties(AgentCoreMemoryProperties.class)
+@EnableConfigurationProperties({ AgentCoreMemoryProperties.class, AgentCoreShortTermMemoryProperties.class })
 public class AgentCoreShortTermMemoryRepositoryAutoConfiguration {
 
 	private static final Logger logger = LoggerFactory
 		.getLogger(AgentCoreShortTermMemoryRepositoryAutoConfiguration.class);
+
+	private static final int DEFAULT_PAGE_SIZE = 100;
 
 	@Bean(destroyMethod = "close")
 	@ConditionalOnMissingBean
@@ -47,12 +50,33 @@ public class AgentCoreShortTermMemoryRepositoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	@ConditionalOnProperty(prefix = AgentCoreMemoryProperties.CONFIG_PREFIX, name = "memory-id")
-	AgentCoreShortTermMemoryRepository memoryRepository(AgentCoreMemoryProperties configuration,
-			BedrockAgentCoreClient client) {
-		logger.info("Creating AgentCoreShortTermMemoryRepository bean with memoryId: {}", configuration.memoryId());
-		return new AgentCoreShortTermMemoryRepository(configuration.memoryId(), client,
-				configuration.totalEventsLimit(), configuration.defaultSession(), configuration.pageSize(),
-				configuration.ignoreUnknownRoles());
+	AgentCoreShortTermMemoryRepository memoryRepository(AgentCoreMemoryProperties memory,
+			AgentCoreShortTermMemoryProperties shortTerm, BedrockAgentCoreClient client) {
+		logger.info("Creating AgentCoreShortTermMemoryRepository bean with memoryId: {}", memory.memoryId());
+
+		Integer totalEventsLimit = resolve("total-events-limit", shortTerm.totalEventsLimit(),
+				memory.totalEventsLimit(), null);
+		String defaultSession = resolve("default-session", shortTerm.defaultSession(), memory.defaultSession(),
+				AgentCoreMemoryConversationIdParser.DEFAULT_SESSION);
+		int pageSize = resolve("page-size", shortTerm.pageSize(), memory.pageSize(), DEFAULT_PAGE_SIZE);
+		boolean ignoreUnknownRoles = resolve("ignore-unknown-roles", shortTerm.ignoreUnknownRoles(),
+				memory.ignoreUnknownRoles(), Boolean.FALSE);
+
+		return new AgentCoreShortTermMemoryRepository(memory.memoryId(), client, totalEventsLimit, defaultSession,
+				pageSize, ignoreUnknownRoles);
+	}
+
+	private static <T> T resolve(String name, T modern, T legacy, T fallback) {
+		if (modern != null) {
+			return modern;
+		}
+		if (legacy != null) {
+			logger.warn("Property 'agentcore.memory.{}' is deprecated and will be removed in a future release. "
+					+ "Use 'agentcore.memory.short-term.{}' instead. See "
+					+ "https://github.com/spring-ai-community/spring-ai-agentcore/issues/49", name, name);
+			return legacy;
+		}
+		return fallback;
 	}
 
 }

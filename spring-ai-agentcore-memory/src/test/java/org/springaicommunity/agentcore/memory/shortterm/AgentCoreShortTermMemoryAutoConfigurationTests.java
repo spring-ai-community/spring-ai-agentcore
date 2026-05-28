@@ -20,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
+import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties;
 import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
 import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
@@ -68,20 +69,63 @@ class AgentCoreShortTermMemoryAutoConfigurationTests {
 	}
 
 	@Test
-	@DisplayName("Should use custom configuration values")
+	@DisplayName("Should bind short-term namespaced configuration values")
 	void shouldUseCustomConfigurationValues() {
 		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
-			.withPropertyValues("agentcore.memory.memory-id=custom-memory", "agentcore.memory.total-events-limit=500",
-					"agentcore.memory.default-session=my-session", "agentcore.memory.page-size=50",
-					"agentcore.memory.ignore-unknown-roles=true")
+			.withPropertyValues("agentcore.memory.memory-id=custom-memory",
+					"agentcore.memory.short-term.total-events-limit=500",
+					"agentcore.memory.short-term.default-session=my-session",
+					"agentcore.memory.short-term.page-size=50", "agentcore.memory.short-term.ignore-unknown-roles=true")
 			.run((context) -> {
 				assertThat(context).hasSingleBean(AgentCoreMemoryProperties.class);
-				AgentCoreMemoryProperties config = context.getBean(AgentCoreMemoryProperties.class);
-				assertThat(config.memoryId()).isEqualTo("custom-memory");
-				assertThat(config.totalEventsLimit()).isEqualTo(500);
-				assertThat(config.defaultSession()).isEqualTo("my-session");
-				assertThat(config.pageSize()).isEqualTo(50);
-				assertThat(config.ignoreUnknownRoles()).isTrue();
+				assertThat(context).hasSingleBean(AgentCoreShortTermMemoryProperties.class);
+				AgentCoreMemoryProperties memory = context.getBean(AgentCoreMemoryProperties.class);
+				AgentCoreShortTermMemoryProperties stm = context.getBean(AgentCoreShortTermMemoryProperties.class);
+				assertThat(memory.memoryId()).isEqualTo("custom-memory");
+				assertThat(stm.totalEventsLimit()).isEqualTo(500);
+				assertThat(stm.defaultSession()).isEqualTo("my-session");
+				assertThat(stm.pageSize()).isEqualTo(50);
+				assertThat(stm.ignoreUnknownRoles()).isTrue();
+			});
+	}
+
+	@Test
+	@DisplayName("Should fall back to deprecated root-level properties when short-term keys absent")
+	void shouldFallBackToLegacyRootLevelProperties() {
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=legacy-memory", "agentcore.memory.total-events-limit=42",
+					"agentcore.memory.default-session=legacy-session", "agentcore.memory.page-size=7",
+					"agentcore.memory.ignore-unknown-roles=true")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(AgentCoreShortTermMemoryRepository.class);
+				AgentCoreMemoryProperties memory = context.getBean(AgentCoreMemoryProperties.class);
+				AgentCoreShortTermMemoryProperties stm = context.getBean(AgentCoreShortTermMemoryProperties.class);
+				// Legacy properties bound on the root record
+				assertThat(memory.totalEventsLimit()).isEqualTo(42);
+				assertThat(memory.defaultSession()).isEqualTo("legacy-session");
+				assertThat(memory.pageSize()).isEqualTo(7);
+				assertThat(memory.ignoreUnknownRoles()).isTrue();
+				// New record stays unbound — fallback happens in the auto-config
+				assertThat(stm.totalEventsLimit()).isNull();
+				assertThat(stm.defaultSession()).isNull();
+				assertThat(stm.pageSize()).isNull();
+				assertThat(stm.ignoreUnknownRoles()).isNull();
+			});
+	}
+
+	@Test
+	@DisplayName("Should prefer short-term properties over deprecated root-level ones")
+	void shouldPreferNewPropertiesOverLegacy() {
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=mixed-memory",
+					// Legacy values
+					"agentcore.memory.total-events-limit=1", "agentcore.memory.page-size=2",
+					// New values — these must win
+					"agentcore.memory.short-term.total-events-limit=99", "agentcore.memory.short-term.page-size=50")
+			.run((context) -> {
+				AgentCoreShortTermMemoryProperties stm = context.getBean(AgentCoreShortTermMemoryProperties.class);
+				assertThat(stm.totalEventsLimit()).isEqualTo(99);
+				assertThat(stm.pageSize()).isEqualTo(50);
 			});
 	}
 
