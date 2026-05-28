@@ -179,22 +179,8 @@ public class AgentCoreBrowserClient implements BrowserClient {
 
 		try {
 			logger.info("Starting browser session: {}", sessionName);
-			StartBrowserSessionRequest.Builder requestBuilder = StartBrowserSessionRequest.builder()
-				.browserIdentifier(this.config.browserIdentifier())
-				.name(sessionName)
-				.sessionTimeoutSeconds(this.config.sessionTimeoutSeconds())
-				.viewPort(ViewPort.builder()
-					.width(this.config.viewportWidth())
-					.height(this.config.viewportHeight())
-					.build());
-
-			List<BrowserEnterprisePolicy> policies = toSdkPolicies(this.config.enterprisePolicies());
-			if (!policies.isEmpty()) {
-				requestBuilder.enterprisePolicies(policies);
-				logger.info("Applying {} enterprise policies to session", policies.size());
-			}
-
-			StartBrowserSessionResponse response = this.client.startBrowserSession(requestBuilder.build());
+			StartBrowserSessionResponse response = this.client
+				.startBrowserSession(this.buildStartSessionRequest(sessionName));
 
 			sessionId = response.sessionId();
 			String wsEndpoint = response.streams().automationStream().streamEndpoint();
@@ -291,7 +277,7 @@ public class AgentCoreBrowserClient implements BrowserClient {
 			return List.of();
 		}
 		return refs.stream()
-			.map(ref -> BrowserEnterprisePolicy.builder()
+			.map((ref) -> BrowserEnterprisePolicy.builder()
 				.location(ResourceLocation.builder()
 					.s3(S3Location.builder()
 						.bucket(ref.s3().bucket())
@@ -299,9 +285,25 @@ public class AgentCoreBrowserClient implements BrowserClient {
 						.versionId(ref.s3().versionId())
 						.build())
 					.build())
-				.type(ref.type())
+				.type(ref.policyType())
 				.build())
 			.toList();
+	}
+
+	StartBrowserSessionRequest buildStartSessionRequest(String sessionName) {
+		StartBrowserSessionRequest.Builder requestBuilder = StartBrowserSessionRequest.builder()
+			.browserIdentifier(this.config.browserIdentifier())
+			.name(sessionName)
+			.sessionTimeoutSeconds(this.config.sessionTimeoutSeconds())
+			.viewPort(
+					ViewPort.builder().width(this.config.viewportWidth()).height(this.config.viewportHeight()).build());
+
+		List<BrowserEnterprisePolicy> policies = toSdkPolicies(this.config.enterprisePolicies());
+		if (!policies.isEmpty()) {
+			requestBuilder.enterprisePolicies(policies);
+			logger.info("Applying {} enterprise policies to session", policies.size());
+		}
+		return requestBuilder.build();
 	}
 
 	private void stopSession(String sessionId) {

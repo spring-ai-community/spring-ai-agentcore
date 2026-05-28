@@ -1,5 +1,5 @@
 /*
- * Copyright 2025-2025 the original author or authors.
+ * Copyright 2025-2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,13 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 		"agentcore.browser.enterprise-policies[1].s3.prefix=policies/production/allowlist.json",
 		"agentcore.browser.enterprise-policies[1].s3.version-id=v1.2.3",
 		"agentcore.browser.enterprise-policies[1].type=RECOMMENDED" })
-class EnterprisePoliciesConfigurationTest {
-
-	@Configuration
-	@EnableConfigurationProperties(AgentCoreBrowserConfiguration.class)
-	static class TestConfig {
-
-	}
+class EnterprisePoliciesConfigurationTests {
 
 	@Autowired
 	private AgentCoreBrowserConfiguration config;
@@ -52,7 +46,7 @@ class EnterprisePoliciesConfigurationTest {
 	@Test
 	@DisplayName("Should bind enterprise policies from application properties")
 	void shouldBindEnterprisePolicies() {
-		List<AgentCoreBrowserConfiguration.EnterprisePolicyRef> policies = config.enterprisePolicies();
+		List<AgentCoreBrowserConfiguration.EnterprisePolicyRef> policies = this.config.enterprisePolicies();
 		assertThat(policies).hasSize(2);
 
 		AgentCoreBrowserConfiguration.EnterprisePolicyRef first = policies.get(0);
@@ -71,10 +65,16 @@ class EnterprisePoliciesConfigurationTest {
 	@Test
 	@DisplayName("Should have default values for other config fields")
 	void shouldHaveDefaults() {
-		assertThat(config.mode()).isEqualTo(AgentCoreBrowserConfiguration.DEFAULT_MODE);
-		assertThat(config.sessionTimeoutSeconds())
+		assertThat(this.config.mode()).isEqualTo(AgentCoreBrowserConfiguration.DEFAULT_MODE);
+		assertThat(this.config.sessionTimeoutSeconds())
 			.isEqualTo(AgentCoreBrowserConfiguration.DEFAULT_SESSION_TIMEOUT_SECONDS);
-		assertThat(config.browserIdentifier()).isEqualTo(AgentCoreBrowserConfiguration.DEFAULT_BROWSER_IDENTIFIER);
+		assertThat(this.config.browserIdentifier()).isEqualTo(AgentCoreBrowserConfiguration.DEFAULT_BROWSER_IDENTIFIER);
+	}
+
+	@Configuration
+	@EnableConfigurationProperties(AgentCoreBrowserConfiguration.class)
+	static class TestConfig {
+
 	}
 
 }

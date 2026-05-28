@@ -16,9 +16,11 @@
 
 package org.springaicommunity.agentcore.browser;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
+import software.amazon.awssdk.services.bedrockagentcore.model.BrowserEnterprisePolicyType;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -107,10 +109,47 @@ public record AgentCoreBrowserConfiguration(String mode, Integer sessionTimeoutS
 	 * Reference to an enterprise policy stored in S3.
 	 *
 	 * @param s3 the S3 location of the policy JSON file
-	 * @param type the policy type — only "RECOMMENDED" is supported for
-	 * StartBrowserSession
+	 * @param type the policy type — only {@code RECOMMENDED} is supported for
+	 * StartBrowserSession (validated against {@link BrowserEnterprisePolicyType})
 	 */
 	public record EnterprisePolicyRef(S3Ref s3, String type) {
+
+		public EnterprisePolicyRef {
+			if (s3 == null) {
+				throw new IllegalArgumentException("enterprise policy s3 location is required");
+			}
+			if (type == null || type.isBlank()) {
+				throw new IllegalArgumentException("enterprise policy type is required");
+			}
+			BrowserEnterprisePolicyType policyType = parsePolicyType(type);
+			if (policyType != BrowserEnterprisePolicyType.RECOMMENDED) {
+				throw new IllegalArgumentException(
+						"enterprise policy type must be RECOMMENDED for StartBrowserSession; "
+								+ "for MANAGED policies create a custom browser via CreateBrowser and set "
+								+ "agentcore.browser.browser-identifier");
+			}
+		}
+
+		BrowserEnterprisePolicyType policyType() {
+			return parsePolicyType(this.type);
+		}
+
+		private static BrowserEnterprisePolicyType parsePolicyType(String value) {
+			String normalized = value.trim();
+			for (BrowserEnterprisePolicyType candidate : BrowserEnterprisePolicyType.values()) {
+				if (candidate == BrowserEnterprisePolicyType.UNKNOWN_TO_SDK_VERSION) {
+					continue;
+				}
+				if (candidate.name().equals(normalized)) {
+					return candidate;
+				}
+			}
+			throw new IllegalArgumentException("enterprise policy type must be one of "
+					+ Arrays.toString(new BrowserEnterprisePolicyType[] { BrowserEnterprisePolicyType.MANAGED,
+							BrowserEnterprisePolicyType.RECOMMENDED })
+					+ ", got: " + value);
+		}
+
 	}
 
 	/**
@@ -121,6 +160,16 @@ public record AgentCoreBrowserConfiguration(String mode, Integer sessionTimeoutS
 	 * @param versionId optional S3 object version ID for pinning
 	 */
 	public record S3Ref(String bucket, String prefix, String versionId) {
+
+		public S3Ref {
+			if (bucket == null || bucket.isBlank()) {
+				throw new IllegalArgumentException("enterprise policy s3 bucket is required");
+			}
+			if (prefix == null || prefix.isBlank()) {
+				throw new IllegalArgumentException("enterprise policy s3 prefix is required");
+			}
+		}
+
 	}
 
 }
