@@ -50,9 +50,9 @@ public class DemoVerificationRunner implements ApplicationRunner {
 
 	@Override
 	public void run(ApplicationArguments args) {
-		if (!(applicationContext instanceof ServletWebServerApplicationContext webApp)) {
+		if (!(this.applicationContext instanceof ServletWebServerApplicationContext webApp)) {
 			log.error("Expected a servlet web server application context");
-			SpringApplication.exit(applicationContext, () -> 1);
+			SpringApplication.exit(this.applicationContext, () -> 1);
 			return;
 		}
 		int port = webApp.getWebServer().getPort();
@@ -72,7 +72,7 @@ public class DemoVerificationRunner implements ApplicationRunner {
 		forceFlushTracerIfAvailable();
 
 		int code = runAssertions(port) ? 0 : 1;
-		SpringApplication.exit(applicationContext, () -> code);
+		SpringApplication.exit(this.applicationContext, () -> code);
 	}
 
 	boolean runAssertions(@SuppressWarnings("unused") int port) {
@@ -128,7 +128,7 @@ public class DemoVerificationRunner implements ApplicationRunner {
 	}
 
 	private void forceFlushTracerIfAvailable() {
-		applicationContext.getBeansOfType(OpenTelemetrySdk.class)
+		this.applicationContext.getBeansOfType(OpenTelemetrySdk.class)
 			.values()
 			.stream()
 			.findFirst()

@@ -140,8 +140,8 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <excludes>
-                        <exclude>**/RealBedrockIntegrationTest.java</exclude>
-                        <exclude>**/AgentCoreObservabilitySampleApplicationTest.java</exclude>
+                        <exclude>**/RealBedrockIntegrationTests.java</exclude>
+                        <exclude>**/AgentCoreObservabilitySampleApplicationTests.java</exclude>
                     </excludes>
                 </configuration>
             </plugin>

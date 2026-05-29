@@ -19,6 +19,7 @@ package org.springaicommunity.agentcore.observability.autoconfigure;
 import io.opentelemetry.api.OpenTelemetry;
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
 import org.springaicommunity.agentcore.observability.telemetry.AgentCoreInvocationObservabilityAspect;
+
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -29,6 +30,8 @@ import org.springframework.context.annotation.Bean;
 /**
  * Registers the AgentCore GenAI enrichment aspect. Activates only when the AgentCore
  * runtime-starter is on the classpath (via {@link AgentCoreInvocation}).
+ *
+ * @author Vaquar Khan
  */
 @AutoConfiguration
 @EnableConfigurationProperties(AgentCoreObservabilityProperties.class)
@@ -45,6 +48,8 @@ public class AgentCoreObservabilityAutoConfiguration {
 	 * {@code @ConditionalOnMissingBean} does not suppress registration when the
 	 * OpenTelemetry starter already defines global instruments. Replace this aspect bean
 	 * (or supply a custom {@link OpenTelemetry} bean) to override instrumentation.
+	 * @param openTelemetry the OpenTelemetry instance
+	 * @return the configured aspect
 	 */
 	@Bean
 	@ConditionalOnMissingBean

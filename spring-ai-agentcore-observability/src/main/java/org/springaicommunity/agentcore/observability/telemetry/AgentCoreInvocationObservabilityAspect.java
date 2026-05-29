@@ -16,6 +16,12 @@
 
 package org.springaicommunity.agentcore.observability.telemetry;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.Meter;
@@ -24,20 +30,16 @@ import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 /**
  * Wraps the AgentCore HTTP controller entry points (not the user
@@ -45,6 +47,8 @@ import reactor.core.publisher.Mono;
  * AgentCore's method scanner reflects on each bean type; CGLIB proxies for advised
  * services may not retain annotations on overridden methods, which would prevent
  * registration of invocation handlers.
+ *
+ * @author Vaquar Khan
  */
 @Aspect
 public class AgentCoreInvocationObservabilityAspect {
@@ -60,33 +64,35 @@ public class AgentCoreInvocationObservabilityAspect {
 			.build();
 	}
 
-	@Around("execution(* org.springaicommunity.agentcore.controller.AgentCoreInvocationsController.handleJsonInvocation(..))"
-			+ " || execution(* org.springaicommunity.agentcore.controller.AgentCoreInvocationsController.handleTextInvocation(..))")
+	@Around("execution(* org.springaicommunity.agentcore.controller"
+			+ ".AgentCoreInvocationsController.handleJsonInvocation(..))"
+			+ " || execution(* org.springaicommunity.agentcore.controller"
+			+ ".AgentCoreInvocationsController.handleTextInvocation(..))")
 	public Object aroundAgentCoreController(ProceedingJoinPoint joinPoint) throws Throwable {
 		Span span = this.tracer.spanBuilder(GenAiTelemetrySupport.OP_CHAT).setSpanKind(SpanKind.CLIENT).startSpan();
 		AtomicBoolean deferredEnd = new AtomicBoolean(false);
 		try (Scope scope = span.makeCurrent()) {
-			applyAgentCoreRequestAttributes(span, joinPoint);
+			this.applyAgentCoreRequestAttributes(span, joinPoint);
 			Object result = joinPoint.proceed();
 			if (result instanceof Mono<?>) {
 				deferredEnd.set(true);
-				return instrumentMono((Mono<?>) result, span);
+				return this.instrumentMono((Mono<?>) result, span);
 			}
 			if (result instanceof Flux<?>) {
 				deferredEnd.set(true);
-				return instrumentFlux((Flux<?>) result, span);
+				return this.instrumentFlux((Flux<?>) result, span);
 			}
 			if (result instanceof ChatResponse response) {
-				applyGenAiAttributes(span, response);
+				this.applyGenAiAttributes(span, response);
 			}
 			span.setStatus(StatusCode.OK);
 			return result;
 		}
-		catch (Throwable t) {
+		catch (Throwable ex) {
 			span.setStatus(StatusCode.ERROR);
-			span.recordException(t);
-			span.setAttribute(GenAiTelemetrySupport.ERROR_TYPE, errorType(t));
-			throw t;
+			span.recordException(ex);
+			span.setAttribute(GenAiTelemetrySupport.ERROR_TYPE, errorType(ex));
+			throw ex;
 		}
 		finally {
 			if (!deferredEnd.get()) {
@@ -121,43 +127,47 @@ public class AgentCoreInvocationObservabilityAspect {
 	}
 
 	private <T> Mono<T> instrumentMono(Mono<T> mono, Span span) {
-		return mono.doOnNext(r -> {
+		return mono.doOnNext((r) -> {
 			if (r instanceof ChatResponse response) {
-				applyGenAiAttributes(span, response);
+				this.applyGenAiAttributes(span, response);
 			}
-		}).doOnSuccess(v -> span.setStatus(StatusCode.OK)).doOnError(t -> {
+		}).doOnSuccess((v) -> span.setStatus(StatusCode.OK)).doOnError((t) -> {
 			span.setStatus(StatusCode.ERROR);
 			span.recordException(t);
 			span.setAttribute(GenAiTelemetrySupport.ERROR_TYPE, errorType(t));
-		}).doFinally(sig -> span.end());
+		}).doFinally((sig) -> span.end());
 	}
 
 	/**
 	 * Streaming {@link ChatResponse} sequences: token usage and metrics are only
 	 * meaningful on the final chunk in typical providers, so we record GenAI attributes
 	 * once from the last emission.
+	 * @param <T> the element type of the Flux
+	 * @param flux the reactive stream to instrument
+	 * @param span the OpenTelemetry span to enrich
+	 * @return the instrumented Flux with telemetry callbacks
 	 */
 	private <T> Flux<T> instrumentFlux(Flux<T> flux, Span span) {
 		AtomicReference<ChatResponse> lastResponse = new AtomicReference<>();
-		return flux.doOnNext(r -> {
+		return flux.doOnNext((r) -> {
 			if (r instanceof ChatResponse response) {
 				lastResponse.set(response);
 			}
 		}).doOnComplete(() -> {
 			ChatResponse last = lastResponse.get();
 			if (last != null) {
-				applyGenAiAttributes(span, last);
+				this.applyGenAiAttributes(span, last);
 			}
 			span.setStatus(StatusCode.OK);
-		}).doOnError(t -> {
+		}).doOnError((t) -> {
 			span.setStatus(StatusCode.ERROR);
 			span.recordException(t);
 			span.setAttribute(GenAiTelemetrySupport.ERROR_TYPE, errorType(t));
-		}).doFinally(sig -> span.end());
+		}).doFinally((sig) -> span.end());
 	}
 
 	private void applyGenAiAttributes(Span span, ChatResponse response) {
-		String operation = response.hasToolCalls() ? GenAiTelemetrySupport.OP_EXECUTE_TOOL
+		String operation = (response.hasToolCalls()) ? GenAiTelemetrySupport.OP_EXECUTE_TOOL
 				: GenAiTelemetrySupport.OP_CHAT;
 		span.updateName(operation);
 
@@ -166,7 +176,7 @@ public class AgentCoreInvocationObservabilityAspect {
 		span.setAttribute(GenAiTelemetrySupport.GEN_AI_SYSTEM, GenAiTelemetrySupport.PROVIDER_AWS_BEDROCK);
 
 		ChatResponseMetadata metadata = response.getMetadata();
-		String model = metadata != null ? metadata.getModel() : null;
+		String model = (metadata != null) ? metadata.getModel() : null;
 		// Model name comes from ChatResponseMetadata. If the provider omitted it
 		// (unusual for Bedrock), leave it unset rather than reach into Environment.
 		if (model != null && !model.isEmpty()) {
@@ -174,9 +184,9 @@ public class AgentCoreInvocationObservabilityAspect {
 			span.setAttribute(GenAiTelemetrySupport.GEN_AI_RESPONSE_MODEL, model);
 		}
 
-		Usage usage = metadata != null ? metadata.getUsage() : null;
+		Usage usage = (metadata != null) ? metadata.getUsage() : null;
 		long inputTokens = baseInputTokens(usage) + cacheReadTokens(metadata);
-		long outputTokens = usage != null && usage.getCompletionTokens() != null
+		long outputTokens = (usage != null && usage.getCompletionTokens() != null)
 				? usage.getCompletionTokens().longValue() : 0L;
 
 		span.setAttribute(GenAiTelemetrySupport.GEN_AI_USAGE_INPUT_TOKENS, inputTokens);

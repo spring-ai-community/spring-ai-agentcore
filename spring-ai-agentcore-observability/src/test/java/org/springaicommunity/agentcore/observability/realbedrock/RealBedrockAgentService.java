@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.observability.realbedrock;
 
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
+
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -38,7 +39,7 @@ public class RealBedrockAgentService {
 
 	@AgentCoreInvocation
 	public ChatResponse invoke(String prompt) {
-		return chatModel.call(new Prompt(new UserMessage(prompt)));
+		return this.chatModel.call(new Prompt(new UserMessage(prompt)));
 	}
 
 }

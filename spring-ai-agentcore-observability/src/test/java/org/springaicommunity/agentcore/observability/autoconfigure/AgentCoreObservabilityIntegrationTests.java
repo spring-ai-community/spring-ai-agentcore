@@ -16,16 +16,16 @@
 
 package org.springaicommunity.agentcore.observability.autoconfigure;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.util.List;
 import java.util.Optional;
 
+import io.opentelemetry.sdk.trace.data.SpanData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.observability.sample.AgentCoreObservabilitySampleApplication;
 import org.springaicommunity.agentcore.observability.telemetry.GenAiTelemetrySupport;
 import org.springaicommunity.agentcore.observability.testsupport.OtelInMemorySpanExporterTestConfig;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,14 +36,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
-import io.opentelemetry.sdk.trace.data.SpanData;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(classes = AgentCoreObservabilitySampleApplication.class)
 @AutoConfigureMockMvc
 @Import(OtelInMemorySpanExporterTestConfig.class)
 @TestPropertySource(
 		properties = { "otel.traces.exporter=logging", "otel.metrics.exporter=none", "otel.logs.exporter=none" })
-class AgentCoreObservabilityIntegrationTest {
+class AgentCoreObservabilityIntegrationTests {
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -57,7 +57,7 @@ class AgentCoreObservabilityIntegrationTest {
 	void invocationsEmitsGenAiAttributesAndHeadersWithoutContentEvents() throws Exception {
 		String body = "Hello from integration test";
 
-		mockMvc
+		this.mockMvc
 			.perform(MockMvcRequestBuilders.post("/invocations")
 				.contentType(MediaType.TEXT_PLAIN)
 				.header(GenAiTelemetrySupport.HTTP_HEADER_AGENTCORE_SESSION_ID, "sess-int-1")
@@ -67,7 +67,7 @@ class AgentCoreObservabilityIntegrationTest {
 
 		List<SpanData> spans = OtelInMemorySpanExporterTestConfig.SPAN_EXPORTER.getFinishedSpanItems();
 		Optional<SpanData> genAi = spans.stream()
-			.filter(s -> s.getAttributes().get(GenAiTelemetrySupport.GEN_AI_PROVIDER_NAME) != null)
+			.filter((s) -> s.getAttributes().get(GenAiTelemetrySupport.GEN_AI_PROVIDER_NAME) != null)
 			.findFirst();
 
 		assertThat(genAi).isPresent();
@@ -80,7 +80,7 @@ class AgentCoreObservabilityIntegrationTest {
 		assertThat(span.getAttributes().get(GenAiTelemetrySupport.GEN_AI_USAGE_INPUT_TOKENS)).isEqualTo(45L);
 		assertThat(span.getAttributes().get(GenAiTelemetrySupport.GEN_AI_USAGE_OUTPUT_TOKENS)).isEqualTo(7L);
 
-		boolean anyContentEvent = span.getEvents().stream().anyMatch(e -> e.getName().startsWith("gen_ai.content."));
+		boolean anyContentEvent = span.getEvents().stream().anyMatch((e) -> e.getName().startsWith("gen_ai.content."));
 		assertThat(anyContentEvent).isFalse();
 	}
 

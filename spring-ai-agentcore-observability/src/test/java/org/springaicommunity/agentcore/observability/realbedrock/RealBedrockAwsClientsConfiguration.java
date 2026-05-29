@@ -17,14 +17,16 @@
 package org.springaicommunity.agentcore.observability.realbedrock;
 
 import java.time.Duration;
-import org.springframework.ai.model.bedrock.autoconfigure.BedrockAwsConnectionProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.regions.providers.AwsRegionProvider;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
 import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeClient;
+
+import org.springframework.ai.model.bedrock.autoconfigure.BedrockAwsConnectionProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
 /**
  * Supplies AWS SDK v2 clients as Spring-managed beans with
@@ -44,7 +46,7 @@ public class RealBedrockAwsClientsConfiguration {
 			.region(regionProvider.getRegion());
 		Duration timeout = connectionProperties.getTimeout();
 		if (timeout != null) {
-			builder.overrideConfiguration(c -> c.apiCallTimeout(timeout).apiCallAttemptTimeout(timeout));
+			builder.overrideConfiguration((c) -> c.apiCallTimeout(timeout).apiCallAttemptTimeout(timeout));
 		}
 		return builder.build();
 	}
@@ -58,7 +60,7 @@ public class RealBedrockAwsClientsConfiguration {
 			.region(regionProvider.getRegion());
 		Duration timeout = connectionProperties.getTimeout();
 		if (timeout != null) {
-			builder.overrideConfiguration(c -> c.apiCallTimeout(timeout).apiCallAttemptTimeout(timeout));
+			builder.overrideConfiguration((c) -> c.apiCallTimeout(timeout).apiCallAttemptTimeout(timeout));
 		}
 		return builder.build();
 	}

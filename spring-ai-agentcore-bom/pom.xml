@@ -90,6 +90,10 @@
             <dependency>
                 <groupId>org.springaicommunity</groupId>
                 <artifactId>spring-ai-agentcore-observability</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springaicommunity</groupId>
                 <artifactId>spring-ai-agentcore-evaluations</artifactId>
                 <version>${project.version}</version>
             </dependency>

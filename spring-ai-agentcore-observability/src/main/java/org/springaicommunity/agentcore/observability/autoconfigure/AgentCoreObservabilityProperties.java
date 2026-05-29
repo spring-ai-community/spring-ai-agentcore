@@ -27,6 +27,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * upstream or by the OTel pipeline (e.g. CloudWatch managed data identifiers). This type
  * remains intentionally small so future AgentCore-scoped toggles can be added without
  * changing the external configuration contract.
+ *
+ * @author Vaquar Khan
  */
 @ConfigurationProperties(prefix = "spring.ai.agentcore.observability")
 public class AgentCoreObservabilityProperties {

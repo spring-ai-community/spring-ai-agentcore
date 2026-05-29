@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.observability.telemetry;
 
 import java.lang.reflect.Method;
+
 import org.aspectj.lang.ProceedingJoinPoint;
 
 /**
@@ -24,6 +25,8 @@ import org.aspectj.lang.ProceedingJoinPoint;
  * dependencies on {@code spring-web} or {@code spring-webflux}, so those jars can be
  * optional for consumers that only need the synchronous
  * {@link org.springframework.ai.chat.model.ChatResponse} path.
+ *
+ * @author Vaquar Khan
  */
 final class AgentCoreInvocationHeaderSupport {
 

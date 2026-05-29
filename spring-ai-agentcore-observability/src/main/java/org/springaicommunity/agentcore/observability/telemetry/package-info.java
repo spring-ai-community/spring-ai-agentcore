@@ -14,25 +14,7 @@
  * limitations under the License.
  */
 
-package com.example.demo;
-
-import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.stereotype.Service;
-
-@Service
-public class BedrockInvocationAgent {
-
-	private final ChatClient chatClient;
-
-	public BedrockInvocationAgent(ChatClient.Builder chatClientBuilder) {
-		this.chatClient = chatClientBuilder.build();
-	}
-
-	@AgentCoreInvocation
-	public ChatResponse handle(String prompt) {
-		return this.chatClient.prompt().user(prompt).call().chatResponse();
-	}
-
-}
+/**
+ * OpenTelemetry GenAI span enrichment and header correlation for AgentCore invocations.
+ */
+package org.springaicommunity.agentcore.observability.telemetry;

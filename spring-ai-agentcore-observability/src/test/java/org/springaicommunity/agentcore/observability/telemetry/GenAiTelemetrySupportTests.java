@@ -16,12 +16,14 @@
 
 package org.springaicommunity.agentcore.observability.telemetry;
 
+import java.lang.reflect.Constructor;
+
+import org.junit.jupiter.api.Test;
+import org.springaicommunity.agentcore.context.AgentCoreHeaders;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.lang.reflect.Constructor;
-import org.junit.jupiter.api.Test;
-
-class GenAiTelemetrySupportTest {
+class GenAiTelemetrySupportTests {
 
 	@Test
 	void constantsAreReachable() {
@@ -29,6 +31,15 @@ class GenAiTelemetrySupportTest {
 		assertThat(GenAiTelemetrySupport.OP_CHAT).isEqualTo("chat");
 		assertThat(GenAiTelemetrySupport.METRIC_GEN_AI_CLIENT_TOKEN_USAGE).contains("gen_ai");
 		assertThat(GenAiTelemetrySupport.HTTP_HEADER_AMZN_REQUEST_ID).isEqualTo("x-amzn-request-id");
+	}
+
+	@Test
+	void sessionHeaderMatchesAgentCoreHeadersConstant() {
+		// The observability module must use the same header name as the runtime starter.
+		// AgentCoreHeaders.SESSION_ID = "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"
+		// HTTP headers are case-insensitive, so we compare lowercase.
+		assertThat(GenAiTelemetrySupport.HTTP_HEADER_AGENTCORE_SESSION_ID)
+			.isEqualToIgnoringCase(AgentCoreHeaders.SESSION_ID);
 	}
 
 	@Test

@@ -16,8 +16,9 @@
 
 package org.springaicommunity.agentcore.observability.testsupport;
 
-import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
 import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
+
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 
@@ -32,7 +33,7 @@ public class OtelInMemorySpanExporterTestConfig {
 
 	@Bean
 	AutoConfigurationCustomizerProvider otelRouteTracesToInMemory() {
-		return customizer -> customizer.addSpanExporterCustomizer((delegate, unused) -> SPAN_EXPORTER);
+		return (customizer) -> customizer.addSpanExporterCustomizer((delegate, unused) -> SPAN_EXPORTER);
 	}
 
 }

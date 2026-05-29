@@ -17,11 +17,13 @@
 package org.springaicommunity.agentcore.observability.sample;
 
 import java.util.List;
+
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
+
+import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
 import org.springframework.ai.chat.metadata.DefaultUsage;
-import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.stereotype.Service;
