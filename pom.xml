@@ -186,14 +186,6 @@
                     <compilerArgs>
                         <compilerArg>-parameters</compilerArg>
                     </compilerArgs>
-                    <!--
-                        Fork javac into a separate JVM so its output (especially nested
-                        record/inner class files generated alongside @ConfigurationProperties
-                        annotation processing) is not lost to in-process classloader / file
-                        descriptor interactions seen with macOS endpoint security tooling.
-                        Adds a small (~1s/module) fixed cost; safe for CI.
-                    -->
-                    <fork>true</fork>
                 </configuration>
                 <executions>
                     <execution>
