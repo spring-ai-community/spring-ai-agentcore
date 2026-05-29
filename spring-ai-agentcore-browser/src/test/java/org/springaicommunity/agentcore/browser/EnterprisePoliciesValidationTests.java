@@ -49,7 +49,7 @@ class EnterprisePoliciesValidationTests {
 				"policies/block.json", null);
 		assertThatThrownBy(() -> new AgentCoreBrowserConfiguration.EnterprisePolicyRef(s3, "NOT_A_POLICY_TYPE"))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessageContaining("must be one of");
+			.hasMessageContaining("must be RECOMMENDED");
 	}
 
 	@Test
@@ -59,7 +59,7 @@ class EnterprisePoliciesValidationTests {
 				"policies/block.json", null);
 		assertThatThrownBy(() -> new AgentCoreBrowserConfiguration.EnterprisePolicyRef(s3, "RECOMMENED"))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessageContaining("must be one of");
+			.hasMessageContaining("must be RECOMMENDED");
 	}
 
 	@Test

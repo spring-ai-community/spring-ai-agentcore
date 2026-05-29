@@ -16,7 +16,6 @@
 
 package org.springaicommunity.agentcore.browser;
 
-import java.util.Arrays;
 import java.util.List;
 
 import org.springaicommunity.agentcore.artifacts.ArtifactStoreFactory;
@@ -121,33 +120,27 @@ public record AgentCoreBrowserConfiguration(String mode, Integer sessionTimeoutS
 			if (type == null || type.isBlank()) {
 				throw new IllegalArgumentException("enterprise policy type is required");
 			}
-			BrowserEnterprisePolicyType policyType = parsePolicyType(type);
-			if (policyType != BrowserEnterprisePolicyType.RECOMMENDED) {
+			if (policyType(type) != BrowserEnterprisePolicyType.RECOMMENDED) {
 				throw new IllegalArgumentException(
 						"enterprise policy type must be RECOMMENDED for StartBrowserSession; "
 								+ "for MANAGED policies create a custom browser via CreateBrowser and set "
-								+ "agentcore.browser.browser-identifier");
+								+ "agentcore.browser.browser-identifier; got: " + type);
 			}
 		}
 
 		BrowserEnterprisePolicyType policyType() {
-			return parsePolicyType(this.type);
+			return policyType(this.type);
 		}
 
-		private static BrowserEnterprisePolicyType parsePolicyType(String value) {
+		private static BrowserEnterprisePolicyType policyType(String value) {
 			String normalized = value.trim();
 			for (BrowserEnterprisePolicyType candidate : BrowserEnterprisePolicyType.values()) {
-				if (candidate == BrowserEnterprisePolicyType.UNKNOWN_TO_SDK_VERSION) {
-					continue;
-				}
-				if (candidate.name().equals(normalized)) {
+				if (candidate != BrowserEnterprisePolicyType.UNKNOWN_TO_SDK_VERSION
+						&& candidate.name().equals(normalized)) {
 					return candidate;
 				}
 			}
-			throw new IllegalArgumentException("enterprise policy type must be one of "
-					+ Arrays.toString(new BrowserEnterprisePolicyType[] { BrowserEnterprisePolicyType.MANAGED,
-							BrowserEnterprisePolicyType.RECOMMENDED })
-					+ ", got: " + value);
+			return BrowserEnterprisePolicyType.UNKNOWN_TO_SDK_VERSION;
 		}
 
 	}
