@@ -19,6 +19,7 @@ package org.springaicommunity.agentcore.memory.shortterm;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
 import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties;
 import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
@@ -27,6 +28,8 @@ import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -38,6 +41,7 @@ import static org.mockito.Mockito.mock;
  *
  * @author Yuriy Bezsonov
  */
+@ExtendWith(OutputCaptureExtension.class)
 @DisplayName("AgentCore Short-Term Memory Auto-Configuration Tests")
 class AgentCoreShortTermMemoryAutoConfigurationTests {
 
@@ -69,8 +73,8 @@ class AgentCoreShortTermMemoryAutoConfigurationTests {
 	}
 
 	@Test
-	@DisplayName("Should bind short-term namespaced configuration values")
-	void shouldUseCustomConfigurationValues() {
+	@DisplayName("Should bind short-term namespaced configuration values without warnings")
+	void shouldUseCustomConfigurationValues(CapturedOutput output) {
 		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues("agentcore.memory.memory-id=custom-memory",
 					"agentcore.memory.short-term.total-events-limit=500",
@@ -86,12 +90,13 @@ class AgentCoreShortTermMemoryAutoConfigurationTests {
 				assertThat(stm.defaultSession()).isEqualTo("my-session");
 				assertThat(stm.pageSize()).isEqualTo(50);
 				assertThat(stm.ignoreUnknownRoles()).isTrue();
+				assertThat(output.getOut()).doesNotContain("is deprecated");
 			});
 	}
 
 	@Test
-	@DisplayName("Should fall back to deprecated root-level properties when short-term keys absent")
-	void shouldFallBackToLegacyRootLevelProperties() {
+	@DisplayName("Should fall back to deprecated root-level properties and emit deprecation warnings")
+	void shouldFallBackToLegacyRootLevelProperties(CapturedOutput output) {
 		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues("agentcore.memory.memory-id=legacy-memory", "agentcore.memory.total-events-limit=42",
 					"agentcore.memory.default-session=legacy-session", "agentcore.memory.page-size=7",
@@ -110,22 +115,35 @@ class AgentCoreShortTermMemoryAutoConfigurationTests {
 				assertThat(stm.defaultSession()).isNull();
 				assertThat(stm.pageSize()).isNull();
 				assertThat(stm.ignoreUnknownRoles()).isNull();
+				// One deprecation warning per legacy key, each pointing at the new key
+				assertThat(output.getOut()).contains("Property 'agentcore.memory.total-events-limit' is deprecated",
+						"Use 'agentcore.memory.short-term.total-events-limit' instead",
+						"Property 'agentcore.memory.default-session' is deprecated",
+						"Use 'agentcore.memory.short-term.default-session' instead",
+						"Property 'agentcore.memory.page-size' is deprecated",
+						"Use 'agentcore.memory.short-term.page-size' instead",
+						"Property 'agentcore.memory.ignore-unknown-roles' is deprecated",
+						"Use 'agentcore.memory.short-term.ignore-unknown-roles' instead");
 			});
 	}
 
 	@Test
 	@DisplayName("Should prefer short-term properties over deprecated root-level ones")
-	void shouldPreferNewPropertiesOverLegacy() {
+	void shouldPreferNewPropertiesOverLegacy(CapturedOutput output) {
 		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues("agentcore.memory.memory-id=mixed-memory",
 					// Legacy values
 					"agentcore.memory.total-events-limit=1", "agentcore.memory.page-size=2",
-					// New values — these must win
+					// New values — these must win, and silence the deprecation warning
 					"agentcore.memory.short-term.total-events-limit=99", "agentcore.memory.short-term.page-size=50")
 			.run((context) -> {
 				AgentCoreShortTermMemoryProperties stm = context.getBean(AgentCoreShortTermMemoryProperties.class);
 				assertThat(stm.totalEventsLimit()).isEqualTo(99);
 				assertThat(stm.pageSize()).isEqualTo(50);
+				// New keys override legacy ones, so no warning for those two properties
+				assertThat(output.getOut()).doesNotContain(
+						"Property 'agentcore.memory.total-events-limit' is deprecated",
+						"Property 'agentcore.memory.page-size' is deprecated");
 			});
 	}
 
