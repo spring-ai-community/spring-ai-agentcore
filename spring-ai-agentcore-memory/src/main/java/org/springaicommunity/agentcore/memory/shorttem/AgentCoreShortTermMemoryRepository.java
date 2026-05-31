@@ -270,6 +270,11 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 			}
 		}
 
+		if (message.getText() == null || message.getText().isBlank()) {
+			logger.debug("Skipping empty-text message for role {}: {}", role, message.getClass().getSimpleName());
+			return null;
+		}
+
 		var content = Content.builder().text(message.getText()).build();
 		var conversational = Conversational.builder().content(content).role(role).build();
 		return PayloadType.builder().conversational(conversational).build();
