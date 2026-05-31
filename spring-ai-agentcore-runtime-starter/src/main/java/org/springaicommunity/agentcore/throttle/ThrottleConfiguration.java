@@ -16,12 +16,14 @@
 
 package org.springaicommunity.agentcore.throttle;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@ConditionalOnClass(name = "jakarta.servlet.Filter")
 @ConfigurationProperties(prefix = "agentcore.throttle")
 public class ThrottleConfiguration {
 
