@@ -36,8 +36,17 @@
       "description": "Whether to silently skip messages with unsupported roles instead of failing.",
       "deprecation": {
         "level": "warning",
-        "reason": "Moved to the short-term memory namespace for consistency with agentcore.memory.long-term.*. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/49.",
+        "reason": "Moved to the short-term memory namespace (see https://github.com/spring-ai-community/spring-ai-agentcore/issues/49); the property itself is also scheduled for removal — skipping non-dialogue messages will become the only behaviour (see https://github.com/spring-ai-community/spring-ai-agentcore/issues/109).",
         "replacement": "agentcore.memory.short-term.ignore-unknown-roles"
+      }
+    },
+    {
+      "name": "agentcore.memory.short-term.ignore-unknown-roles",
+      "type": "java.lang.Boolean",
+      "description": "Deprecated. When true (default) non-dialogue messages (e.g. ToolResponseMessage) are skipped with a warning; when false the repository throws on them, which crashes Spring AI 2.0.0-M7+ tool-using turns.",
+      "deprecation": {
+        "level": "warning",
+        "reason": "Misnamed (TOOL/OTHER are first-class AgentCore Roles, not 'unknown') and the throw-mode has no production use. Skipping non-dialogue messages will become hardcoded behaviour. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/109."
       }
     }
   ]

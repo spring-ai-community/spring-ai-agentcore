@@ -34,8 +34,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * id, or {@code null} to fall back
  * @param pageSize page size for AgentCore {@code listEvents} pagination, or {@code null}
  * to fall back to a default
- * @param ignoreUnknownRoles whether to silently skip messages with unsupported roles, or
- * {@code null} to fall back
+ * @param ignoreUnknownRoles deprecated, see {@link #ignoreUnknownRoles()}
  * @author Yuriy Bezsonov
  */
 @ConfigurationProperties(AgentCoreShortTermMemoryProperties.CONFIG_PREFIX)
@@ -46,5 +45,29 @@ public record AgentCoreShortTermMemoryProperties(Integer totalEventsLimit, Strin
 	 * configuration prefix for short-term memory properties.
 	 */
 	public static final String CONFIG_PREFIX = "agentcore.memory.short-term";
+
+	/**
+	 * Returns the {@code ignore-unknown-roles} flag, or {@code null} if unset.
+	 *
+	 * <p>
+	 * The property is misnamed: AgentCore's {@code TOOL} and {@code OTHER} are
+	 * first-class {@code Role} values, not "unknown" roles — these are simply
+	 * non-dialogue messages that should never be persisted into conversation memory (they
+	 * are point-in-time facts, add token noise, and break {@code tool_call}↔ response
+	 * pairing under windowing). The throw-mode it gates ({@code false}) has no production
+	 * use — Spring AI 2.0.0-M7+ tool-using turns crash with
+	 * {@code IllegalStateException}. The runtime {@code WARN} log when a non-dialogue
+	 * message is skipped already provides visibility without a property.
+	 * @return the flag value, or {@code null}
+	 * @deprecated since 1.1.0, for removal. Setting this property has no recommended
+	 * value: skipping non-dialogue messages will become hardcoded behaviour. See <a href=
+	 * "https://github.com/spring-ai-community/spring-ai-agentcore/issues/109">issue
+	 * #109</a>.
+	 */
+	@Deprecated(since = "1.1.0", forRemoval = true)
+	@Override
+	public Boolean ignoreUnknownRoles() {
+		return this.ignoreUnknownRoles;
+	}
 
 }

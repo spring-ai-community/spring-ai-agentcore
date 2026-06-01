@@ -93,7 +93,10 @@ public record AgentCoreMemoryProperties(String memoryId, Integer totalEventsLimi
 	 * Returns the legacy short-term {@code ignore-unknown-roles} value, or {@code null}
 	 * if unset.
 	 * @return the legacy ignore-unknown-roles flag, or {@code null}
-	 * @deprecated since 1.1.0, for removal. Use
+	 * @deprecated since 1.1.0, for removal. The property itself is scheduled for removal:
+	 * skipping non-dialogue messages will become hardcoded behaviour. See <a href=
+	 * "https://github.com/spring-ai-community/spring-ai-agentcore/issues/109">issue
+	 * #109</a>. Until then, prefer
 	 * {@link org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties#ignoreUnknownRoles()}
 	 * bound to {@code agentcore.memory.short-term.ignore-unknown-roles}.
 	 */

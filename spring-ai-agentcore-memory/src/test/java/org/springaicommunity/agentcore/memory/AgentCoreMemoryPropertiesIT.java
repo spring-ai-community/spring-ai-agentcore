@@ -48,7 +48,7 @@ import static org.awaitility.Awaitility.await;
  * Integration test that verifies the auto-configuration wires the
  * {@link AgentCoreShortTermMemoryRepository} correctly against a real AgentCore Memory
  * resource for both the new {@code agentcore.memory.short-term.*} property namespace and
- * the deprecated root-level {@code agentcore.memory.*} fallback. Also asserts that the
+ * the legacy STM fallback at {@code agentcore.memory.*}. Also asserts that the
  * deprecation warning is emitted only when the legacy properties are in use.
  *
  * <p>
@@ -96,11 +96,9 @@ class AgentCoreMemoryPropertiesIT {
 	@Test
 	@DisplayName("Should bind agentcore.memory.short-term.* and not log deprecation warnings")
 	void shouldBindNewShortTermNamespace(CapturedOutput output) {
-		this.contextRunner
-			.withPropertyValues("agentcore.memory.memory-id=" + memoryId,
-					"agentcore.memory.short-term.total-events-limit=50",
-					"agentcore.memory.short-term.default-session=stm-session",
-					"agentcore.memory.short-term.page-size=20", "agentcore.memory.short-term.ignore-unknown-roles=true")
+		this.contextRunner.withPropertyValues("agentcore.memory.memory-id=" + memoryId,
+				"agentcore.memory.short-term.total-events-limit=50",
+				"agentcore.memory.short-term.default-session=stm-session", "agentcore.memory.short-term.page-size=20")
 			.run((context) -> {
 				assertThat(context).hasSingleBean(AgentCoreShortTermMemoryRepository.class);
 				assertThat(context).hasSingleBean(BedrockAgentCoreClient.class);
@@ -110,8 +108,8 @@ class AgentCoreMemoryPropertiesIT {
 	}
 
 	@Test
-	@DisplayName("Should fall back to deprecated agentcore.memory.* keys and log a warning per legacy key")
-	void shouldFallBackToLegacyRootNamespace(CapturedOutput output) {
+	@DisplayName("Should fall back to legacy STM properties at agentcore.memory.* and emit deprecation warnings (#49, #109)")
+	void shouldFallBackToLegacyStmProperties(CapturedOutput output) {
 		this.contextRunner
 			.withPropertyValues("agentcore.memory.memory-id=" + memoryId, "agentcore.memory.total-events-limit=50",
 					"agentcore.memory.default-session=legacy-session", "agentcore.memory.page-size=20",
@@ -119,6 +117,9 @@ class AgentCoreMemoryPropertiesIT {
 			.run((context) -> {
 				assertThat(context).hasSingleBean(AgentCoreShortTermMemoryRepository.class);
 				exerciseRepository(context.getBean(AgentCoreShortTermMemoryRepository.class));
+				// Deprecation warnings: one per legacy STM key (#49 namespace
+				// migration), plus the #109 warning because ignore-unknown-roles is
+				// explicitly set.
 				assertThat(output.getOut()).contains("Property 'agentcore.memory.total-events-limit' is deprecated",
 						"Use 'agentcore.memory.short-term.total-events-limit' instead",
 						"Property 'agentcore.memory.default-session' is deprecated",
@@ -126,7 +127,9 @@ class AgentCoreMemoryPropertiesIT {
 						"Property 'agentcore.memory.page-size' is deprecated",
 						"Use 'agentcore.memory.short-term.page-size' instead",
 						"Property 'agentcore.memory.ignore-unknown-roles' is deprecated",
-						"Use 'agentcore.memory.short-term.ignore-unknown-roles' instead");
+						"Use 'agentcore.memory.short-term.ignore-unknown-roles' instead",
+						"Property 'ignore-unknown-roles' is deprecated",
+						"https://github.com/spring-ai-community/spring-ai-agentcore/issues/109");
 			});
 	}
 
@@ -137,7 +140,7 @@ class AgentCoreMemoryPropertiesIT {
 		repository.saveAll(conversationId, List.of(UserMessage.builder().text("hello from properties IT").build()));
 		var messages = repository.findByConversationId(conversationId);
 		assertThat(messages).hasSize(1);
-		assertThat(messages.get(0).getText()).isEqualTo("hello from properties IT");
+		assertThat(messages.getFirst().getText()).isEqualTo("hello from properties IT");
 		repository.deleteByConversationId(conversationId);
 	}
 

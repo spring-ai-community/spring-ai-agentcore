@@ -60,10 +60,21 @@ public class AgentCoreShortTermMemoryRepositoryAutoConfiguration {
 				AgentCoreMemoryConversationIdParser.DEFAULT_SESSION);
 		int pageSize = resolve("page-size", shortTerm.pageSize(), memory.pageSize(), DEFAULT_PAGE_SIZE);
 		boolean ignoreUnknownRoles = resolve("ignore-unknown-roles", shortTerm.ignoreUnknownRoles(),
-				memory.ignoreUnknownRoles(), Boolean.FALSE);
+				memory.ignoreUnknownRoles(), Boolean.TRUE);
+		warnIfIgnoreUnknownRolesExplicitlySet(shortTerm, memory);
 
 		return new AgentCoreShortTermMemoryRepository(memory.memoryId(), client, totalEventsLimit, defaultSession,
 				pageSize, ignoreUnknownRoles);
+	}
+
+	private static void warnIfIgnoreUnknownRolesExplicitlySet(AgentCoreShortTermMemoryProperties shortTerm,
+			AgentCoreMemoryProperties memory) {
+		if (shortTerm.ignoreUnknownRoles() == null && memory.ignoreUnknownRoles() == null) {
+			return;
+		}
+		logger.warn("Property 'ignore-unknown-roles' is deprecated and will be removed in a future release. "
+				+ "Skipping non-dialogue messages will become hardcoded behaviour; remove this property. See "
+				+ "https://github.com/spring-ai-community/spring-ai-agentcore/issues/109");
 	}
 
 	private static <T> T resolve(String name, T modern, T legacy, T fallback) {
