@@ -75,7 +75,7 @@ public class AgentCoreResourceCustomizerProvider implements AutoConfigurationCus
 		return builder.addSpanProcessor(new SessionBaggageSpanProcessor());
 	}
 
-	private Map<String, String> getDefaultProperties() {
+	Map<String, String> getDefaultProperties() {
 		Map<String, String> properties = new HashMap<>();
 		// 100% span capture for agent observability
 		properties.put("otel.traces.sampler", "parentbased_always_on");
@@ -101,7 +101,7 @@ public class AgentCoreResourceCustomizerProvider implements AutoConfigurationCus
 		return properties;
 	}
 
-	private static boolean isAgentObservabilityEnabled() {
+	static boolean isAgentObservabilityEnabled() {
 		String value = System.getenv(AGENT_OBSERVABILITY_ENABLED);
 		return "true".equalsIgnoreCase(value);
 	}

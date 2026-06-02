@@ -31,6 +31,13 @@ aws ecr get-login-password --region "${REGION}" | "${CONTAINER_CLI}" login --use
 echo "🔨 Building Spring Boot application..."
 mvn -q clean package
 
+echo "📦 Copying AgentCore OTel extension jar..."
+# For SNAPSHOT builds, copy the extension jar from the local build output.
+# For releases, replace this with:
+#   curl -fsSL -o target/agentcore-otel-extension.jar \
+#     "https://repo1.maven.org/maven2/org/springaicommunity/spring-ai-agentcore-otel-extension/${VERSION}/spring-ai-agentcore-otel-extension-${VERSION}.jar"
+cp ../../spring-ai-agentcore-otel-extension/target/spring-ai-agentcore-otel-extension-*-SNAPSHOT.jar target/agentcore-otel-extension.jar
+
 echo "🐳 Building container image (linux/arm64)..."
 "${CONTAINER_CLI}" build --platform linux/arm64 -t "${ECR_REPO_NAME}" .
 "${CONTAINER_CLI}" tag "${ECR_REPO_NAME}:latest" "${IMAGE_URI}"

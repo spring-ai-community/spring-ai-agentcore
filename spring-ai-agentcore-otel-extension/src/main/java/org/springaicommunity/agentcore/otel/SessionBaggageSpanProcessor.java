@@ -32,6 +32,9 @@ import io.opentelemetry.sdk.trace.SpanProcessor;
  */
 class SessionBaggageSpanProcessor implements SpanProcessor {
 
+	// Baggage key set by AgentCore Runtime when invoking the container.
+	// Contract:
+	// https://docs.aws.amazon.com/bedrock/latest/userguide/agentcore-observability.html
 	private static final String SESSION_ID_KEY = "session.id";
 
 	private static final AttributeKey<String> SESSION_ID_ATTR = AttributeKey.stringKey(SESSION_ID_KEY);
