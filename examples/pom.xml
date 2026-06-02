@@ -25,6 +25,7 @@
 
     <modules>
         <module>simple-spring-boot-app</module>
+        <module>spring-ai-agentcore-observability</module>
         <module>spring-ai-browser</module>
         <module>spring-ai-extended-chat-client</module>
         <module>spring-ai-memory-integration</module>

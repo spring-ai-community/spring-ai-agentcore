@@ -1,0 +1,24 @@
+# Maven
+target/
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+terraform/*.tfplan
+terraform/tfplan
+terraform/image-uri.txt
+terraform/ecr-repo-name.txt
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Logs
+*.log

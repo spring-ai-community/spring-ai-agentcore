@@ -19,6 +19,7 @@
         <module>spring-ai-agentcore-code-interpreter</module>
         <module>spring-ai-agentcore-browser</module>
         <module>spring-ai-agentcore-evaluations</module>
+        <module>spring-ai-agentcore-otel-extension</module>
         <module>build-tools/spring-ai-agentcore-rewrite-recipes</module>
     </modules>
 
