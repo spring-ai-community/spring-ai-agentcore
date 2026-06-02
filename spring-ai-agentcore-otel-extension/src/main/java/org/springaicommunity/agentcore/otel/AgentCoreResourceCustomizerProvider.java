@@ -84,6 +84,10 @@ public class AgentCoreResourceCustomizerProvider implements AutoConfigurationCus
 		properties.put("otel.resource.providers.aws.enabled", "false");
 		// Disable Application Signals to avoid duplicate cost with Transaction Search
 		properties.put("otel.aws.application.signals.enabled", "false");
+		// Enable the built-in EMF exporter so custom Micrometer metrics are sent to
+		// CloudWatch via PutLogEvents. The target log group/stream/namespace must be
+		// configured via OTEL_EXPORTER_OTLP_LOGS_HEADERS at deployment time.
+		properties.put("otel.metrics.exporter", "awsemf");
 		// Disable http-url-connection instrumentation to suppress IMDS credential
 		// fetching noise (169.254.169.254) — equivalent to Python disabling
 		// urllib3/requests/http
@@ -91,6 +95,7 @@ public class AgentCoreResourceCustomizerProvider implements AutoConfigurationCus
 		// Disable Tomcat/Servlet server spans — Spring MVC observation provides the
 		// server span at a higher level. Equivalent to Python disabling low-level http
 		// server instrumentation to avoid duplicates with framework spans.
+		// HTTP metrics (http.server.request.duration) are provided by Spring MVC.
 		properties.put("otel.instrumentation.tomcat.enabled", "false");
 		properties.put("otel.instrumentation.servlet.enabled", "false");
 		return properties;

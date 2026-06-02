@@ -18,6 +18,9 @@ package org.springaicommunity.example.observability;
 
 import java.util.Map;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
 import org.springaicommunity.agentcore.context.AgentCoreContext;
 import org.springaicommunity.agentcore.context.AgentCoreHeaders;
@@ -42,13 +45,19 @@ public class ObservabilityChatController {
 
 	private final ChatMemory chatMemory;
 
+	private final Counter invocationCounter;
+
 	public ObservabilityChatController(ChatClient.Builder chatClientBuilder,
-			AgentCoreShortTermMemoryRepository memoryRepository) {
+			AgentCoreShortTermMemoryRepository memoryRepository, MeterRegistry meterRegistry) {
 		this.chatMemory = MessageWindowChatMemory.builder()
 			.chatMemoryRepository(memoryRepository)
 			.maxMessages(20)
 			.build();
 		this.chatClient = chatClientBuilder.defaultTools(new DateTimeTools()).build();
+		this.invocationCounter = Counter.builder("custom.agent.invocations")
+			.description("Number of agent invocations")
+			.tag("agent", "observability-demo")
+			.register(meterRegistry);
 	}
 
 	@AgentCoreInvocation
@@ -56,6 +65,8 @@ public class ObservabilityChatController {
 		String prompt = String.valueOf(request.getOrDefault("prompt", ""));
 		String sessionId = context.getHeader(AgentCoreHeaders.SESSION_ID);
 		String conversationId = (sessionId != null && !sessionId.isEmpty()) ? sessionId : "default";
+
+		this.invocationCounter.increment();
 
 		String response = this.chatClient.prompt()
 			.user(prompt)

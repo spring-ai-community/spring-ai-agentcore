@@ -9,9 +9,3 @@ variable "container_uri" {
   type        = string
   default     = ""
 }
-
-variable "memory_id" {
-  description = "AgentCore Memory ID for short-term memory"
-  type        = string
-  default     = ""
-}

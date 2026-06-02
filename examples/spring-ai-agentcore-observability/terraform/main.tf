@@ -56,6 +56,16 @@ resource "aws_iam_role_policy" "agentcore_execution" {
         ]
       },
       {
+        # EMF metrics exporter writes CloudWatch Embedded Metric Format logs here.
+        Sid    = "EmfMetricsLogs"
+        Effect = "Allow"
+        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams", "logs:DescribeLogGroups"]
+        Resource = [
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/agentcore/metrics/${local.runtime_name}",
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/agentcore/metrics/${local.runtime_name}:*"
+        ]
+      },
+      {
         # OTLP traces exporter posts spans to the X-Ray endpoint (Transaction Search).
         Sid      = "XRayWrite"
         Effect   = "Allow"
@@ -81,6 +91,12 @@ resource "aws_iam_role_policy" "agentcore_execution" {
   })
 }
 
+# Short-term memory for session-scoped conversation history.
+resource "aws_bedrockagentcore_memory" "stm" {
+  name                 = "observability_stm_${random_string.suffix.result}"
+  event_expiry_duration = 7
+}
+
 # IAM-authenticated AgentCore runtime. Observability is configured through the OTEL_*
 # environment variables consumed by the ADOT Java agent inside the container.
 resource "aws_bedrockagentcore_agent_runtime" "observability" {
@@ -102,8 +118,14 @@ resource "aws_bedrockagentcore_agent_runtime" "observability" {
   # X-Ray instead. OTEL_RESOURCE_ATTRIBUTES is intentionally NOT set: AgentCore injects
   # it with cloud.resource_id + cloud.platform, which is what links the spans to this
   # runtime in the GenAI Observability "Bedrock AgentCore" tab. Overriding it breaks that.
+  #
+  # OTEL_EXPORTER_OTLP_LOGS_HEADERS configures the ADOT Java agent's built-in EMF
+  # exporter (activated by OTEL_METRICS_EXPORTER=awsemf in the Dockerfile). Any OTel
+  # metrics the app produces (custom Micrometer counters, gauges, timers) are converted
+  # to CloudWatch EMF logs and sent directly via PutLogEvents — no collector needed.
   environment_variables = {
     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "https://xray.${var.aws_region}.amazonaws.com/v1/traces"
-    AGENTCORE_MEMORY_ID                = var.memory_id
+    OTEL_EXPORTER_OTLP_LOGS_HEADERS    = "x-aws-log-group=/aws/agentcore/metrics/${local.runtime_name},x-aws-log-stream=emf,x-aws-metric-namespace=AgentCore/SpringAI"
+    AGENTCORE_MEMORY_ID                = aws_bedrockagentcore_memory.stm.id
   }
 }
