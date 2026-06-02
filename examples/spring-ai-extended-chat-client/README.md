@@ -123,11 +123,12 @@ JWT Token → User Identity → Per-User Memory → Amazon Bedrock
 Key configuration in `application.properties`:
 
 ```properties
-# Spring AI Bedrock
-spring.ai.bedrock.anthropic.chat.model=anthropic.claude-3-sonnet-20240229-v1:0
+# Spring AI Bedrock Converse model
+spring.ai.bedrock.converse.chat.options.model=global.amazon.nova-2-lite-v1:0
 
-# Memory window size
-agentcore.memory.window-size=10
+# Short-term memory tuning
+agentcore.memory.memory-id=${AGENTCORE_MEMORY_ID}
+agentcore.memory.short-term.total-events-limit=100
 ```
 
 ## Monitoring

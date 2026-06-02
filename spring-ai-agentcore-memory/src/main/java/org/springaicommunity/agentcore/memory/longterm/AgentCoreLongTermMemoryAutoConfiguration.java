@@ -30,8 +30,8 @@ import org.springaicommunity.agentcore.memory.longterm.strategy.EpisodicMemorySt
 import org.springaicommunity.agentcore.memory.longterm.strategy.SemanticMemoryStrategyHandler;
 import org.springaicommunity.agentcore.memory.longterm.strategy.SummaryMemoryStrategyHandler;
 import org.springaicommunity.agentcore.memory.longterm.strategy.UserPreferenceMemoryStrategyHandler;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
+import org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepository;
+import org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 

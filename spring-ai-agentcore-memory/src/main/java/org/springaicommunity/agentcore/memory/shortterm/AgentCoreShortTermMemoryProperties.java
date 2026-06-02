@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.springaicommunity.agentcore.memory.shorttem;
+package org.springaicommunity.agentcore.memory.shortterm;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

@@ -22,7 +22,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
+import org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepository;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.DeleteMemoryRequest;

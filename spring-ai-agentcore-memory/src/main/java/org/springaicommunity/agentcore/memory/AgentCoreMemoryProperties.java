@@ -26,7 +26,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * remains at the {@code agentcore.memory} prefix. The remaining fields are short-term
  * memory tunables retained at the root prefix only for backward compatibility; they have
  * been moved to
- * {@link org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties}
+ * {@link org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryProperties}
  * under the {@code agentcore.memory.short-term} prefix and will be removed from the root
  * prefix in a future release. See
  * <a href= "https://github.com/spring-ai-community/spring-ai-agentcore/issues/49">issue
@@ -53,7 +53,7 @@ public record AgentCoreMemoryProperties(String memoryId, Integer totalEventsLimi
 	 * unset.
 	 * @return the legacy total events limit, or {@code null}
 	 * @deprecated since 1.1.0, for removal. Use
-	 * {@link org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties#totalEventsLimit()}
+	 * {@link org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryProperties#totalEventsLimit()}
 	 * bound to {@code agentcore.memory.short-term.total-events-limit}.
 	 */
 	@Deprecated(since = "1.1.0", forRemoval = true)
@@ -67,7 +67,7 @@ public record AgentCoreMemoryProperties(String memoryId, Integer totalEventsLimi
 	 * unset.
 	 * @return the legacy default session, or {@code null}
 	 * @deprecated since 1.1.0, for removal. Use
-	 * {@link org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties#defaultSession()}
+	 * {@link org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryProperties#defaultSession()}
 	 * bound to {@code agentcore.memory.short-term.default-session}.
 	 */
 	@Deprecated(since = "1.1.0", forRemoval = true)
@@ -80,7 +80,7 @@ public record AgentCoreMemoryProperties(String memoryId, Integer totalEventsLimi
 	 * Returns the legacy short-term {@code page-size} value, or {@code null} if unset.
 	 * @return the legacy page size, or {@code null}
 	 * @deprecated since 1.1.0, for removal. Use
-	 * {@link org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties#pageSize()}
+	 * {@link org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryProperties#pageSize()}
 	 * bound to {@code agentcore.memory.short-term.page-size}.
 	 */
 	@Deprecated(since = "1.1.0", forRemoval = true)
@@ -97,7 +97,7 @@ public record AgentCoreMemoryProperties(String memoryId, Integer totalEventsLimi
 	 * skipping non-dialogue messages will become hardcoded behaviour. See <a href=
 	 * "https://github.com/spring-ai-community/spring-ai-agentcore/issues/109">issue
 	 * #109</a>. Until then, prefer
-	 * {@link org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties#ignoreUnknownRoles()}
+	 * {@link org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryProperties#ignoreUnknownRoles()}
 	 * bound to {@code agentcore.memory.short-term.ignore-unknown-roles}.
 	 */
 	@Deprecated(since = "1.1.0", forRemoval = true)

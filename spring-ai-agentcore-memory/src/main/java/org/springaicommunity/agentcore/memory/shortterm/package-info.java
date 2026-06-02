@@ -17,4 +17,4 @@
 /**
  * short-term chat memory backed by the AgentCore Memory service.
  */
-package org.springaicommunity.agentcore.memory.shorttem;
+package org.springaicommunity.agentcore.memory.shortterm;

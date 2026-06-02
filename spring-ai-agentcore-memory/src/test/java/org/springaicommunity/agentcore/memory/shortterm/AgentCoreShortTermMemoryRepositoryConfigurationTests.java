@@ -18,7 +18,6 @@ package org.springaicommunity.agentcore.memory.shortterm;
 
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

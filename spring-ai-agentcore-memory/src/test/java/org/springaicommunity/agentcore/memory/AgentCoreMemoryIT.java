@@ -28,7 +28,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryNamespace;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever.MemoryRecord;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
+import org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepository;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
 import org.springframework.ai.chat.client.ChatClient;

@@ -21,9 +21,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryProperties;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
 import org.springframework.boot.autoconfigure.AutoConfigurations;
