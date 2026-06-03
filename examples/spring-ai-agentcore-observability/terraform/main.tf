@@ -82,13 +82,6 @@ resource "aws_iam_role_policy" "agentcore_execution" {
   })
 }
 
-# Log group for OTLP logs and EMF metrics. The OTLP CW Logs endpoint requires
-# the log group to exist before sending logs (unlike PutLogEvents which auto-creates).
-resource "aws_cloudwatch_log_group" "agent_logs" {
-  name              = "/aws/bedrock-agentcore/runtimes/${local.runtime_name}"
-  retention_in_days = 7
-}
-
 # Short-term memory for session-scoped conversation history.
 resource "aws_bedrockagentcore_memory" "stm" {
   name                 = "observability_stm_${random_string.suffix.result}"
@@ -111,11 +104,10 @@ resource "aws_bedrockagentcore_agent_runtime" "observability" {
     network_mode = "PUBLIC"
   }
 
-  # Observability configuration. The OTel extension auto-derives the traces and logs
-  # OTLP endpoints from AWS_REGION (injected by AgentCore). Only the log headers
-  # need to be set explicitly to specify the target log group for logs + EMF metrics.
+  # AgentCore injects OTEL_EXPORTER_OTLP_LOGS_HEADERS (with log group/stream/namespace)
+  # and OTEL_RESOURCE_ATTRIBUTES automatically. The extension overrides the endpoints
+  # from localhost:4316 (Python sidecar) to the direct AWS OTLP endpoints via SigV4.
   environment_variables = {
-    OTEL_EXPORTER_OTLP_LOGS_HEADERS = "x-aws-log-group=${aws_cloudwatch_log_group.agent_logs.name},x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore"
-    AGENTCORE_MEMORY_ID             = aws_bedrockagentcore_memory.stm.id
+    AGENTCORE_MEMORY_ID = aws_bedrockagentcore_memory.stm.id
   }
 }
