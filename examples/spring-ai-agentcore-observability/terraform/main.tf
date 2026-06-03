@@ -111,20 +111,11 @@ resource "aws_bedrockagentcore_agent_runtime" "observability" {
     network_mode = "PUBLIC"
   }
 
-  # Observability configuration following the AgentCore docs pattern:
-  # - Traces: OTLP → X-Ray endpoint (SigV4, collector-less)
-  # - Logs: OTLP → CloudWatch Logs endpoint (SigV4, structured with trace correlation)
-  # - Metrics: EMF via PutLogEvents to the same log group (ADOT agent's awsemf exporter)
-  #
-  # OTEL_EXPORTER_OTLP_LOGS_HEADERS serves dual purpose: it configures both the OTLP
-  # logs exporter (target log group/stream) and the EMF metrics exporter (namespace).
-  # OTEL_RESOURCE_ATTRIBUTES is intentionally NOT set — AgentCore injects it with
-  # cloud.resource_id + cloud.platform, which links spans to this runtime in the
-  # GenAI Observability dashboard.
+  # Observability configuration. The OTel extension auto-derives the traces and logs
+  # OTLP endpoints from AWS_REGION (injected by AgentCore). Only the log headers
+  # need to be set explicitly to specify the target log group for logs + EMF metrics.
   environment_variables = {
-    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "https://xray.${var.aws_region}.amazonaws.com/v1/traces"
-    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT   = "https://logs.${var.aws_region}.amazonaws.com/v1/logs"
-    OTEL_EXPORTER_OTLP_LOGS_HEADERS    = "x-aws-log-group=${aws_cloudwatch_log_group.agent_logs.name},x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore"
-    AGENTCORE_MEMORY_ID                = aws_bedrockagentcore_memory.stm.id
+    OTEL_EXPORTER_OTLP_LOGS_HEADERS = "x-aws-log-group=${aws_cloudwatch_log_group.agent_logs.name},x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore"
+    AGENTCORE_MEMORY_ID             = aws_bedrockagentcore_memory.stm.id
   }
 }

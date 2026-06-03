@@ -79,10 +79,16 @@ public class AgentCoreResourceCustomizerProvider implements AutoConfigurationCus
 		Map<String, String> properties = new HashMap<>();
 		// 100% span capture for agent observability
 		properties.put("otel.traces.sampler", "parentbased_always_on");
-		// OTLP exporters for traces and logs (SigV4 endpoints configured via env vars)
+		// OTLP exporters for traces and logs (SigV4-signed to AWS endpoints)
 		properties.put("otel.traces.exporter", "otlp");
 		properties.put("otel.logs.exporter", "otlp");
 		properties.put("otel.exporter.otlp.protocol", "http/protobuf");
+		// Auto-derive OTLP endpoints from AWS_REGION (matches Python distro behavior)
+		String region = getAwsRegion();
+		if (region != null) {
+			properties.put("otel.exporter.otlp.traces.endpoint", "https://xray." + region + ".amazonaws.com/v1/traces");
+			properties.put("otel.exporter.otlp.logs.endpoint", "https://logs." + region + ".amazonaws.com/v1/logs");
+		}
 		// Disable AWS resource detectors so they don't override AgentCore's injected
 		// cloud.platform=aws_bedrock_agentcore with cloud.platform=aws_ec2
 		properties.put("otel.resource.providers.aws.enabled", "false");
@@ -103,6 +109,14 @@ public class AgentCoreResourceCustomizerProvider implements AutoConfigurationCus
 		properties.put("otel.instrumentation.tomcat.enabled", "false");
 		properties.put("otel.instrumentation.servlet.enabled", "false");
 		return properties;
+	}
+
+	private static String getAwsRegion() {
+		String region = System.getenv("AWS_REGION");
+		if (region == null) {
+			region = System.getenv("AWS_DEFAULT_REGION");
+		}
+		return region;
 	}
 
 	static boolean isAgentObservabilityEnabled() {

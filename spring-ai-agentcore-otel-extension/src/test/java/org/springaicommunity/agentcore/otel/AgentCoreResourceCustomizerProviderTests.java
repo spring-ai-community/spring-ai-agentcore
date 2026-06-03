@@ -47,6 +47,15 @@ class AgentCoreResourceCustomizerProviderTests {
 	}
 
 	@Test
+	void defaultPropertiesOmitEndpointsWhenRegionNotSet() {
+		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
+
+		// When AWS_REGION is not set, endpoints are not included (user must set them)
+		assertThat(props).doesNotContainKey("otel.exporter.otlp.traces.endpoint")
+			.doesNotContainKey("otel.exporter.otlp.logs.endpoint");
+	}
+
+	@Test
 	void defaultPropertiesDisableAwsResourceDetectors() {
 		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
 
