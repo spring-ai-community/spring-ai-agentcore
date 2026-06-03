@@ -31,6 +31,6 @@ ENV JAVA_TOOL_OPTIONS="-javaagent:/app/aws-opentelemetry-agent.jar" \
     OTEL_JAVAAGENT_EXTENSIONS=/app/agentcore-otel-extension.jar \
     OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
     OTEL_TRACES_EXPORTER=otlp \
-    OTEL_LOGS_EXPORTER=none
+    OTEL_LOGS_EXPORTER=otlp
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

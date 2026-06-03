@@ -47,22 +47,13 @@ resource "aws_iam_role_policy" "agentcore_execution" {
         Resource = "*"
       },
       {
-        # Container stdout/stderr is captured to the default runtime log group.
+        # Container stdout/stderr and OTLP logs + EMF metrics are sent to the
+        # default runtime log group.
         Sid    = "RuntimeLogs"
-        Effect = "Allow"
-        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
-        Resource = [
-          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock-agentcore/runtimes/*"
-        ]
-      },
-      {
-        # EMF metrics exporter writes CloudWatch Embedded Metric Format logs here.
-        Sid    = "EmfMetricsLogs"
         Effect = "Allow"
         Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams", "logs:DescribeLogGroups"]
         Resource = [
-          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/agentcore/metrics/${local.runtime_name}",
-          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/agentcore/metrics/${local.runtime_name}:*"
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/bedrock-agentcore/runtimes/*"
         ]
       },
       {
@@ -91,6 +82,13 @@ resource "aws_iam_role_policy" "agentcore_execution" {
   })
 }
 
+# Log group for OTLP logs and EMF metrics. The OTLP CW Logs endpoint requires
+# the log group to exist before sending logs (unlike PutLogEvents which auto-creates).
+resource "aws_cloudwatch_log_group" "agent_logs" {
+  name              = "/aws/bedrock-agentcore/runtimes/${local.runtime_name}"
+  retention_in_days = 7
+}
+
 # Short-term memory for session-scoped conversation history.
 resource "aws_bedrockagentcore_memory" "stm" {
   name                 = "observability_stm_${random_string.suffix.result}"
@@ -113,19 +111,20 @@ resource "aws_bedrockagentcore_agent_runtime" "observability" {
     network_mode = "PUBLIC"
   }
 
-  # Only the trace endpoint is overridden: the runtime's injected OTLP endpoint targets
-  # a Python-only sidecar, so the ADOT Java agent ships spans collector-less (SigV4) to
-  # X-Ray instead. OTEL_RESOURCE_ATTRIBUTES is intentionally NOT set: AgentCore injects
-  # it with cloud.resource_id + cloud.platform, which is what links the spans to this
-  # runtime in the GenAI Observability "Bedrock AgentCore" tab. Overriding it breaks that.
+  # Observability configuration following the AgentCore docs pattern:
+  # - Traces: OTLP → X-Ray endpoint (SigV4, collector-less)
+  # - Logs: OTLP → CloudWatch Logs endpoint (SigV4, structured with trace correlation)
+  # - Metrics: EMF via PutLogEvents to the same log group (ADOT agent's awsemf exporter)
   #
-  # OTEL_EXPORTER_OTLP_LOGS_HEADERS configures the ADOT Java agent's built-in EMF
-  # exporter (activated by OTEL_METRICS_EXPORTER=awsemf in the Dockerfile). Any OTel
-  # metrics the app produces (custom Micrometer counters, gauges, timers) are converted
-  # to CloudWatch EMF logs and sent directly via PutLogEvents — no collector needed.
+  # OTEL_EXPORTER_OTLP_LOGS_HEADERS serves dual purpose: it configures both the OTLP
+  # logs exporter (target log group/stream) and the EMF metrics exporter (namespace).
+  # OTEL_RESOURCE_ATTRIBUTES is intentionally NOT set — AgentCore injects it with
+  # cloud.resource_id + cloud.platform, which links spans to this runtime in the
+  # GenAI Observability dashboard.
   environment_variables = {
     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "https://xray.${var.aws_region}.amazonaws.com/v1/traces"
-    OTEL_EXPORTER_OTLP_LOGS_HEADERS    = "x-aws-log-group=/aws/agentcore/metrics/${local.runtime_name},x-aws-log-stream=emf,x-aws-metric-namespace=AgentCore/SpringAI"
+    OTEL_EXPORTER_OTLP_LOGS_ENDPOINT   = "https://logs.${var.aws_region}.amazonaws.com/v1/logs"
+    OTEL_EXPORTER_OTLP_LOGS_HEADERS    = "x-aws-log-group=${aws_cloudwatch_log_group.agent_logs.name},x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore"
     AGENTCORE_MEMORY_ID                = aws_bedrockagentcore_memory.stm.id
   }
 }
