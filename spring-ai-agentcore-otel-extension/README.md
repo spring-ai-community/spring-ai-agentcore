@@ -37,16 +37,14 @@ RUN curl -fsSL -o /app/aws-opentelemetry-agent.jar \
     "https://repo1.maven.org/maven2/org/springaicommunity/spring-ai-agentcore-otel-extension/${AGENTCORE_EXT_VERSION}/spring-ai-agentcore-otel-extension-${AGENTCORE_EXT_VERSION}.jar"
 
 ENV JAVA_TOOL_OPTIONS="-javaagent:/app/aws-opentelemetry-agent.jar" \
-    OTEL_JAVAAGENT_EXTENSIONS=/app/agentcore-otel-extension.jar \
-    OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
-    OTEL_TRACES_EXPORTER=otlp \
-    OTEL_LOGS_EXPORTER=otlp \
-    OTEL_METRICS_EXPORTER=none
+    OTEL_JAVAAGENT_EXTENSIONS=/app/agentcore-otel-extension.jar
 ```
 
-The trace endpoint is set via Terraform/environment variable:
+The trace and log endpoints are set via Terraform/environment variables:
 ```
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://xray.<region>.amazonaws.com/v1/traces
+OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=https://logs.<region>.amazonaws.com/v1/logs
+OTEL_EXPORTER_OTLP_LOGS_HEADERS=x-aws-log-group=<log-group>,x-aws-log-stream=runtime-logs,x-aws-metric-namespace=bedrock-agentcore
 ```
 
 ### Non-runtime hosted agents (ECS, EKS, EC2, Lambda)

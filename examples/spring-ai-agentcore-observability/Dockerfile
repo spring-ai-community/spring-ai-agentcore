@@ -23,14 +23,11 @@ RUN chown -R appuser:appuser /app
 USER appuser
 EXPOSE 8080
 
-# Attach the ADOT agent and the AgentCore OTel extension. The extension handles agent
-# observability mode config (resource attributes, session tracking, noise reduction) when
-# AGENT_OBSERVABILITY_ENABLED=true is injected by AgentCore. Only exporter plumbing remains
-# here. OTEL_RESOURCE_ATTRIBUTES is NOT set — AgentCore injects it with cloud.resource_id.
+# Attach the ADOT agent and the AgentCore OTel extension. The extension handles all
+# observability config (exporters, protocol, sampler, resource attributes, noise
+# reduction) when AGENT_OBSERVABILITY_ENABLED=true is injected by AgentCore.
+# OTEL_RESOURCE_ATTRIBUTES is NOT set — AgentCore injects it with cloud.resource_id.
 ENV JAVA_TOOL_OPTIONS="-javaagent:/app/aws-opentelemetry-agent.jar" \
-    OTEL_JAVAAGENT_EXTENSIONS=/app/agentcore-otel-extension.jar \
-    OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
-    OTEL_TRACES_EXPORTER=otlp \
-    OTEL_LOGS_EXPORTER=otlp
+    OTEL_JAVAAGENT_EXTENSIONS=/app/agentcore-otel-extension.jar
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

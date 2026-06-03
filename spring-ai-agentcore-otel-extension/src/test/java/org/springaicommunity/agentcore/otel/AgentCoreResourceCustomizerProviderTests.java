@@ -38,6 +38,15 @@ class AgentCoreResourceCustomizerProviderTests {
 	}
 
 	@Test
+	void defaultPropertiesConfigureOtlpExporters() {
+		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
+
+		assertThat(props).containsEntry("otel.traces.exporter", "otlp")
+			.containsEntry("otel.logs.exporter", "otlp")
+			.containsEntry("otel.exporter.otlp.protocol", "http/protobuf");
+	}
+
+	@Test
 	void defaultPropertiesDisableAwsResourceDetectors() {
 		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
 
