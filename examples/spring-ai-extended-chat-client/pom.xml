@@ -15,7 +15,7 @@
     <description>Spring AI chat client deployable into AgentCore and uses authentication context with short-term memory</description>
 
     <properties>
-        <nimbus-jose-jwt.version>10.9</nimbus-jose-jwt.version>
+        <nimbus-jose-jwt.version>10.9.1</nimbus-jose-jwt.version>
     </properties>
 
     <dependencies>
