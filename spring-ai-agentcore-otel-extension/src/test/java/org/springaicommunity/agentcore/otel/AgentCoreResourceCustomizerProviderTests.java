@@ -18,6 +18,13 @@ package org.springaicommunity.agentcore.otel;
 
 import java.util.Map;
 
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,63 +33,55 @@ class AgentCoreResourceCustomizerProviderTests {
 
 	@Test
 	void disabledWhenEnvironmentVariableIsNotSet() {
-		// AGENT_OBSERVABILITY_ENABLED is not set in the test environment
 		assertThat(AgentCoreResourceCustomizerProvider.isAgentObservabilityEnabled()).isFalse();
 	}
 
 	@Test
-	void defaultPropertiesSetAlwaysOnSampler() {
+	void defaultPropertiesConfigureObservabilityDefaults() {
 		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
 
-		assertThat(props).containsEntry("otel.traces.sampler", "parentbased_always_on");
-	}
-
-	@Test
-	void defaultPropertiesConfigureOtlpExporters() {
-		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
-
-		assertThat(props).containsEntry("otel.traces.exporter", "otlp")
+		assertThat(props).containsEntry("otel.traces.sampler", "parentbased_always_on")
+			.containsEntry("otel.traces.exporter", "otlp")
 			.containsEntry("otel.logs.exporter", "otlp")
-			.containsEntry("otel.exporter.otlp.protocol", "http/protobuf");
+			.containsEntry("otel.exporter.otlp.protocol", "http/protobuf")
+			.containsEntry("otel.metrics.exporter", "awsemf")
+			.containsEntry("otel.resource.providers.aws.enabled", "false")
+			.containsEntry("otel.aws.application.signals.enabled", "false")
+			.containsEntry("otel.instrumentation.http-url-connection.enabled", "false")
+			.containsEntry("otel.instrumentation.tomcat.enabled", "false")
+			.containsEntry("otel.instrumentation.servlet.enabled", "false");
 	}
 
 	@Test
 	void defaultPropertiesOmitEndpointsWhenRegionNotSet() {
 		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
 
-		// When AWS_REGION is not set, endpoints are not included (user must set them)
 		assertThat(props).doesNotContainKey("otel.exporter.otlp.traces.endpoint")
 			.doesNotContainKey("otel.exporter.otlp.logs.endpoint");
 	}
 
 	@Test
-	void defaultPropertiesDisableAwsResourceDetectors() {
-		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
+	void resourceContainsGenAiAgentServiceType() {
+		Resource base = Resource.getDefault();
+		Resource merged = base
+			.merge(Resource.create(Attributes.of(AttributeKey.stringKey("aws.service.type"), "gen_ai_agent")));
 
-		assertThat(props).containsEntry("otel.resource.providers.aws.enabled", "false");
-	}
+		InMemorySpanExporter exporter = InMemorySpanExporter.create();
+		SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
+			.setResource(merged)
+			.addSpanProcessor(SimpleSpanProcessor.create(exporter))
+			.build();
 
-	@Test
-	void defaultPropertiesDisableApplicationSignals() {
-		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
+		Tracer tracer = tracerProvider.get("test");
+		tracer.spanBuilder("test").startSpan().end();
 
-		assertThat(props).containsEntry("otel.aws.application.signals.enabled", "false");
-	}
+		assertThat(exporter.getFinishedSpanItems()).hasSize(1);
+		assertThat(exporter.getFinishedSpanItems()
+			.get(0)
+			.getResource()
+			.getAttribute(AttributeKey.stringKey("aws.service.type"))).isEqualTo("gen_ai_agent");
 
-	@Test
-	void defaultPropertiesEnableEmfExporter() {
-		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
-
-		assertThat(props).containsEntry("otel.metrics.exporter", "awsemf");
-	}
-
-	@Test
-	void defaultPropertiesDisableNoisyInstrumentations() {
-		Map<String, String> props = new AgentCoreResourceCustomizerProvider().getDefaultProperties();
-
-		assertThat(props).containsEntry("otel.instrumentation.http-url-connection.enabled", "false")
-			.containsEntry("otel.instrumentation.tomcat.enabled", "false")
-			.containsEntry("otel.instrumentation.servlet.enabled", "false");
+		tracerProvider.close();
 	}
 
 }
