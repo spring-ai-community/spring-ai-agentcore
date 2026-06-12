@@ -24,7 +24,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
 import org.springaicommunity.agentcore.context.AgentCoreContext;
 import org.springaicommunity.agentcore.context.AgentCoreHeaders;
-import org.springaicommunity.agentcore.memory.shorttem.AgentCoreShortTermMemoryRepository;
+import org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepository;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
