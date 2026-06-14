@@ -301,7 +301,11 @@ public class AgentCoreBrowserClient implements BrowserClient {
 		List<BrowserEnterprisePolicy> policies = toSdkPolicies(this.config.enterprisePolicies());
 		if (!policies.isEmpty()) {
 			requestBuilder.enterprisePolicies(policies);
-			logger.info("Applying {} enterprise policies to session", policies.size());
+			logger.info("Applying {} enterprise policies to session '{}': {}", policies.size(), sessionName,
+					this.config.enterprisePolicies()
+						.stream()
+						.map((ref) -> "s3://" + ref.s3().bucket() + "/" + ref.s3().prefix())
+						.toList());
 		}
 		return requestBuilder.build();
 	}
