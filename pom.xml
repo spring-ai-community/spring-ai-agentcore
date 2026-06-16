@@ -88,7 +88,7 @@
         <maven-site-plugin.version>4.0.0-M16</maven-site-plugin.version>
         <maven-jar-plugin.version>3.5.0</maven-jar-plugin.version>
         <spring-javaformat-maven-plugin.version>0.0.47</spring-javaformat-maven-plugin.version>
-        <spring-ai.version>1.1.7</spring-ai.version>
+        <spring-ai.version>2.0.0</spring-ai.version>
         <awssdk.version>2.46.10</awssdk.version>
     </properties>
 
