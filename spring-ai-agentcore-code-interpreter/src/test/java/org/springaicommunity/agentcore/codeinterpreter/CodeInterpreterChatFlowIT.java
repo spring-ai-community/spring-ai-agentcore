@@ -193,7 +193,7 @@ class CodeInterpreterChatFlowIT {
 			BedrockChatOptions options = BedrockChatOptions.builder()
 				.model("global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 				.build();
-			return BedrockProxyChatModel.builder().defaultOptions(options).build();
+			return BedrockProxyChatModel.builder().options(options).build();
 		}
 
 		@Bean

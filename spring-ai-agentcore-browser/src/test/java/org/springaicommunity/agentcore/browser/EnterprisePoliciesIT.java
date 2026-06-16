@@ -106,7 +106,7 @@ class EnterprisePoliciesIT {
 	@Test
 	@DisplayName("Should enforce a recommended URLBlocklist policy in the browser session")
 	void shouldEnforceUrlBlocklistPolicy() {
-		AgentCoreBrowserClient client = clientWithPolicy(POLICY_KEY);
+		AgentCoreBrowserClient client = this.clientWithPolicy(POLICY_KEY);
 
 		// Blocked host is refused by Chromium with the enterprise-policy error.
 		assertThatThrownBy(() -> client.browseAndExtract(BLOCKED_URL)).isInstanceOf(BrowserOperationException.class)
@@ -120,7 +120,7 @@ class EnterprisePoliciesIT {
 	@Test
 	@DisplayName("Should fail to start session when the enterprise policy S3 object is missing")
 	void shouldFailWhenPolicyObjectMissing() {
-		AgentCoreBrowserClient client = clientWithPolicy("policies/does-not-exist.json");
+		AgentCoreBrowserClient client = this.clientWithPolicy("policies/does-not-exist.json");
 
 		assertThatThrownBy(() -> client.browseAndExtract(ALLOWED_URL)).isInstanceOf(BrowserOperationException.class);
 	}

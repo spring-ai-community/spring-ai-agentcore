@@ -116,7 +116,7 @@ See [examples/terraform/](examples/terraform/) for infrastructure-as-code with I
 ## Requirements
 
 - Java 17+ (Java 25 recommended)
-- Spring Boot 3.5+
+- Spring Boot 4.1+
 - An AWS account
 
 ## Development

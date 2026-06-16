@@ -90,8 +90,8 @@ This fixes: import ordering, `this.` qualifiers, lambda formatting, inner type p
 
 ## Key Dependencies
 
-- Spring Boot 3.x
-- Spring AI 1.0.0
+- Spring Boot 4.x
+- Spring AI 2.0.0
 - AWS SDK v2 (`software.amazon.awssdk:bedrockagentcore`, `bedrockagentcorecontrol`)
 
 ## Integration Test Environment Variables

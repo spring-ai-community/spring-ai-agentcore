@@ -55,7 +55,7 @@ import static org.awaitility.Awaitility.await;
  */
 @EnabledIfEnvironmentVariable(named = "AGENTCORE_IT", matches = "true")
 @SpringBootTest(classes = AgentCoreMemoryIT.TestApp.class,
-		properties = { "spring.ai.bedrock.converse.chat.options.model=" + AgentCoreMemoryIT.CHAT_MODEL })
+		properties = { "spring.ai.bedrock.converse.chat.model=" + AgentCoreMemoryIT.CHAT_MODEL })
 @DisplayName("AgentCore Memory E2E Integration Test")
 class AgentCoreMemoryE2EIT extends AgentCoreMemoryIT {
 

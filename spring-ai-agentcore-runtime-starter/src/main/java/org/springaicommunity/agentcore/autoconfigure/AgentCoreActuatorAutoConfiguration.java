@@ -20,11 +20,11 @@ import org.springaicommunity.agentcore.ping.ActuatorAgentCorePingService;
 import org.springaicommunity.agentcore.ping.AgentCorePingService;
 import org.springaicommunity.agentcore.ping.AgentCoreTaskTracker;
 
-import org.springframework.boot.actuate.health.HealthEndpoint;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
 import org.springframework.context.annotation.Bean;
 
 /**

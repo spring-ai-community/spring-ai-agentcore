@@ -55,6 +55,6 @@ public class CustomController implements AgentCoreInvocationsHandler {
 ## Requirements
 
 - Java 21+
-- Spring Boot 3.x
+- Spring Boot 4.x
 - Spring AI
 - Amazon Bedrock access

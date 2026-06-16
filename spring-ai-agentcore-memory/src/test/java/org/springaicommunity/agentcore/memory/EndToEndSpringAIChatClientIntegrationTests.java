@@ -48,7 +48,7 @@ import static org.awaitility.Awaitility.await;
 @Tag("integration")
 @DisplayName("End-to-End Spring AI Chat Client Test - requires AWS account and creates AgentCore memory (2-3 minutes)")
 @SpringBootTest(classes = EndToEndSpringAIChatClientIntegrationTests.TestApp.class,
-		properties = { "spring.ai.bedrock.converse.chat.options.model=global.amazon.nova-2-lite-v1:0" })
+		properties = { "spring.ai.bedrock.converse.chat.model=global.amazon.nova-2-lite-v1:0" })
 @ContextConfiguration(initializers = EndToEndSpringAIChatClientIntegrationTests.MemoryInitializer.class)
 class EndToEndSpringAIChatClientIntegrationTests {
 

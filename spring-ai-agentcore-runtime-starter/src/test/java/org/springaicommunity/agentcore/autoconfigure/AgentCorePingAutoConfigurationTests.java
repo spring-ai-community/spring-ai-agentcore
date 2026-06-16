@@ -23,8 +23,8 @@ import org.springaicommunity.agentcore.ping.ActuatorAgentCorePingService;
 import org.springaicommunity.agentcore.ping.AgentCorePingService;
 import org.springaicommunity.agentcore.ping.StaticAgentCorePingService;
 
-import org.springframework.boot.actuate.health.HealthEndpoint;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.http.HttpStatus;
 

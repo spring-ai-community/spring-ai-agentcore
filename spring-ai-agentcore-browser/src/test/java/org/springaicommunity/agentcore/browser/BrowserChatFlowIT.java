@@ -96,8 +96,8 @@ class BrowserChatFlowIT {
 
 		List<GeneratedFile> screenshots = this.artifactStore.retrieve(sessionId);
 		assertThat(screenshots).hasSize(1);
-		assertThat(screenshots.get(0).isImage()).isTrue();
-		assertThat(BrowserArtifacts.url(screenshots.get(0))).hasValue("https://docs.aws.amazon.com");
+		assertThat(screenshots.getFirst().isImage()).isTrue();
+		assertThat(BrowserArtifacts.url(screenshots.getFirst())).hasValue("https://docs.aws.amazon.com");
 	}
 
 	@Test
@@ -141,11 +141,11 @@ class BrowserChatFlowIT {
 
 		List<GeneratedFile> screenshots1 = this.artifactStore.retrieve(session1);
 		assertThat(screenshots1).hasSize(1);
-		assertThat(screenshots1.get(0).isImage()).isTrue();
+		assertThat(screenshots1.getFirst().isImage()).isTrue();
 
 		List<GeneratedFile> screenshots2 = this.artifactStore.retrieve(session2);
 		assertThat(screenshots2).hasSize(1);
-		assertThat(screenshots2.get(0).isImage()).isTrue();
+		assertThat(screenshots2.getFirst().isImage()).isTrue();
 	}
 
 	@SpringBootApplication
@@ -157,7 +157,7 @@ class BrowserChatFlowIT {
 			BedrockChatOptions options = BedrockChatOptions.builder()
 				.model("global.anthropic.claude-sonnet-4-5-20250929-v1:0")
 				.build();
-			return BedrockProxyChatModel.builder().defaultOptions(options).build();
+			return BedrockProxyChatModel.builder().options(options).build();
 		}
 
 		@Bean

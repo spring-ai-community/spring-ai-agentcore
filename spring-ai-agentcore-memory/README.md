@@ -281,8 +281,8 @@ void deleteByConversationId(String conversationId);
 ## Requirements
 
 - Java 17+
-- Spring Boot 3.x
-- Spring AI 1.1.1+
+- Spring Boot 4.x
+- Spring AI 2.0.0+
 
 ## Testing
 

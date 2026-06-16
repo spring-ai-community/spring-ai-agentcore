@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.springaicommunity.agentcore.model.AgentCorePingResponse;
 import org.springaicommunity.agentcore.model.PingStatus;
 
-import org.springframework.boot.actuate.health.HealthEndpoint;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 

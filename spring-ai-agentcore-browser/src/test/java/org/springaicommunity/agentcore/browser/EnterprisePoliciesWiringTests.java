@@ -18,6 +18,7 @@ package org.springaicommunity.agentcore.browser;
 
 import java.util.List;
 
+import com.microsoft.playwright.Playwright;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -51,15 +52,15 @@ class EnterprisePoliciesWiringTests {
 						new AgentCoreBrowserConfiguration.S3Ref("my-bucket", "policies/block.json", null),
 						"RECOMMENDED")));
 		AgentCoreBrowserClient browserClient = new AgentCoreBrowserClient(mockClient, config,
-				mock(AwsCredentialsProvider.class), mock(com.microsoft.playwright.Playwright.class));
+				mock(AwsCredentialsProvider.class), mock(Playwright.class));
 		StartBrowserSessionRequest captured = browserClient.buildStartSessionRequest("test-session");
 		assertThat(captured.hasEnterprisePolicies()).isTrue();
 
 		List<BrowserEnterprisePolicy> policies = captured.enterprisePolicies();
 		assertThat(policies).hasSize(1);
-		assertThat(policies.get(0).location().s3().bucket()).isEqualTo("my-bucket");
-		assertThat(policies.get(0).location().s3().prefix()).isEqualTo("policies/block.json");
-		assertThat(policies.get(0).typeAsString()).isEqualTo("RECOMMENDED");
+		assertThat(policies.getFirst().location().s3().bucket()).isEqualTo("my-bucket");
+		assertThat(policies.getFirst().location().s3().prefix()).isEqualTo("policies/block.json");
+		assertThat(policies.getFirst().typeAsString()).isEqualTo("RECOMMENDED");
 	}
 
 	@Test
@@ -73,7 +74,7 @@ class EnterprisePoliciesWiringTests {
 		AgentCoreBrowserConfiguration config = new AgentCoreBrowserConfiguration("agentcore", null, null, null, null,
 				null, null, null, null, null, null, null, null, null);
 		AgentCoreBrowserClient browserClient = new AgentCoreBrowserClient(mockClient, config,
-				mock(AwsCredentialsProvider.class), mock(com.microsoft.playwright.Playwright.class));
+				mock(AwsCredentialsProvider.class), mock(Playwright.class));
 		StartBrowserSessionRequest captured = browserClient.buildStartSessionRequest("test-session");
 		assertThat(captured.hasEnterprisePolicies()).isFalse();
 	}
@@ -92,9 +93,9 @@ class EnterprisePoliciesWiringTests {
 						new AgentCoreBrowserConfiguration.S3Ref("my-bucket", "policies/v2.json", "abc123"),
 						"RECOMMENDED")));
 		AgentCoreBrowserClient browserClient = new AgentCoreBrowserClient(mockClient, config,
-				mock(AwsCredentialsProvider.class), mock(com.microsoft.playwright.Playwright.class));
+				mock(AwsCredentialsProvider.class), mock(Playwright.class));
 		StartBrowserSessionRequest captured = browserClient.buildStartSessionRequest("test-session");
-		assertThat(captured.enterprisePolicies().get(0).location().s3().versionId()).isEqualTo("abc123");
+		assertThat(captured.enterprisePolicies().getFirst().location().s3().versionId()).isEqualTo("abc123");
 	}
 
 }

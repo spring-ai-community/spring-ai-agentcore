@@ -38,7 +38,7 @@ import org.springframework.stereotype.Service;
  * @since 1.0.0
  */
 @Service
-@ConditionalOnMissingClass("org.springframework.boot.actuate.health.HealthEndpoint")
+@ConditionalOnMissingClass("org.springframework.boot.health.actuate.endpoint.HealthEndpoint")
 public class StaticAgentCorePingService implements AgentCorePingService {
 
 	private final AgentCoreTaskTracker agentCoreTaskTracker;

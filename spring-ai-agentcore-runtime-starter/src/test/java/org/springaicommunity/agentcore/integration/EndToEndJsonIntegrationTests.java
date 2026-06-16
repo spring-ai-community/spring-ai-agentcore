@@ -21,14 +21,16 @@ import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@AutoConfigureTestRestTemplate
 @SpringBootTest(classes = EndToEndJsonIntegrationTests.TestApp.class,
 		webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class EndToEndJsonIntegrationTests {
@@ -65,7 +67,7 @@ class EndToEndJsonIntegrationTests {
 
 	}
 
-	static record TestRequest(String prompt, String status) {
+	record TestRequest(String prompt, String status) {
 	}
 
 }

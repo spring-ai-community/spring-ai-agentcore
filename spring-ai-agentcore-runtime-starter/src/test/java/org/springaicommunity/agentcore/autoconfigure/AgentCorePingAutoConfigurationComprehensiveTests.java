@@ -22,10 +22,11 @@ import org.springaicommunity.agentcore.model.PingStatus;
 import org.springaicommunity.agentcore.ping.ActuatorAgentCorePingService;
 import org.springaicommunity.agentcore.ping.AgentCorePingService;
 import org.springaicommunity.agentcore.ping.StaticAgentCorePingService;
+import org.springaicommunity.agentcore.ping.TestHealthDescriptors;
 
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthEndpoint;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
+import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -112,7 +113,7 @@ class AgentCorePingAutoConfigurationComprehensiveTests {
 		@Bean
 		HealthEndpoint healthEndpoint() {
 			var endpoint = mock(HealthEndpoint.class);
-			given(endpoint.health()).willReturn(Health.up().build());
+			given(endpoint.health()).willReturn(TestHealthDescriptors.of(Status.UP));
 			return endpoint;
 		}
 

@@ -271,7 +271,7 @@ See the `examples/` directory for complete working examples:
 ## Requirements
 
 - Java 17+
-- Spring Boot 3.x
+- Spring Boot 4.x
 - Maven or Gradle
 
 ## License

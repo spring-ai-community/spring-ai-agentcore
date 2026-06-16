@@ -19,8 +19,9 @@ package org.springaicommunity.agentcore.ping;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.model.PingStatus;
 
-import org.springframework.boot.actuate.health.Health;
-import org.springframework.boot.actuate.health.HealthEndpoint;
+import org.springframework.boot.health.actuate.endpoint.HealthDescriptor;
+import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
+import org.springframework.boot.health.contributor.Status;
 import org.springframework.http.HttpStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,11 +34,15 @@ import static org.mockito.Mockito.mock;
  */
 class ActuatorAgentCorePingServiceTests {
 
+	private static HealthDescriptor descriptor(Status status) {
+		return TestHealthDescriptors.of(status);
+	}
+
 	@Test
 	void shouldReturnHealthyForUpStatus() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		given(endpoint.health()).willReturn(Health.up().build());
+		given(endpoint.health()).willReturn(descriptor(Status.UP));
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -55,7 +60,7 @@ class ActuatorAgentCorePingServiceTests {
 	void shouldReturnUnhealthyForDownStatus() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		given(endpoint.health()).willReturn(Health.down().build());
+		given(endpoint.health()).willReturn(descriptor(Status.DOWN));
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);
@@ -91,7 +96,7 @@ class ActuatorAgentCorePingServiceTests {
 	void shouldReturnHealthyBusyWhenActiveRequests() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		given(endpoint.health()).willReturn(Health.up().build());
+		given(endpoint.health()).willReturn(descriptor(Status.UP));
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 		given(requestCounter.getCount()).willReturn(5L);
 
@@ -110,7 +115,7 @@ class ActuatorAgentCorePingServiceTests {
 	void shouldDelegateToHealthEndpoint() {
 		// Given
 		var endpoint = mock(HealthEndpoint.class);
-		given(endpoint.health()).willReturn(Health.up().build());
+		given(endpoint.health()).willReturn(descriptor(Status.UP));
 		var requestCounter = mock(AgentCoreTaskTracker.class);
 
 		var service = new ActuatorAgentCorePingService(endpoint, requestCounter);

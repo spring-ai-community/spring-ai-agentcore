@@ -48,7 +48,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 		@EnabledIfEnvironmentVariable(named = "AGENTCORE_MEMORY_LONG_TERM_EPISODIC_STRATEGY_ID", matches = ".+"),
 		@EnabledIfEnvironmentVariable(named = "AWS_ACCESS_KEY_ID", matches = ".+") })
 @SpringBootTest(classes = AgentCoreMemoryIT.TestApp.class,
-		properties = { "spring.ai.bedrock.converse.chat.options.model=" + AgentCoreMemoryIT.CHAT_MODEL })
+		properties = { "spring.ai.bedrock.converse.chat.model=" + AgentCoreMemoryIT.CHAT_MODEL })
 @DisplayName("AgentCore Memory Integration Test (Env)")
 class AgentCoreMemoryEnvIT extends AgentCoreMemoryIT {
 
