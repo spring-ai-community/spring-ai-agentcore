@@ -1,1 +1,2 @@
 org.springaicommunity.agentcore.autoconfigure.AgentCoreAutoConfiguration
+org.springaicommunity.agentcore.observability.AgentCoreBaggagePropagationAutoConfiguration
