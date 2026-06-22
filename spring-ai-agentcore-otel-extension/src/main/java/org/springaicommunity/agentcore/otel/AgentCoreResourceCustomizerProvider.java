@@ -67,6 +67,9 @@ public class AgentCoreResourceCustomizerProvider implements AutoConfigurationCus
 
 		autoConfiguration.addTracerProviderCustomizer(this::addSessionBaggageProcessor);
 
+		autoConfiguration
+			.addSpanExporterCustomizer((exporter, config) -> new AwsSdkGenAiSpanRenamingExporter(exporter));
+
 		autoConfiguration.addPropertiesSupplier(this::getDefaultProperties);
 	}
 

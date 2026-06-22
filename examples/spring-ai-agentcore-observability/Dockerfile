@@ -2,8 +2,11 @@ FROM --platform=linux/arm64 amazoncorretto:21-alpine
 
 # AWS Distro for OpenTelemetry (ADOT) Java auto-instrumentation agent version.
 ARG ADOT_VERSION=v2.26.2
-# AgentCore OTel extension version (adds aws.service.type=gen_ai_agent for the GenAI dashboard).
+# AgentCore OTel extension version. Recorded as a Docker LABEL on the image below.
 ARG AGENTCORE_EXT_VERSION=1.1.0
+
+LABEL org.springaicommunity.agentcore-ext-version="${AGENTCORE_EXT_VERSION}" \
+      org.springaicommunity.adot-version="${ADOT_VERSION}"
 
 RUN addgroup -S appuser && adduser -S appuser -G appuser
 WORKDIR /app
