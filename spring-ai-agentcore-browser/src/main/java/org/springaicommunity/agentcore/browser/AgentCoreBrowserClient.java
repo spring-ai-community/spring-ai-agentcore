@@ -58,6 +58,13 @@ public class AgentCoreBrowserClient implements BrowserClient {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreBrowserClient.class);
 
+	/**
+	 * Navigation and action timeout. Heavy pages can exceed Playwright's 30s default, so
+	 * navigation, load-state waits, and locator actions use a more generous ceiling to
+	 * reduce spurious timeouts.
+	 */
+	private static final double NAVIGATION_TIMEOUT_MS = 60_000;
+
 	private final BedrockAgentCoreClient client;
 
 	private final AgentCoreBrowserConfiguration config;
@@ -216,6 +223,8 @@ public class AgentCoreBrowserClient implements BrowserClient {
 			Page page = (context.pages().isEmpty()) ? context.newPage() : context.pages().get(0);
 
 			logger.info("Navigating to: {}", targetUrl);
+			page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
+			page.setDefaultTimeout(NAVIGATION_TIMEOUT_MS);
 			page.navigate(targetUrl);
 			page.waitForLoadState();
 

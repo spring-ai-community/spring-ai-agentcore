@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -236,15 +237,20 @@ public class AgentCoreCodeInterpreterClient {
 	 * @return execution result with text output and retrieved files
 	 */
 	public CodeExecutionResult executeInEphemeralSession(String language, String code) {
-		String sessionName = "ephemeral-" + System.currentTimeMillis();
+		String sessionName = "ephemeral-" + UUID.randomUUID();
 		String sessionId = this.startSession(sessionName);
 		try {
+			// Snapshot any files already present in a freshly started sandbox so they are
+			// not misattributed as output of this execution.
+			List<String> baselineFiles = this.listFiles(sessionId, "");
+
 			// Execute code
 			CodeExecutionResult execResult = this.executeCode(sessionId, language, code);
 
-			// Retrieve generated files
+			// Retrieve only files created during this execution (post minus baseline)
 			List<GeneratedFile> files = new ArrayList<>(execResult.files());
-			List<String> sessionFiles = this.listFiles(sessionId, "");
+			List<String> sessionFiles = new ArrayList<>(this.listFiles(sessionId, ""));
+			sessionFiles.removeAll(baselineFiles);
 			List<String> filesToRetrieve = this.filterRetrievableFiles(sessionFiles);
 
 			if (!filesToRetrieve.isEmpty()) {
