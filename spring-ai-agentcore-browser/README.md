@@ -25,7 +25,7 @@ Add the BOM and dependency:
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-bom</artifactId>
-            <version>${version}</version>  <!-- Use latest: 1.0.0-RC2, 1.0.0-RC3, etc. -->
+            <version>1.0.0</version>  <!-- or the latest release -->
             <type>pom</type>
             <scope>import</scope>
         </dependency>

@@ -65,9 +65,22 @@ mvn spring-javaformat:apply rewrite:run -pl <module>
 # Full build (CI does this — rarely needed locally)
 mvn clean verify
 
-# Integration tests (requires AWS credentials)
-AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-memory
+# Integration tests (requires AWS credentials in us-east-1)
+# ITs self-provision and tear down their own AWS resources; no pre-existing
+# resources are needed for the default path.
+AGENTCORE_IT=true AWS_REGION=us-east-1 mvn verify -pl spring-ai-agentcore-memory
+
+# Run integration tests across all modules
+AGENTCORE_IT=true AWS_REGION=us-east-1 mvn clean verify
 ```
+
+> **Integration test prerequisites**
+> - AWS credentials with AgentCore access, in **us-east-1** (the browser ITs assert this region).
+> - The browser module ITs need Playwright/Chromium (downloaded automatically on first run).
+> - The default memory IT (`AgentCoreMemoryE2EIT`) **creates and deletes** its own memory and
+>   long-term strategies — it needs only `AGENTCORE_IT=true` plus credentials, no pre-existing IDs.
+> - After switching git branches, run `mvn clean ...` — the OpenRewrite recipe module compiles
+>   test sources incrementally and stale `target/` output from another branch can break the build.
 
 ## Code Conventions
 
@@ -96,10 +109,15 @@ This fixes: import ordering, `this.` qualifiers, lambda formatting, inner type p
 
 ## Integration Test Environment Variables
 
+Most ITs self-provision their AWS resources and need only `AGENTCORE_IT=true` plus
+credentials. The variables below are **only** for the optional `AgentCoreMemoryEnvIT`
+path, which runs against a pre-existing memory instead of creating one (see
+`scripts/it-memory.sh`, which discovers and exports them automatically):
+
 ```bash
 AGENTCORE_MEMORY_MEMORY_ID=<memory-id>
-AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_STRATEGY_ID=SemanticFacts-xxxxx
-AGENTCORE_MEMORY_LONG_TERM_USER_PREFERENCE_STRATEGY_ID=UserPreferences-xxxxx
+AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_FACTS_STRATEGY_ID=SemanticFacts-xxxxx
+AGENTCORE_MEMORY_LONG_TERM_USER_PREFERENCES_STRATEGY_ID=UserPreferences-xxxxx
 AGENTCORE_MEMORY_LONG_TERM_SUMMARY_STRATEGY_ID=ConversationSummary-xxxxx
 AGENTCORE_MEMORY_LONG_TERM_EPISODIC_STRATEGY_ID=EpisodicMemory-xxxxx
 ```

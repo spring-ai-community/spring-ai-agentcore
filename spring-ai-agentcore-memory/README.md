@@ -286,7 +286,7 @@ void deleteByConversationId(String conversationId);
 
 ## Testing
 
-See [DEV.md](../DEV.md) for testing instructions.
+See the [Build &amp; Test](../AGENTS.md#build--test) and [Integration Test Environment Variables](../AGENTS.md#integration-test-environment-variables) sections in `AGENTS.md` for testing instructions.
 
 ## License
 
