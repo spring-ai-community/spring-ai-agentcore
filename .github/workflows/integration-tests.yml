@@ -1,0 +1,83 @@
+name: Integration Tests
+
+# Runs live AWS integration tests against Bedrock AgentCore.
+# Non-blocking: results are informational only, not required for merge.
+#
+# Triggers:
+#   - Nightly schedule (catches regressions)
+#   - Manual dispatch (on-demand validation, with optional memory_id override)
+#   - Label 'run-integration-tests' on PRs (opt-in per PR)
+#
+# Prerequisites:
+#   - Repository secret: AWS_INTEGRATION_TEST_ROLE_ARN (GitHub OIDC IAM role)
+#   - Repository variable: AGENTCORE_MEMORY_ID (pinned memory ID for tests)
+#   - Repository variable: AWS_REGION (optional, defaults to us-east-1)
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      memory_id:
+        description: 'Override memory ID (leave empty to use repo variable)'
+        required: false
+        type: string
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  id-token: write  # Required for GitHub OIDC → AWS IAM role
+
+concurrency:
+  group: integration-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    # Only run on schedule, dispatch, or when the label is applied
+    if: >
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'run-integration-tests')
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'corretto'
+          cache: 'maven'
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_INTEGRATION_TEST_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Resolve AgentCore Memory ID
+        run: |
+          MEMORY_ID="${{ github.event.inputs.memory_id || vars.AGENTCORE_MEMORY_ID }}"
+          if [ -z "$MEMORY_ID" ]; then
+            echo "::error::AGENTCORE_MEMORY_ID is not configured and no input was provided."
+            exit 1
+          fi
+          echo "AGENTCORE_MEMORY_MEMORY_ID=$MEMORY_ID" >> "$GITHUB_ENV"
+
+      - name: Run integration tests
+        env:
+          AGENTCORE_IT: 'true'
+          AGENTCORE_EVAL_PROBE: 'true'
+        run: |
+          mvn -ntp verify -am \
+            -pl spring-ai-agentcore-memory,spring-ai-agentcore-browser,spring-ai-agentcore-code-interpreter,spring-ai-agentcore-evaluations \
+            -Dmaven.test.failure.ignore=true
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-reports
+          path: '**/target/surefire-reports/'
+          retention-days: 7
