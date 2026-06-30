@@ -23,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -45,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author Yuriy Bezsonov
  */
+@Tag("integration")
 @EnabledIfEnvironmentVariable(named = "AGENTCORE_IT", matches = "true")
 @SpringBootTest(classes = BrowserToolsIT.TestApp.class)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)

@@ -18,6 +18,7 @@ package org.springaicommunity.agentcore.memory;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariables;
 
@@ -40,6 +41,7 @@ import org.springframework.boot.test.context.SpringBootTest;
  *
  * @author Yuriy Bezsonov
  */
+@Tag("integration")
 @EnabledIfEnvironmentVariables({ @EnabledIfEnvironmentVariable(named = "AGENTCORE_MEMORY_MEMORY_ID", matches = ".+"),
 		@EnabledIfEnvironmentVariable(named = "AGENTCORE_MEMORY_LONG_TERM_SEMANTIC_FACTS_STRATEGY_ID", matches = ".+"),
 		@EnabledIfEnvironmentVariable(named = "AGENTCORE_MEMORY_LONG_TERM_USER_PREFERENCES_STRATEGY_ID",

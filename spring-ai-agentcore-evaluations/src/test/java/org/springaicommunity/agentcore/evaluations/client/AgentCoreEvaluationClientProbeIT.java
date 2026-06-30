@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import software.amazon.awssdk.regions.Region;
@@ -30,6 +31,7 @@ import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
  * Live probe for the AgentCore Evaluate API. Enabled via
  * {@code AGENTCORE_EVAL_PROBE=true}.
  */
+@Tag("integration")
 @EnabledIfEnvironmentVariable(named = "AGENTCORE_EVAL_PROBE", matches = "true")
 class AgentCoreEvaluationClientProbeIT {
 

@@ -23,6 +23,7 @@ import com.microsoft.playwright.Playwright;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -42,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * @author Yuriy Bezsonov
  */
+@Tag("integration")
 @EnabledIfEnvironmentVariable(named = "AGENTCORE_IT", matches = "true")
 @DisplayName("Enterprise Policies Integration Tests")
 class EnterprisePoliciesIT {

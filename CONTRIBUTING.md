@@ -56,24 +56,30 @@ mvn spring-javaformat:apply rewrite:run -pl <module>
 
 ### Integration tests
 
-Integration tests require AWS credentials and are skipped by default. Run them with:
+Integration tests require AWS credentials and are skipped by default. Live AWS tests
+are tagged `@Tag("integration")` and selected via the Maven `integration` profile.
+
+Run all live AWS integration tests:
 ```bash
-AGENTCORE_IT=true mvn verify -pl spring-ai-agentcore-memory
+AGENTCORE_IT=true AGENTCORE_EVAL_PROBE=true mvn verify -Pintegration
 ```
 
-To run all integration tests across all modules:
+Run integration tests for a single module:
 ```bash
-AGENTCORE_IT=true AGENTCORE_EVAL_PROBE=true mvn verify \
-  -pl spring-ai-agentcore-memory,spring-ai-agentcore-browser,spring-ai-agentcore-code-interpreter,spring-ai-agentcore-evaluations
+AGENTCORE_IT=true mvn verify -Pintegration -pl spring-ai-agentcore-memory
 ```
+
+Local browser tests (`LocalBrowserToolsIT`) are not tagged and run with the default
+profile: `mvn verify -pl spring-ai-agentcore-browser`.
 
 #### Required environment variables
 
 | Variable | Description |
 |----------|-------------|
-| `AGENTCORE_IT=true` | Enables memory, browser, and code-interpreter IT tests |
+| `AGENTCORE_IT=true` | Enables memory, browser, and code-interpreter live AWS IT tests |
 | `AGENTCORE_EVAL_PROBE=true` | Enables evaluations IT tests |
-| `AGENTCORE_MEMORY_MEMORY_ID` | Pinned memory ID for tests |
+| `AGENTCORE_MEMORY_MEMORY_ID` | Pinned memory ID for tests (CI repo variable) |
+| `-Pintegration` | Maven profile selecting `@Tag("integration")` tests via Failsafe |
 
 Strategy IDs (`SEMANTIC_FACTS`, `USER_PREFERENCES`, `SUMMARY`, `EPISODIC`) are
 discovered at runtime by the tests themselves from the configured memory.

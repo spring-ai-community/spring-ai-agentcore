@@ -70,8 +70,7 @@ jobs:
           AGENTCORE_IT: 'true'
           AGENTCORE_EVAL_PROBE: 'true'
         run: |
-          mvn -ntp verify -am \
-            -pl spring-ai-agentcore-memory,spring-ai-agentcore-browser,spring-ai-agentcore-code-interpreter,spring-ai-agentcore-evaluations \
+          mvn -ntp verify -Pintegration \
             -Dmaven.test.failure.ignore=true
 
       - name: Upload test reports
@@ -79,5 +78,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: integration-test-reports
-          path: '**/target/surefire-reports/'
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
           retention-days: 7

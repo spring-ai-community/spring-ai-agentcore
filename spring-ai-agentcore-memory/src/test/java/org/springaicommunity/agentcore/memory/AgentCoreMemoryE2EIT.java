@@ -22,6 +22,7 @@ import java.util.List;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateMemoryRequest;
@@ -53,6 +54,7 @@ import static org.awaitility.Awaitility.await;
  *
  * @author Yuriy Bezsonov
  */
+@Tag("integration")
 @EnabledIfEnvironmentVariable(named = "AGENTCORE_IT", matches = "true")
 @SpringBootTest(classes = AgentCoreMemoryIT.TestApp.class,
 		properties = { "spring.ai.bedrock.converse.chat.model=" + AgentCoreMemoryIT.CHAT_MODEL })
