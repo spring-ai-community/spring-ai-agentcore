@@ -1,4 +1,4 @@
-FROM --platform=linux/arm64 amazoncorretto:21-alpine
+FROM --platform=linux/arm64 amazoncorretto:24-alpine
 
 # AWS Distro for OpenTelemetry (ADOT) Java auto-instrumentation agent version.
 ARG ADOT_VERSION=v2.26.2
