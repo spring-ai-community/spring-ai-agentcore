@@ -4,18 +4,20 @@ name: Integration Tests
 # Non-blocking: results are informational only, not required for merge.
 #
 # Triggers:
-#   - Nightly schedule (catches regressions)
-#   - Manual dispatch (on-demand validation, with optional memory_id override)
-#   - Label 'run-integration-tests' on PRs (opt-in per PR)
+# - Manual dispatch (on-demand validation, with optional memory_id override)
+# - Label 'run-integration-tests' on PRs (opt-in per PR)
 #
+# A nightly `schedule:` trigger is intentionally NOT enabled yet: without a
+# dedicated AWS account (the AWS_INTEGRATION_TEST_ROLE_ARN secret and
+# AGENTCORE_MEMORY_ID variable), a scheduled run would fail at the
+# "Resolve AgentCore Memory ID" step and produce a red build every night with
+# no signal. Re-add a `schedule:` block once the dedicated account is provisioned.
 # Prerequisites:
 #   - Repository secret: AWS_INTEGRATION_TEST_ROLE_ARN (GitHub OIDC IAM role)
 #   - Repository variable: AGENTCORE_MEMORY_ID (pinned memory ID for tests)
 #   - Repository variable: AWS_REGION (optional, defaults to us-east-1)
 
 on:
-  schedule:
-    - cron: '0 6 * * *'  # Daily at 06:00 UTC
   workflow_dispatch:
     inputs:
       memory_id:
@@ -36,9 +38,8 @@ concurrency:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
-    # Only run on schedule, dispatch, or when the label is applied
+    # Only run on manual dispatch or when the label is applied
     if: >
-      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.event.label.name == 'run-integration-tests')
     steps:
