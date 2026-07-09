@@ -10,6 +10,13 @@
         <version>1.1.0-SNAPSHOT</version>
     </parent>
 
+    <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
+    <scm>
+        <url>https://github.com/spring-ai-community/spring-ai-agentcore</url>
+        <connection>git://github.com/spring-ai-community/spring-ai-agentcore.git</connection>
+        <developerConnection>git@github.com/spring-ai-community/spring-ai-agentcore.git</developerConnection>
+    </scm>
+
     <artifactId>spring-ai-agentcore-otel-extension</artifactId>
     <name>Spring AI AgentCore OTel Extension</name>
     <description>OTel Java agent extension that adds aws.service.type=gen_ai_agent resource attribute for the CloudWatch GenAI Observability dashboard</description>

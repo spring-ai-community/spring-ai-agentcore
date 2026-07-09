@@ -449,7 +449,8 @@
                         <configuration>
                             <publishingServerId>central</publishingServerId>
                             <excludeArtifacts>
-                                spring-ai-agentcore-parent
+                                spring-ai-agentcore-parent,
+                                spring-ai-agentcore-rewrite-recipes
                             </excludeArtifacts>
                             <autoPublish>true</autoPublish>
                         </configuration>

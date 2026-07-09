@@ -25,7 +25,7 @@ jobs:
           distribution: 'corretto'
           cache: 'maven'
       - name: Build with Maven
-        run: mvn -ntp clean verify
+        run: mvn -ntp clean install
       - name: Check rewrite compliance
         run: mvn -ntp rewrite:dryRun -Dcheckstyle.skip=true -Dlicense.skip=true
 
