@@ -22,7 +22,7 @@
     <description>OTel Java agent extension that adds aws.service.type=gen_ai_agent resource attribute for the CloudWatch GenAI Observability dashboard</description>
 
     <properties>
-        <opentelemetry.version>1.63.0</opentelemetry.version>
+        <opentelemetry.version>1.64.0</opentelemetry.version>
     </properties>
 
     <dependencies>
