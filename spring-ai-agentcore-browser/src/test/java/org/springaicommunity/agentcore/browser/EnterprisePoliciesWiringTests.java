@@ -58,9 +58,9 @@ class EnterprisePoliciesWiringTests {
 
 		List<BrowserEnterprisePolicy> policies = captured.enterprisePolicies();
 		assertThat(policies).hasSize(1);
-		assertThat(policies.getFirst().location().s3().bucket()).isEqualTo("my-bucket");
-		assertThat(policies.getFirst().location().s3().prefix()).isEqualTo("policies/block.json");
-		assertThat(policies.getFirst().typeAsString()).isEqualTo("RECOMMENDED");
+		assertThat(policies.get(0).location().s3().bucket()).isEqualTo("my-bucket");
+		assertThat(policies.get(0).location().s3().prefix()).isEqualTo("policies/block.json");
+		assertThat(policies.get(0).typeAsString()).isEqualTo("RECOMMENDED");
 	}
 
 	@Test
@@ -95,7 +95,7 @@ class EnterprisePoliciesWiringTests {
 		AgentCoreBrowserClient browserClient = new AgentCoreBrowserClient(mockClient, config,
 				mock(AwsCredentialsProvider.class), mock(Playwright.class));
 		StartBrowserSessionRequest captured = browserClient.buildStartSessionRequest("test-session");
-		assertThat(captured.enterprisePolicies().getFirst().location().s3().versionId()).isEqualTo("abc123");
+		assertThat(captured.enterprisePolicies().get(0).location().s3().versionId()).isEqualTo("abc123");
 	}
 
 }

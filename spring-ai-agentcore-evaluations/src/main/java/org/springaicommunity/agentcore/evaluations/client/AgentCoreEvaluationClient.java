@@ -156,31 +156,49 @@ public class AgentCoreEvaluationClient {
 	}
 
 	private static Document mapToDocument(Object value) {
-		return switch (value) {
-			case null -> Document.fromNull();
-			case String s -> Document.fromString(s);
-			case Boolean b -> Document.fromBoolean(b);
-			case Integer i -> Document.fromNumber(i);
-			case Long l -> Document.fromNumber(l);
-			case Double d -> Document.fromNumber(d);
-			case Float f -> Document.fromNumber(f);
-			case BigDecimal bd -> Document.fromNumber(bd);
-			case BigInteger bi -> Document.fromNumber(bi);
-			case Number n -> Document.fromNumber(n.toString());
-			case List<?> list -> {
-				List<Document> docs = new ArrayList<>(list.size());
-				for (Object item : list) {
-					docs.add(mapToDocument(item));
-				}
-				yield Document.fromList(docs);
+		if (value == null) {
+			return Document.fromNull();
+		}
+		if (value instanceof String s) {
+			return Document.fromString(s);
+		}
+		if (value instanceof Boolean b) {
+			return Document.fromBoolean(b);
+		}
+		if (value instanceof Integer i) {
+			return Document.fromNumber(i);
+		}
+		if (value instanceof Long l) {
+			return Document.fromNumber(l);
+		}
+		if (value instanceof Double d) {
+			return Document.fromNumber(d);
+		}
+		if (value instanceof Float f) {
+			return Document.fromNumber(f);
+		}
+		if (value instanceof BigDecimal bd) {
+			return Document.fromNumber(bd);
+		}
+		if (value instanceof BigInteger bi) {
+			return Document.fromNumber(bi);
+		}
+		if (value instanceof Number n) {
+			return Document.fromNumber(n.toString());
+		}
+		if (value instanceof List<?> list) {
+			List<Document> docs = new ArrayList<>(list.size());
+			for (Object item : list) {
+				docs.add(mapToDocument(item));
 			}
-			case Map<?, ?> map -> {
-				Map<String, Document> docMap = new HashMap<>(map.size());
-				map.forEach((k, v) -> docMap.put(k.toString(), mapToDocument(v)));
-				yield Document.fromMap(docMap);
-			}
-			default -> Document.fromString(value.toString());
-		};
+			return Document.fromList(docs);
+		}
+		if (value instanceof Map<?, ?> map) {
+			Map<String, Document> docMap = new HashMap<>(map.size());
+			map.forEach((k, v) -> docMap.put(k.toString(), mapToDocument(v)));
+			return Document.fromMap(docMap);
+		}
+		return Document.fromString(value.toString());
 	}
 
 	private List<EvaluationResult> mapResults(List<EvaluationResultContent> results) {

@@ -19,6 +19,8 @@ package org.springaicommunity.agentcore.evaluations;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springaicommunity.agentcore.evaluations.client.AgentCoreEvaluationClient;
@@ -66,15 +68,26 @@ public class AgentCoreEvaluationAutoConfiguration {
 	}
 
 	/**
-	 * Default executor for asynchronous evaluations. Uses a virtual-thread-per-task
-	 * executor because evaluation work blocks on remote Bedrock calls; virtual threads
-	 * are cheap to park on I/O.
+	 * Default executor for asynchronous evaluations. Uses a fixed pool of daemon platform
+	 * threads: evaluation work blocks on remote Bedrock calls, so the pool is sized for
+	 * I/O concurrency rather than CPU cores. A platform-thread pool (instead of virtual
+	 * threads) keeps the Java 17 baseline.
+	 * @param properties the evaluation properties supplying the pool size
 	 * @return the evaluation executor service
 	 */
 	@Bean(name = EXECUTOR_BEAN_NAME, destroyMethod = "close")
 	@ConditionalOnMissingBean(name = EXECUTOR_BEAN_NAME)
-	public ExecutorService agentCoreEvaluationExecutor() {
-		return Executors.newVirtualThreadPerTaskExecutor();
+	public ExecutorService agentCoreEvaluationExecutor(AgentCoreEvaluationProperties properties) {
+		return Executors.newFixedThreadPool(properties.executorPoolSize(), daemonThreadFactory());
+	}
+
+	private static ThreadFactory daemonThreadFactory() {
+		AtomicInteger counter = new AtomicInteger();
+		return (runnable) -> {
+			Thread thread = new Thread(runnable, "agentcore-evaluation-" + counter.incrementAndGet());
+			thread.setDaemon(true);
+			return thread;
+		};
 	}
 
 	@Bean

@@ -140,7 +140,7 @@ class AgentCoreMemoryPropertiesIT {
 		repository.saveAll(conversationId, List.of(UserMessage.builder().text("hello from properties IT").build()));
 		var messages = repository.findByConversationId(conversationId);
 		assertThat(messages).hasSize(1);
-		assertThat(messages.getFirst().getText()).isEqualTo("hello from properties IT");
+		assertThat(messages.get(0).getText()).isEqualTo("hello from properties IT");
 		repository.deleteByConversationId(conversationId);
 	}
 
