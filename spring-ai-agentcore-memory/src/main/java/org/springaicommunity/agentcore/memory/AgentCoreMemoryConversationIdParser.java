@@ -81,6 +81,29 @@ public final class AgentCoreMemoryConversationIdParser {
 	}
 
 	/**
+	 * Compose a compound conversationId from a user id and a session suffix.
+	 *
+	 * <p>
+	 * This is additive sugar so callers stop hand-concatenating
+	 * {@code userId + ":" + sessionSuffix}. It does not change {@link #parse}. Both
+	 * segments are trimmed and must be non-blank; the result is always accepted by the
+	 * session repository seam (which applies the same trim and empty-segment rejection).
+	 * @param userId the user id (actor segment); must not be blank
+	 * @param sessionSuffix the session suffix; must not be blank
+	 * @return {@code trimmedUserId + ":" + trimmedSessionSuffix}
+	 * @throws IllegalArgumentException if either segment is null or blank after trimming
+	 */
+	public static String of(String userId, String sessionSuffix) {
+		if (userId == null || userId.trim().isEmpty()) {
+			throw new IllegalArgumentException("userId must not be null or blank");
+		}
+		if (sessionSuffix == null || sessionSuffix.trim().isEmpty()) {
+			throw new IllegalArgumentException("sessionSuffix must not be null or blank");
+		}
+		return userId.trim() + ":" + sessionSuffix.trim();
+	}
+
+	/**
 	 * Represents parsed actor and session from a conversationId.
 	 *
 	 * @param actor parsed actor identifier

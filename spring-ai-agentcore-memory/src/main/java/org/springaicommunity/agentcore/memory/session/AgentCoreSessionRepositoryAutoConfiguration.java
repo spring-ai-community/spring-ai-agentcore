@@ -70,20 +70,48 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 			BedrockAgentCoreClient client) {
 		logger.info("Creating AgentCoreSessionRepository bean with memoryId: {}", memory.memoryId());
 
-		Integer totalEventsLimit = ShortTermPropertyResolver.resolve("total-events-limit", shortTerm.totalEventsLimit(),
-				memory.totalEventsLimit(), null);
-		String defaultSession = ShortTermPropertyResolver.resolve("default-session", shortTerm.defaultSession(),
-				memory.defaultSession(), AgentCoreMemoryConversationIdParser.DEFAULT_SESSION);
-		int pageSize = ShortTermPropertyResolver.resolve("page-size", shortTerm.pageSize(), memory.pageSize(),
-				ShortTermPropertyResolver.DEFAULT_PAGE_SIZE);
-		boolean ignoreUnknownRoles = ShortTermPropertyResolver.resolve("ignore-unknown-roles",
-				shortTerm.ignoreUnknownRoles(), memory.ignoreUnknownRoles(), Boolean.TRUE);
+		// Resolution order for each tunable: session -> short-term -> legacy -> default.
+		// The session namespace is the session adopter's front door; when a session value
+		// is null we defer to the existing short-term/legacy resolver (unchanged wording,
+		// unchanged deprecation warnings).
+		Integer totalEventsLimit = sessionFirst("total-events-limit", session.totalEventsLimit(),
+				shortTerm.totalEventsLimit(), () -> ShortTermPropertyResolver.resolve("total-events-limit",
+						shortTerm.totalEventsLimit(), memory.totalEventsLimit(), null));
+		String defaultSession = sessionFirst("default-session", session.defaultSession(), shortTerm.defaultSession(),
+				() -> ShortTermPropertyResolver.resolve("default-session", shortTerm.defaultSession(),
+						memory.defaultSession(), AgentCoreMemoryConversationIdParser.DEFAULT_SESSION));
+		int pageSize = sessionFirst("page-size", session.pageSize(), shortTerm.pageSize(),
+				() -> ShortTermPropertyResolver.resolve("page-size", shortTerm.pageSize(), memory.pageSize(),
+						ShortTermPropertyResolver.DEFAULT_PAGE_SIZE));
+		boolean ignoreUnknownRoles = sessionFirst("ignore-unknown-roles", session.ignoreUnknownRoles(),
+				shortTerm.ignoreUnknownRoles(), () -> ShortTermPropertyResolver.resolve("ignore-unknown-roles",
+						shortTerm.ignoreUnknownRoles(), memory.ignoreUnknownRoles(), Boolean.TRUE));
 		ShortTermPropertyResolver.warnIfIgnoreUnknownRolesExplicitlySet(shortTerm, memory);
 
 		boolean persistSynthetic = (session.persistSynthetic() != null) && session.persistSynthetic();
+		boolean branchSwapEnabled = (session.branchSwapEnabled() != null) && session.branchSwapEnabled();
+		boolean deleteSupersededBranch = (session.deleteSupersededBranch() != null) && session.deleteSupersededBranch();
+		boolean branchCacheEnabled = (session.branchCacheEnabled() != null) && session.branchCacheEnabled();
 
 		return new AgentCoreSessionRepository(memory.memoryId(), client, totalEventsLimit, defaultSession, pageSize,
-				ignoreUnknownRoles, persistSynthetic);
+				ignoreUnknownRoles, persistSynthetic, branchSwapEnabled, deleteSupersededBranch, branchCacheEnabled,
+				session.branchCacheTtl());
+	}
+
+	// Returns the session-scoped value when it is set, otherwise the short-term/legacy
+	// fallback. Emits a DEBUG breadcrumb when both the session and short-term namespaces
+	// explicitly set the same tunable, so an operator can see which one won (session).
+	private static <T> T sessionFirst(String name, T sessionValue, T shortTermValue,
+			java.util.function.Supplier<T> fallback) {
+		if (sessionValue != null) {
+			if (shortTermValue != null) {
+				logger
+					.debug("Property '{}' is set in both agentcore.memory.session.* and agentcore.memory.short-term.*;"
+							+ " the session value '{}' wins.", name, sessionValue);
+			}
+			return sessionValue;
+		}
+		return fallback.get();
 	}
 
 	@Bean
