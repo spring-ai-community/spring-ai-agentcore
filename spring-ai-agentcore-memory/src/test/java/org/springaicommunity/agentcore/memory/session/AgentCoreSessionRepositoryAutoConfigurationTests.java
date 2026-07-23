@@ -135,6 +135,67 @@ class AgentCoreSessionRepositoryAutoConfigurationTests {
 	}
 
 	@Test
+	void sessionScopedPropertyWinsOverShortTermWithoutLegacyDeprecationWarning(CapturedOutput output) {
+		// D6c: session-first resolution. Setting agentcore.memory.session.page-size (the
+		// session adopter's front door) plus the short-term namespace must not trip the
+		// legacy agentcore.memory.* deprecation warning, since neither legacy prop is
+		// set.
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true",
+					"agentcore.memory.session.page-size=11", "agentcore.memory.short-term.page-size=22")
+			.run((context) -> {
+				AgentCoreSessionProperties props = context.getBean(AgentCoreSessionProperties.class);
+				assertThat(props.pageSize()).isEqualTo(11);
+				assertThat(context).hasSingleBean(AgentCoreSessionRepository.class);
+				assertThat(output.getOut()).doesNotContain("is deprecated");
+			});
+	}
+
+	@Test
+	void shortTermPropertyUsedWhenSessionUnsetNoLegacyWarning(CapturedOutput output) {
+		// D6c: session value null -> defer to the short-term namespace; the short-term
+		// namespace is not deprecated, so no warning is emitted.
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true",
+					"agentcore.memory.short-term.page-size=22")
+			.run((context) -> {
+				AgentCoreSessionProperties props = context.getBean(AgentCoreSessionProperties.class);
+				assertThat(props.pageSize()).isNull();
+				assertThat(context).hasSingleBean(AgentCoreSessionRepository.class);
+				assertThat(output.getOut()).doesNotContain("is deprecated");
+			});
+	}
+
+	@Test
+	void branchSwapPropertiesBindFromSessionNamespace() {
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true",
+					"agentcore.memory.session.branch-swap-enabled=true",
+					"agentcore.memory.session.delete-superseded-branch=true",
+					"agentcore.memory.session.branch-cache-enabled=true",
+					"agentcore.memory.session.branch-cache-ttl=30s")
+			.run((context) -> {
+				AgentCoreSessionProperties props = context.getBean(AgentCoreSessionProperties.class);
+				assertThat(props.branchSwapEnabled()).isTrue();
+				assertThat(props.deleteSupersededBranch()).isTrue();
+				assertThat(props.branchCacheEnabled()).isTrue();
+				assertThat(props.branchCacheTtl()).hasSeconds(30);
+				assertThat(context).hasSingleBean(AgentCoreSessionRepository.class);
+			});
+	}
+
+	@Test
+	void branchSwapDefaultsOffWhenUnset() {
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true")
+			.run((context) -> {
+				AgentCoreSessionProperties props = context.getBean(AgentCoreSessionProperties.class);
+				assertThat(props.branchSwapEnabled()).isNull();
+				assertThat(context).hasSingleBean(AgentCoreSessionRepository.class);
+			});
+	}
+
+	@Test
 	void autoConfigOrderedAfterShortTerm() {
 		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true")

@@ -49,6 +49,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 /**
  * Adversarial / characterization tests for {@link AgentCoreSessionRepository} pure-logic
@@ -57,10 +59,9 @@ import static org.mockito.BDDMockito.given;
  * request builders, and the server-event -> {@link SessionEvent} mapping round-trip.
  *
  * <p>
- * These lock in CURRENT behavior. Assertions tagged FINDING document rough edges to be
- * reviewed by kl-architect (see kl-fuzzer-152.md). The mapping tests (F5) guard against a
- * malformed AgentCore event producing a raw {@link NullPointerException} instead of a
- * domain exception.
+ * Post-v2 (D7/D8): the session repository now HARDENS its own sessionId seam (trim +
+ * reject empty segments) and wraps malformed server events. Several tests here that
+ * previously characterized the rough edges are flipped to assert the fixed behavior.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -98,57 +99,66 @@ class AgentCoreSessionRepositoryAdversarialTests {
 		assertThatThrownBy(() -> this.repository.findById("")).isInstanceOf(IllegalArgumentException.class);
 	}
 
-	// ==================== FINDING F1: ":" passes validation, sends blank actorId =====
+	// ==================== D7: session-seam empty-segment rejection (FLIPPED) =========
 
 	@Test
-	void roughEdgeColonOnlySessionIdPassesValidationAndSendsBlankActorToAws() {
-		// FINDING F1 (wrong-behavior): validateSessionId uses trim().isEmpty(), so ":"
-		// (length 2, non-blank) is accepted, but the parser then splits it into an EMPTY
-		// actorId and EMPTY sessionId. The repository forwards those blanks straight to
-		// AgentCore. Garbage is accepted locally and only fails later at the AWS boundary
-		// (or worse, silently queries the wrong/blank actor). It is NOT caught by the
-		// stricter validateSessionId guard.
+	void colonOnlySessionIdIsRejectedAtSeamAndSendsNothingToAws() {
+		// FLIP of roughEdgeColonOnlySessionIdPassesValidationAndSendsBlankActorToAws.
+		// D7: ":" splits into an EMPTY actor and EMPTY session; the session seam now
+		// rejects it up front, before any AWS call, with a clear message naming the id.
+		assertThatThrownBy(() -> this.repository.findById(":")).isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("empty actor segment");
+		then(this.client).should(never()).listEvents(any(ListEventsRequest.class));
+	}
+
+	@Test
+	void leadingColonSessionIdIsRejectedAtSeamWithClearMessage() {
+		// FLIP of
+		// roughEdgeLeadingColonSessionIdWithExistingEventsThrowsConfusingLowLevelError.
+		// D7/F6: ":realSession" derives an EMPTY actor. The seam now rejects it with a
+		// clear IllegalArgumentException naming the offending sessionId, BEFORE any
+		// Session.builder() call, so the opaque deep spring-ai error never surfaces.
+		assertThatThrownBy(() -> this.repository.findById(":realSession")).isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining(":realSession")
+			.hasMessageContaining("empty actor segment");
+		then(this.client).should(never()).listEvents(any(ListEventsRequest.class));
+	}
+
+	@Test
+	void trailingColonSessionIdWithEmptySessionSegmentIsRejectedAtSeam() {
+		// D7: "actor:" splits into a non-empty actor and EMPTY session -> rejected.
+		assertThatThrownBy(() -> this.repository.findById("actor:")).isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("empty session segment");
+		then(this.client).should(never()).listEvents(any(ListEventsRequest.class));
+	}
+
+	@Test
+	void sessionSeamTrimsActorAndSessionSegments() {
+		// D7: " alice : conv " trims to actor "alice", session "conv" in the AWS request.
 		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(List.of()).build());
 
-		this.repository.findById(":");
+		this.repository.findById("  alice : conv  ");
 
 		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
-		org.mockito.BDDMockito.then(this.client).should().listEvents(captor.capture());
-		assertThat(captor.getValue().actorId()).isEmpty();
-		assertThat(captor.getValue().sessionId()).isEmpty();
+		then(this.client).should(org.mockito.Mockito.atLeastOnce()).listEvents(captor.capture());
+		ListEventsRequest dataReq = captor.getAllValues()
+			.stream()
+			.filter((r) -> r.filter() == null || r.filter().eventMetadata() == null)
+			.reduce((a, b) -> b)
+			.orElseThrow();
+		assertThat(dataReq.actorId()).isEqualTo("alice");
+		assertThat(dataReq.sessionId()).isEqualTo("conv");
 	}
 
-	@Test
-	void roughEdgeLeadingColonSessionIdWithExistingEventsThrowsConfusingLowLevelError() {
-		// FINDING F6 (wrong-behavior): ":realSession" derives an EMPTY actor. When the
-		// session has events, findById tries to synthesize Session.builder().userId(""),
-		// and Spring's Session.builder().build() rejects it with a bare
-		// IllegalArgumentException("userId must not be null or empty") thrown from deep
-		// in
-		// spring-ai (Session.java:129), NOT wrapped in an AgentCoreMemoryException and
-		// with
-		// no mention of the offending sessionId. The user sees an opaque low-level error
-		// for what is really a malformed-sessionId input. The empty-actor case is never
-		// rejected up front by the parser or validateSessionId.
-		Event tail = Event.builder().eventId("e1").eventTimestamp(Instant.now()).build();
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(tail).build());
-
-		assertThatThrownBy(() -> this.repository.findById(":realSession")).isInstanceOf(IllegalArgumentException.class)
-			.hasMessageContaining("userId must not be null or empty");
-	}
-
-	// ============ FINDING F5: malformed server event -> unwrapped exception ===========
+	// ============ D8: malformed server event -> skip-with-WARN, no raw throwable ======
 
 	@Test
-	void findEventsNullContentOnConversationalPayloadThrowsRawNpe() {
-		// FINDING F5 (rough-edge / robustness): mapPayloadsToMessages calls
-		// payload.conversational().content().text() with no null guard on content().
-		// A conversational payload whose content is null makes findEvents throw a bare
-		// NullPointerException, NOT the AgentCoreMemoryException.RetrievalException the
-		// class contract implies for read failures (only SdkException is caught and
-		// wrapped). A malformed server event thus surfaces as an opaque NPE.
+	void findEventsNullContentOnConversationalPayloadIsSkippedNotThrown() {
+		// FLIP of findEventsNullContentOnConversationalPayloadThrowsRawNpe.
+		// D8: a conversational payload with null content is a malformed server event;
+		// mapPayloadsToMessages now null-guards content/text and SKIPS it with a WARN
+		// rather than throwing a raw NPE. The whole findEvents does not fail.
 		Conversational convNoContent = Conversational.builder().role(Role.USER).build();
 		Event bad = Event.builder()
 			.memoryId(MEMORY_ID)
@@ -159,17 +169,14 @@ class AgentCoreSessionRepositoryAdversarialTests {
 		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(bad).build());
 
-		// Characterizes the CURRENT behavior: a raw NPE escapes unwrapped.
-		assertThatThrownBy(() -> this.repository.findEvents("alice:conv", EventFilter.all()))
-			.isInstanceOf(NullPointerException.class);
+		List<SessionEvent> events = this.repository.findEvents("alice:conv", EventFilter.all());
+		assertThat(events).isEmpty();
 	}
 
 	@Test
-	void findEventsNullTextInContentThrowsUnwrappedIllegalArgument() {
-		// FINDING F5 continued: content present but text() null. Spring's UserMessage
-		// builder rejects null text with IllegalArgumentException ("Content must not be
-		// null for SYSTEM or USER messages"), which again escapes findEvents unwrapped
-		// rather than as an AgentCoreMemoryException.RetrievalException.
+	void findEventsNullTextInContentIsSkippedNotThrown() {
+		// FLIP of findEventsNullTextInContentThrowsUnwrappedIllegalArgument.
+		// D8: content present but text() null -> skipped with WARN, not an unwrapped IAE.
 		Content emptyContent = Content.builder().build();
 		Conversational conv = Conversational.builder().role(Role.USER).content(emptyContent).build();
 		Event bad = Event.builder()
@@ -181,8 +188,8 @@ class AgentCoreSessionRepositoryAdversarialTests {
 		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(bad).build());
 
-		assertThatThrownBy(() -> this.repository.findEvents("alice:conv", EventFilter.all()))
-			.isInstanceOf(IllegalArgumentException.class);
+		List<SessionEvent> events = this.repository.findEvents("alice:conv", EventFilter.all());
+		assertThat(events).isEmpty();
 	}
 
 	// ==================== round-trip: append text survives mapping ==================
@@ -190,8 +197,6 @@ class AgentCoreSessionRepositoryAdversarialTests {
 	@ParameterizedTest
 	@ValueSource(strings = { "hi", "  padded  ", "line1\nline2", "会话", "😀emoji", "tab\tseparated", "colon:in:text" })
 	void appendThenMapRoundTripsMessageText(String text) {
-		// The message text is untrusted; appending then mapping back must preserve it and
-		// never crash the mapper. (Two independent single-hop checks with a shared mock.)
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
 		SessionEvent event = SessionEvent.builder()

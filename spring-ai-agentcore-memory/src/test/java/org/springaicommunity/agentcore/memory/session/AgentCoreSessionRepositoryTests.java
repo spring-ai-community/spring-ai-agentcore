@@ -32,6 +32,8 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcore.model.Content;
 import software.amazon.awssdk.services.bedrockagentcore.model.Conversational;
@@ -41,8 +43,11 @@ import software.amazon.awssdk.services.bedrockagentcore.model.DeleteEventRequest
 import software.amazon.awssdk.services.bedrockagentcore.model.Event;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListEventsRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListEventsResponse;
+import software.amazon.awssdk.services.bedrockagentcore.model.ListSessionsRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.ListSessionsResponse;
 import software.amazon.awssdk.services.bedrockagentcore.model.PayloadType;
 import software.amazon.awssdk.services.bedrockagentcore.model.Role;
+import software.amazon.awssdk.services.bedrockagentcore.model.SessionSummary;
 
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -58,6 +63,7 @@ import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -67,8 +73,15 @@ import static org.mockito.Mockito.times;
  * Unit tests for {@link AgentCoreSessionRepository}. Includes the two advisor-integration
  * tests that exercise the C1 hard precondition end-to-end through the real
  * {@link SessionMemoryAdvisor#before}.
+ *
+ * <p>
+ * Since the branch-swap (v2) rework, every read/write path first runs a pointer-ledger
+ * discovery scan (a metadata-filtered {@code listEvents}). Tests stub that discovery scan
+ * separately from data reads via the {@link #isLedgerScan(ListEventsRequest)} matcher, so
+ * a session with no pointer markers resolves to the main line (v1 behavior).
  */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AgentCoreSessionRepositoryTests {
 
 	private static final String MEMORY_ID = "testMemoryId";
@@ -88,6 +101,8 @@ class AgentCoreSessionRepositoryTests {
 	void setUp() {
 		this.repository = new AgentCoreSessionRepository(MEMORY_ID, this.client, null, "default-session", 100, true,
 				false);
+		// Default: no pointer markers -> main-line (v1) session for every read path.
+		givenNoLedgerMarkers();
 	}
 
 	// ==================== save / findById / findByUserId / findExpiredSessionIds ==
@@ -102,10 +117,11 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findByIdExistingSessionIdReturnsSynthesizedSession() {
+		Instant summaryTs = Instant.parse("2026-04-01T08:00:00Z");
 		Instant eventTs = Instant.parse("2026-05-01T12:00:00Z");
 		Event tail = Event.builder().eventId("evt-1").eventTimestamp(eventTs).build();
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(tail).build());
+		givenDataEvents(tail);
+		givenSessionSummary(SESSION_SUFFIX, summaryTs);
 
 		Optional<Session> result = this.repository.findById(SESSION_ID);
 
@@ -113,65 +129,94 @@ class AgentCoreSessionRepositoryTests {
 		Session synthesized = result.get();
 		assertThat(synthesized.id()).isEqualTo(SESSION_ID);
 		assertThat(synthesized.userId()).isEqualTo(ACTOR);
-		assertThat(synthesized.createdAt()).isEqualTo(Instant.EPOCH);
+		// D3: createdAt is the real SessionSummary.createdAt, not an EPOCH sentinel.
+		assertThat(synthesized.createdAt()).isEqualTo(summaryTs);
 		assertThat(synthesized.expiresAt()).isNull();
 		assertThat(synthesized.metadata()).containsEntry(AgentCoreSessionRepository.ACTOR_ID_METADATA_KEY, ACTOR)
 			.containsEntry(AgentCoreSessionRepository.SESSION_METADATA_KEY, SESSION_SUFFIX)
 			.containsEntry(AgentCoreSessionRepository.LAST_EVENT_AT_METADATA_KEY, eventTs);
 
-		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
-		then(this.client).should().listEvents(captor.capture());
-		assertThat(captor.getValue().actorId()).isEqualTo(ACTOR);
-		assertThat(captor.getValue().sessionId()).isEqualTo(SESSION_SUFFIX);
-		assertThat(captor.getValue().memoryId()).isEqualTo(MEMORY_ID);
-		assertThat(captor.getValue().maxResults()).isEqualTo(1);
-		assertThat(captor.getValue().includePayloads()).isFalse();
+		ListEventsRequest tailReq = captureDataListEvents();
+		assertThat(tailReq.actorId()).isEqualTo(ACTOR);
+		assertThat(tailReq.sessionId()).isEqualTo(SESSION_SUFFIX);
+		assertThat(tailReq.memoryId()).isEqualTo(MEMORY_ID);
+		assertThat(tailReq.maxResults()).isEqualTo(1);
+		assertThat(tailReq.includePayloads()).isFalse();
 	}
 
 	@Test
-	void findByIdCreatedAtIsEpochSentinel() {
+	void findByIdCreatedAtFallsBackToTailTimestampWhenNoSummary() {
+		// D3: no matching SessionSummary -> createdAt falls back to the tail event
+		// timestamp (a real, non-sentinel value), never Instant.EPOCH.
 		Instant eventTs = Instant.parse("2026-06-15T00:00:00Z");
 		Event tail = Event.builder().eventId("evt-2").eventTimestamp(eventTs).build();
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(tail).build());
+		givenDataEvents(tail);
+		given(this.client.listSessions(any(ListSessionsRequest.class)))
+			.willReturn(ListSessionsResponse.builder().sessionSummaries(List.of()).build());
 
 		Session synthesized = this.repository.findById(SESSION_ID).orElseThrow();
-		assertThat(synthesized.createdAt()).isEqualTo(Instant.EPOCH);
+		assertThat(synthesized.createdAt()).isEqualTo(eventTs);
+		assertThat(synthesized.createdAt()).isNotEqualTo(Instant.EPOCH);
 		assertThat(synthesized.metadata().get(AgentCoreSessionRepository.LAST_EVENT_AT_METADATA_KEY))
 			.isEqualTo(eventTs);
 	}
 
 	@Test
 	void findByIdUnknownSessionIdReturnsEmpty() {
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(List.of()).build());
+		givenDataEvents();
 		assertThat(this.repository.findById(SESSION_ID)).isEmpty();
 	}
 
 	@Test
 	void findByIdActorOnlyConversationIdUsesDefaultSession() {
 		Event tail = Event.builder().eventId("evt-3").eventTimestamp(Instant.now()).build();
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(tail).build());
+		givenDataEvents(tail);
 
 		this.repository.findById("alice");
 
-		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
-		then(this.client).should().listEvents(captor.capture());
-		assertThat(captor.getValue().actorId()).isEqualTo("alice");
-		assertThat(captor.getValue().sessionId()).isEqualTo("default-session");
+		ListEventsRequest tailReq = captureDataListEvents();
+		assertThat(tailReq.actorId()).isEqualTo("alice");
+		assertThat(tailReq.sessionId()).isEqualTo("default-session");
 	}
 
 	@Test
-	void findByUserIdThrowsUnsupported() {
-		assertThatThrownBy(() -> this.repository.findByUserId("alice"))
-			.isInstanceOf(UnsupportedOperationException.class);
+	void findByUserIdReturnsSessionsFromPaginatedListSessions() {
+		// D2: findByUserId maps userId -> actor and paginates listSessions.
+		Instant t1 = Instant.parse("2026-01-01T00:00:00Z");
+		Instant t2 = Instant.parse("2026-02-01T00:00:00Z");
+		SessionSummary s1 = SessionSummary.builder().sessionId("conv-1").actorId(ACTOR).createdAt(t1).build();
+		SessionSummary s2 = SessionSummary.builder().sessionId("conv-2").actorId(ACTOR).createdAt(t2).build();
+		given(this.client.listSessions(any(ListSessionsRequest.class)))
+			.willReturn(ListSessionsResponse.builder().sessionSummaries(s1).nextToken("p2").build())
+			.willReturn(ListSessionsResponse.builder().sessionSummaries(s2).build());
+
+		List<Session> sessions = this.repository.findByUserId(ACTOR);
+
+		assertThat(sessions).hasSize(2);
+		assertThat(sessions).extracting(Session::id).containsExactly("alice:conv-1", "alice:conv-2");
+		assertThat(sessions).allSatisfy((s) -> assertThat(s.userId()).isEqualTo(ACTOR));
+		assertThat(sessions.get(0).createdAt()).isEqualTo(t1);
+		assertThat(sessions.get(1).createdAt()).isEqualTo(t2);
 	}
 
 	@Test
-	void findExpiredSessionIdsThrowsUnsupported() {
+	void findByUserIdEmptyResultReturnsEmptyList() {
+		given(this.client.listSessions(any(ListSessionsRequest.class)))
+			.willReturn(ListSessionsResponse.builder().sessionSummaries(List.of()).build());
+		assertThat(this.repository.findByUserId("nobody")).isEmpty();
+	}
+
+	@Test
+	void findByUserIdRejectsBlankUserId() {
+		assertThatThrownBy(() -> this.repository.findByUserId("  ")).isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void findExpiredSessionIdsThrowsUnsupportedWithHelpfulMessage() {
 		assertThatThrownBy(() -> this.repository.findExpiredSessionIds(Instant.now()))
-			.isInstanceOf(UnsupportedOperationException.class);
+			.isInstanceOf(UnsupportedOperationException.class)
+			.hasMessageContaining("eventExpiryDuration")
+			.hasMessageContaining("findByUserId");
 	}
 
 	// ==================== delete ====================
@@ -180,13 +225,12 @@ class AgentCoreSessionRepositoryTests {
 	void deletePaginatesAndDeletes() {
 		List<Event> firstPage = IntStream.range(0, 10).mapToObj((i) -> eventWithId("evt-" + i)).toList();
 		List<Event> secondPage = IntStream.range(10, 15).mapToObj((i) -> eventWithId("evt-" + i)).toList();
-		given(this.client.listEvents(any(ListEventsRequest.class)))
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
 			.willReturn(ListEventsResponse.builder().events(firstPage).nextToken("page2").build())
 			.willReturn(ListEventsResponse.builder().events(secondPage).build());
 
 		this.repository.delete(SESSION_ID);
 
-		then(this.client).should(times(2)).listEvents(any(ListEventsRequest.class));
 		ArgumentCaptor<DeleteEventRequest> deleteCaptor = ArgumentCaptor.forClass(DeleteEventRequest.class);
 		then(this.client).should(times(15)).deleteEvent(deleteCaptor.capture());
 		List<String> deletedIds = deleteCaptor.getAllValues().stream().map(DeleteEventRequest::eventId).toList();
@@ -218,13 +262,15 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(req.payload()).hasSize(1);
 		assertThat(req.payload().get(0).conversational().role()).isEqualTo(Role.USER);
 		assertThat(req.payload().get(0).conversational().content().text()).isEqualTo("hi");
+		// D1.3: main-line/v1 session appends with NO branch set.
+		assertThat(req.branch()).isNull();
+		assertThat(req.clientToken()).isNotBlank();
 	}
 
 	@Test
 	void appendEventUnknownSessionDoesNotThrow() {
 		// AgentCore has no notion of session existence separate from events; unlike the
 		// SessionRepository SPI Javadoc, appendEvent does NOT throw on unknown sessions.
-		// This is an intentional divergence documented on the method.
 		CreateEventResponse response = CreateEventResponse.builder()
 			.event(Event.builder().eventId("new-1").build())
 			.build();
@@ -237,7 +283,6 @@ class AgentCoreSessionRepositoryTests {
 		this.repository.appendEvent(event);
 
 		then(this.client).should(times(1)).createEvent(any(CreateEventRequest.class));
-		then(this.client).should(never()).listEvents(any(ListEventsRequest.class));
 	}
 
 	@Test
@@ -296,12 +341,14 @@ class AgentCoreSessionRepositoryTests {
 			.isEqualTo("stamped-eventId");
 	}
 
-	// ==================== replaceEvents (no CAS) ====================
+	// ==================== replaceEvents (legacy, branch-swap disabled default) =========
 
 	@Test
 	void replaceEventsDeletesThenCreatesOrdered() {
+		// Default repo has branch-swap DISABLED; a true v1 session (no markers) takes the
+		// legacy delete-then-recreate path.
 		Event existing = eventWithId("old-1");
-		given(this.client.listEvents(any(ListEventsRequest.class)))
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
 			.willReturn(ListEventsResponse.builder().events(existing).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
@@ -321,9 +368,8 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void replaceEventsVersionMatchReturnsTrue() {
-		// getEventVersion returns 1 (single event), expectedVersion = 1 -> proceeds.
 		Event existing = eventWithId("old-1");
-		given(this.client.listEvents(any(ListEventsRequest.class)))
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
 			.willReturn(ListEventsResponse.builder().events(existing).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
@@ -340,13 +386,9 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void replaceEventsVersionMismatchReturnsFalseNoWrites() {
-		// First listEvents call (version snapshot) returns 3 events; expectedVersion=2 ->
-		// mismatch, no writes.
 		List<Event> threeEvents = List.of(eventWithId("e1"), eventWithId("e2"), eventWithId("e3"));
-		List<Event> fourEvents = List.of(eventWithId("e1"), eventWithId("e2"), eventWithId("e3"), eventWithId("e4"));
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(threeEvents).build())
-			.willReturn(ListEventsResponse.builder().events(fourEvents).build());
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+			.willReturn(ListEventsResponse.builder().events(threeEvents).build());
 
 		SessionEvent newEvent = SessionEvent.builder()
 			.sessionId(SESSION_ID)
@@ -364,7 +406,7 @@ class AgentCoreSessionRepositoryTests {
 	void getEventVersionMatchesEventCount() {
 		List<Event> firstPage = IntStream.range(0, 3).mapToObj((i) -> eventWithId("e" + i)).toList();
 		List<Event> secondPage = IntStream.range(3, 5).mapToObj((i) -> eventWithId("e" + i)).toList();
-		given(this.client.listEvents(any(ListEventsRequest.class)))
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
 			.willReturn(ListEventsResponse.builder().events(firstPage).nextToken("next").build())
 			.willReturn(ListEventsResponse.builder().events(secondPage).build());
 
@@ -374,18 +416,15 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void getEventVersionEmptySessionReturnsZero() {
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(List.of()).build());
+		givenDataEvents();
 		assertThat(this.repository.getEventVersion(SESSION_ID)).isEqualTo(0L);
 	}
 
 	@Test
 	void getEventVersionAfterReplaceEventsMatchesNewSize() {
-		// Model the workflow: replaceEvents(new list of 2 events); a subsequent
-		// getEventVersion probe should reflect the new size.
 		List<Event> initial = List.of(eventWithId("old-1"), eventWithId("old-2"), eventWithId("old-3"));
 		List<Event> afterReplace = List.of(eventWithId("new-1"), eventWithId("new-2"));
-		given(this.client.listEvents(any(ListEventsRequest.class)))
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
 			.willReturn(ListEventsResponse.builder().events(initial).build())
 			.willReturn(ListEventsResponse.builder().events(afterReplace).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
@@ -409,12 +448,10 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findEventsReturnsChronologicalOrder() {
-		// AgentCore returns DESC; repository reverses to chronological.
 		Event newest = payloadEvent("e-3", "third", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
 		Event middle = payloadEvent("e-2", "second", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
 		Event oldest = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(newest, middle, oldest).build());
+		givenDataEvents(newest, middle, oldest);
 
 		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, EventFilter.all());
 		assertThat(events).extracting((e) -> e.getMessage().getText()).containsExactly("first", "second", "third");
@@ -426,8 +463,7 @@ class AgentCoreSessionRepositoryTests {
 		Event e1 = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		Event e2 = payloadEvent("e-2", "second", Role.USER, Instant.parse("2026-01-02T00:00:00Z"));
 		Event e3 = payloadEvent("e-3", "third", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(e3, e2, e1).build());
+		givenDataEvents(e3, e2, e1);
 
 		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, EventFilter.lastN(2));
 		assertThat(events).extracting((e) -> e.getMessage().getText()).containsExactly("second", "third");
@@ -438,8 +474,7 @@ class AgentCoreSessionRepositoryTests {
 		Event userEvent = payloadEvent("e-1", "user-text", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		Event assistantEvent = payloadEvent("e-2", "assistant-text", Role.ASSISTANT,
 				Instant.parse("2026-01-02T00:00:00Z"));
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(assistantEvent, userEvent).build());
+		givenDataEvents(assistantEvent, userEvent);
 
 		EventFilter filter = EventFilter.builder().messageTypes(Set.of(MessageType.USER)).build();
 		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, filter);
@@ -449,8 +484,7 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findEventsNonExistentSessionReturnsEmptyList() {
-		given(this.client.listEvents(any(ListEventsRequest.class)))
-			.willReturn(ListEventsResponse.builder().events(List.of()).build());
+		givenDataEvents();
 		assertThat(this.repository.findEvents(SESSION_ID, EventFilter.all())).isEmpty();
 	}
 
@@ -458,14 +492,9 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findByIdMatchingUserIdContextAppendMessagePasses() {
-		// Turn 1 setup: listEvents returns empty so findById -> null -> advisor calls
-		// create(); Turn 2: listEvents returns one event so findById synthesizes a
-		// Session with userId="alice" (actor segment) — matches USER_ID_CONTEXT_KEY.
 		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		ListEventsResponse tailPage = ListEventsResponse.builder().events(tail).build();
-		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage())
-			.willReturn(tailPage)
-			.willReturn(tailPage);
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r)))).willReturn(emptyPage())
+			.willReturn(ListEventsResponse.builder().events(tail).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("stamp").build()).build());
 
@@ -484,7 +513,6 @@ class AgentCoreSessionRepositoryTests {
 			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, SESSION_ID)
 			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, ACTOR)
 			.build();
-		// Should NOT throw.
 		advisor.before(turn2, null);
 
 		then(this.client).should(Mockito.atLeastOnce()).listEvents(any(ListEventsRequest.class));
@@ -492,10 +520,8 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findByIdMismatchedUserIdContextAdvisorThrowsIllegalStateException() {
-		// Turn 2 findById synthesizes Session(userId="alice"), advisor context USER_ID
-		// is "bob" -> throws.
 		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage())
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r)))).willReturn(emptyPage())
 			.willReturn(ListEventsResponse.builder().events(tail).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("stamp").build()).build());
@@ -503,16 +529,11 @@ class AgentCoreSessionRepositoryTests {
 		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
 		SessionMemoryAdvisor advisor = SessionMemoryAdvisor.builder(service).build();
 
-		// Turn 1: create path succeeds because Session is fresh; USER_ID_CONTEXT_KEY is
-		// only compared against session.userId() on the else-branch (turn 2).
 		ChatClientRequest turn1 = ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new UserMessage("first"))))
 			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, SESSION_ID)
 			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, "bob")
 			.build();
-		// Turn 1's create builds Session(userId="bob") in-request only; save is a no-op
-		// so the AgentCore side has no persisted user. On turn 2 findById returns
-		// Session(userId="alice") derived from the actor segment.
 		advisor.before(turn1, null);
 
 		ChatClientRequest turn2 = ChatClientRequest.builder()
@@ -525,6 +546,36 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	// ==================== Helpers ====================
+
+	/** A pointer-ledger discovery scan carries a metadata (EXISTS) filter. */
+	static boolean isLedgerScan(ListEventsRequest req) {
+		return req != null && req.filter() != null && req.filter().eventMetadata() != null;
+	}
+
+	private void givenNoLedgerMarkers() {
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> isLedgerScan(r)))).willReturn(emptyPage());
+	}
+
+	private void givenDataEvents(Event... events) {
+		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+			.willReturn(ListEventsResponse.builder().events(List.of(events)).build());
+	}
+
+	private void givenSessionSummary(String sessionSuffix, Instant createdAt) {
+		SessionSummary summary = SessionSummary.builder()
+			.sessionId(sessionSuffix)
+			.actorId(ACTOR)
+			.createdAt(createdAt)
+			.build();
+		given(this.client.listSessions(any(ListSessionsRequest.class)))
+			.willReturn(ListSessionsResponse.builder().sessionSummaries(summary).build());
+	}
+
+	private ListEventsRequest captureDataListEvents() {
+		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
+		then(this.client).should(Mockito.atLeastOnce()).listEvents(captor.capture());
+		return captor.getAllValues().stream().filter((r) -> !isLedgerScan(r)).reduce((a, b) -> b).orElseThrow();
+	}
 
 	private static Event eventWithId(String id) {
 		return Event.builder().memoryId(MEMORY_ID).eventId(id).build();
