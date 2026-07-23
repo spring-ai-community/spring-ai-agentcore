@@ -22,9 +22,27 @@ import java.util.List;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 
+/**
+ * Value object grouping the ChatMemory-based short-term advisor with the AgentCore
+ * long-term advisors.
+ *
+ * <p>
+ * Consumers on the Session API path should inject
+ * {@link org.springaicommunity.agentcore.memory.session.AgentCoreSessionMemory} instead;
+ * that sibling type wires the {@code SessionMemoryAdvisor} into the same advisor chain
+ * shape.
+ *
+ * @author Spring AI Community
+ */
 public class AgentCoreMemory {
 
-	/** combined short-term memory advisor backed by the chat memory repository. */
+	/**
+	 * Combined short-term memory advisor backed by the chat memory repository.
+	 * @deprecated since 1.2.0. Prefer
+	 * {@link org.springaicommunity.agentcore.memory.session.AgentCoreSessionMemory#shortTermMemoryAdvisor}
+	 * exposed via {@code agentcore.memory.session.enabled=true}. See issue #152.
+	 */
+	@Deprecated(since = "1.2.0")
 	public final MessageChatMemoryAdvisor shortTermMemoryAdvisor;
 
 	/** ordered list of long-term memory advisors, one per configured strategy. */

@@ -92,6 +92,9 @@ record PromptRequest(String prompt) {}
 
 This gives you a production-ready agent with streaming, conversation memory, web browsing, and code execution — deployed to AgentCore Runtime or standalone.
 
+> For the new Spring AI Session API path (opt-in), see the "Session API" section of
+> the [memory module README](spring-ai-agentcore-memory/README.md#session-api-spring-ai-session-incubating).
+
 ## Deployment
 
 The SDK supports two deployment models:

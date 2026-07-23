@@ -1,2 +1,4 @@
 org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepositoryAutoConfiguration
 org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryAutoConfiguration
+org.springaicommunity.agentcore.memory.session.AgentCoreSessionRepositoryAutoConfiguration
+org.springaicommunity.agentcore.memory.session.AgentCoreSessionMissingDepDiagnostics

@@ -1,0 +1,19 @@
+### ============================================================================
+### Session API chat (SessionMemoryAdvisor, sessionId "testActor:testSession")
+### ============================================================================
+
+### Tell name
+POST http://localhost:8080/api/chat
+Content-Type: application/json
+
+{
+  "message": "My name is Andrei"
+}
+
+### Ask name (memory recall via SessionMemoryAdvisor)
+POST http://localhost:8080/api/chat
+Content-Type: application/json
+
+{
+  "message": "What is my name?"
+}

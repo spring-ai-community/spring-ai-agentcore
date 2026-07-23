@@ -10,6 +10,81 @@ For quick start and usage examples, see the [main README](../README.md#agentcore
 - **Auto-configuration**: Zero-configuration setup with Spring Boot
 - **Short-Term Memory**: Conversation history with `MessageWindowChatMemory`
 - **Long-Term Memory**: 4 consolidation strategies (Semantic, User Preference, Summary, Episodic)
+- **Session API (incubating)**: Optional Spring AI Session API bean stack (opt-in via `agentcore.memory.session.enabled=true`)
+
+## Session API (spring-ai-session, incubating)
+
+Since 1.2.0 the module ships an opt-in bean stack backed by the community
+`org.springaicommunity:spring-ai-session-management` artifact. When enabled, four beans
+are added to the context: `AgentCoreSessionRepository` (implements
+`org.springframework.ai.session.SessionRepository`), `DefaultSessionService`,
+`SessionMemoryAdvisor`, and `AgentCoreSessionMemory` (bundles the session advisor with
+any configured long-term memory advisors). The existing ChatMemory stack is unaffected;
+both stacks can coexist and are wired independently.
+
+Enable it with:
+
+```yaml
+agentcore:
+  memory:
+    memory-id: your-memory-id
+    session:
+      enabled: true
+      default-user-id: default-user   # optional
+      persist-synthetic: false        # optional; synthetic events are skipped by default
+```
+
+**Required dependency.** The memory module declares `spring-ai-session-management` as an
+`optional` dependency, so consumers on the Session API path MUST add it to their own
+`pom.xml`. If the artifact is missing while `agentcore.memory.session.enabled=true` is
+set, the module emits a startup WARN and does not create any session beans.
+
+```xml
+<dependency>
+    <groupId>org.springaicommunity</groupId>
+    <artifactId>spring-ai-session-management</artifactId>
+</dependency>
+```
+
+**Usage.** `SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY` equals `ChatMemory.CONVERSATION_ID`,
+so the same conversation-id constant works for both stacks:
+
+```java
+chatClient.prompt()
+    .user("Hi")
+    .advisors(a -> a
+        .param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, "alice:conv-1")
+        .param(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, "alice"))
+    .call()
+    .content();
+```
+
+**User id precondition (HARD).** `AgentCoreSessionRepository` has no session-metadata
+store, so it derives `Session.userId` from the actor segment of the sessionId (parsed by
+`AgentCoreMemoryConversationIdParser`). Callers that set `USER_ID_CONTEXT_KEY` per-request
+MUST use the sessionId format `"userId:sessionSuffix"` and pass the SAME user id under
+`USER_ID_CONTEXT_KEY`. If the two disagree, `SessionMemoryAdvisor.before()` throws
+`IllegalStateException` on the second turn (ownership check).
+
+**Known limitations.** AgentCore imposes several behaviors that differ from the
+`SessionRepository` SPI. All are documented in Javadoc on `AgentCoreSessionRepository`:
+
+- `save(Session)` is a no-op (no session-metadata store).
+- `findByUserId(String)` and `findExpiredSessionIds(Instant)` throw
+  `UnsupportedOperationException` (no cross-actor listing).
+- `replaceEvents(String, List, long)` is best-effort check-then-act, not a true CAS.
+- `appendEvent(SessionEvent)` does NOT throw when the session is unknown; the first
+  append implicitly creates the session server-side.
+- `Session.createdAt` is `Instant.EPOCH` sentinel; the last-event timestamp is exposed
+  under metadata key `agentcore.lastEventAt`.
+- `Session.expiresAt` is `null`; TTL is managed on the memory resource itself.
+
+**Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,
+`AgentCoreMemory.shortTermMemoryAdvisor`) and the
+`AgentCoreShortTermMemoryRepository implements ChatMemoryRepository` declaration are
+marked `@Deprecated(since = "1.2.0")` (soft; no `forRemoval` flag). They will remain in
+place until Spring AI 2.1 formally deprecates `ChatMemory` upstream. See
+[issue #152](https://github.com/spring-ai-community/spring-ai-agentcore/issues/152).
 
 ## Memory Types
 
