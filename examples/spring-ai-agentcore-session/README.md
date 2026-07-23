@@ -41,11 +41,19 @@ so this project never pins the version directly.
 ## The `userId:sessionSuffix` precondition (C1)
 
 `AgentCoreSessionRepository` has no separate session-metadata store, so it derives
-`Session.userId` from the actor segment of the sessionId parsed by
-`AgentCoreMemoryConversationIdParser`. This means the sessionId MUST have the form
-`userId:sessionSuffix`. The example uses `"testActor:testSession"`. If your caller
-also passes `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY`, it must equal the actor
-segment or the advisor throws `IllegalStateException` on the second turn.
+`Session.userId` from the actor (userId) segment of the sessionId parsed by
+`AgentCoreMemoryConversationIdParser`. The sessionId MUST have the form
+`userId:sessionSuffix`; the example uses `"testActor:testSession"`, where `testActor`
+is the userId and `testSession` is the suffix.
+
+If you pass `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` on a request, its value MUST
+equal the userId prefix of the sessionId. On the second turn the advisor runs an
+ownership check comparing `USER_ID_CONTEXT_KEY` against the derived `Session.userId`;
+a mismatch throws `IllegalStateException("...does not belong to user...")`. This
+controller does not set `USER_ID_CONTEXT_KEY`, so the check passes vacuously. The
+common trap: copying this example, reusing a sessionId, and then passing a DIFFERENT
+`USER_ID_CONTEXT_KEY` on turn two - that fails. Keep the userId prefix and any
+`USER_ID_CONTEXT_KEY` value identical.
 
 ## Prerequisites
 

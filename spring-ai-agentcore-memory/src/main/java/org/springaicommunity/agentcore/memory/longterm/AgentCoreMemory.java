@@ -38,11 +38,11 @@ public class AgentCoreMemory {
 
 	/**
 	 * Combined short-term memory advisor backed by the chat memory repository.
-	 * @deprecated since 1.2.0. Prefer
+	 * @deprecated since 2.1.0. Prefer
 	 * {@link org.springaicommunity.agentcore.memory.session.AgentCoreSessionMemory#shortTermMemoryAdvisor}
 	 * exposed via {@code agentcore.memory.session.enabled=true}. See issue #152.
 	 */
-	@Deprecated(since = "1.2.0")
+	@Deprecated(since = "2.1.0")
 	public final MessageChatMemoryAdvisor shortTermMemoryAdvisor;
 
 	/** ordered list of long-term memory advisors, one per configured strategy. */

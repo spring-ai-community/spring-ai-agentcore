@@ -74,7 +74,10 @@ import org.springframework.ai.session.SessionRepository;
  *
  * <h3>Divergences from the {@link SessionRepository} contract</h3>
  * <ul>
- * <li>{@link #save(Session)} is a no-op: AgentCore has no session-metadata store.</li>
+ * <li>{@link #save(Session)} is a NO-OP: AgentCore has no session-metadata store, so any
+ * metadata mutated on the {@link Session} (e.g. via {@code session.withMetadata(...)}) is
+ * NOT persisted and will not be visible on a subsequent {@link #findById(String)}. Do not
+ * rely on this method for metadata persistence.</li>
  * <li>{@link #findByUserId(String)} throws {@link UnsupportedOperationException}:
  * AgentCore has no cross-actor listing.</li>
  * <li>{@link #findExpiredSessionIds(Instant)} throws
@@ -90,6 +93,18 @@ import org.springframework.ai.session.SessionRepository;
  * <li>{@link #replaceEvents(String, List, long)} is best-effort CAS (check-then-act with
  * a race window); AgentCore has no server-side compare-and-swap on the event log.</li>
  * </ul>
+ *
+ * <h3>Production safety: replaceEvents is best-effort, not atomic</h3> Both
+ * {@link #replaceEvents(String, List)} and its CAS variant
+ * {@link #replaceEvents(String, List, long)} delete the existing event log and then
+ * recreate it in separate, non-transactional AgentCore calls. If a {@code createEvent}
+ * call fails after the delete phase, the original events are LOST and the log is left
+ * partial and unrecoverable without an external backup. There is also no server-side
+ * lock, so these methods are NOT safe under concurrent writers: two callers racing on the
+ * same sessionId can interleave delete/recreate and corrupt the log. Callers MUST hold an
+ * external lock (e.g. a DynamoDB conditional write or Redis SETNX) so that only one
+ * writer runs replaceEvents per sessionId, and SHOULD keep a backup to recover from a
+ * mid-flight failure.
  *
  * <h3>Synthesized {@link Session} fields</h3> On {@link #findById(String)} we synthesize
  * a {@link Session} from the event-log tail:
@@ -150,12 +165,32 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 	// ==================== Sessions ====================
 
+	/**
+	 * NO-OP. AgentCore has no session-metadata store, so this repository cannot persist
+	 * session-level metadata.
+	 *
+	 * <p>
+	 * <strong>Divergence from the {@link SessionRepository} SPI.</strong> Unlike a
+	 * metadata-backed store, calling {@code save} does NOT persist anything. Any fields
+	 * mutated on the supplied {@link Session} (for example via
+	 * {@code session.withMetadata(...)} or a changed {@code expiresAt}) are silently
+	 * discarded and will NOT be visible on a subsequent {@link #findById(String)}. The
+	 * method returns the same {@link Session} instance it was given for API symmetry
+	 * only. Callers MUST NOT rely on this method for metadata persistence; session state
+	 * lives entirely in the AgentCore event log written by
+	 * {@link #appendEvent(SessionEvent)}.
+	 * @param session the session (must not be null)
+	 * @return the same {@code session} instance, unmodified and unpersisted
+	 */
 	@Override
 	public Session save(Session session) {
 		if (session == null) {
 			throw new IllegalArgumentException("session must not be null");
 		}
-		logger.debug("AgentCoreSessionRepository.save is a no-op for id: {} (no session-metadata store)", session.id());
+		logger.debug(
+				"AgentCoreSessionRepository.save is a no-op for id: {}; AgentCore has no session-metadata store, so any"
+						+ " metadata on the Session is NOT persisted (see class Javadoc)",
+				session.id());
 		return session;
 	}
 
@@ -312,12 +347,23 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	 * <strong>Divergence from the {@link SessionRepository} SPI.</strong> AgentCore has
 	 * no server-side transactional replace, so this method performs a non-atomic
 	 * delete-then-recreate: it first deletes every existing event for the session, then
-	 * creates each supplied event in turn. A crash or a failing {@code createEvent} call
-	 * mid-way may leave partial data on the event log. Callers that require atomic
-	 * replacement should perform application-level rollback or use
-	 * {@link #replaceEvents(String, List, long)} together with an external lock.
+	 * creates each supplied event in turn.
+	 *
+	 * <p>
+	 * <strong>Best-effort, NOT safe under concurrent writers.</strong> A crash or a
+	 * failing {@code createEvent} call after the delete phase leaves the log PARTIAL and
+	 * the original events LOST; the failure is logged at ERROR and is NOT retryable (the
+	 * pre-delete state cannot be reconstructed by this repository). There is no
+	 * server-side lock, so two callers racing on the same sessionId can interleave and
+	 * corrupt the log. Callers MUST hold an external lock (e.g. DynamoDB conditional
+	 * write, Redis SETNX) so that only one writer runs replaceEvents per sessionId, and
+	 * SHOULD keep a backup to recover from a mid-flight failure. See the class-level
+	 * "Production safety" section.
 	 * @param sessionId the session whose event log is being replaced
 	 * @param events the new events to persist after the existing log has been cleared
+	 * @throws org.springaicommunity.agentcore.memory.AgentCoreMemoryException.StorageException
+	 * if an AgentCore call fails; when this happens after the delete phase the event log
+	 * is left partial and the original events are unrecoverable (not retryable)
 	 */
 	@Override
 	public void replaceEvents(String sessionId, List<SessionEvent> events) {
@@ -428,16 +474,24 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	// ==================== Helpers ====================
 
 	private void doReplaceEvents(String sessionId, List<SessionEvent> events) {
+		// Track progress so a mid-flight failure can be logged with enough context to
+		// assess data loss and drive external recovery (this operation is non-atomic).
+		AtomicInteger deleted = new AtomicInteger();
+		AtomicInteger recreated = new AtomicInteger();
+		boolean deletePhaseComplete = false;
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
 			// 1. Delete every existing event, paginated.
-			this.forEachEventPage(actorAndSession, false, false,
-					(page) -> page.forEach((existing) -> this.client.deleteEvent(DeleteEventRequest.builder()
-						.memoryId(this.memoryId)
-						.actorId(actorAndSession.actor())
-						.sessionId(actorAndSession.session())
-						.eventId(existing.eventId())
-						.build())));
+			this.forEachEventPage(actorAndSession, false, false, (page) -> page.forEach((existing) -> {
+				this.client.deleteEvent(DeleteEventRequest.builder()
+					.memoryId(this.memoryId)
+					.actorId(actorAndSession.actor())
+					.sessionId(actorAndSession.session())
+					.eventId(existing.eventId())
+					.build());
+				deleted.incrementAndGet();
+			}));
+			deletePhaseComplete = true;
 
 			// 2. Recreate each new event. This is a full replacement, so do NOT
 			// filter by agentcore.eventId metadata.
@@ -462,10 +516,27 @@ public class AgentCoreSessionRepository implements SessionRepository {
 				if (eventId != null) {
 					message.getMetadata().put(EVENT_ID_METADATA_KEY, eventId);
 				}
+				recreated.incrementAndGet();
 			}
 		}
 		catch (SdkException ex) {
-			logger.error("Failed to replace AgentCore events for sessionId: {}", sessionId, ex);
+			// A failure after the delete phase leaves the log PARTIAL and the original
+			// events LOST. Log at ERROR (not WARN) with recovery context; this is NOT
+			// retryable by this repository because the pre-delete state is gone.
+			if (deletePhaseComplete) {
+				logger.error("PARTIAL DATA / DATA LOSS while replacing AgentCore events for sessionId {}: delete phase"
+						+ " completed ({} events deleted) but recreate FAILED after {} of {} events; the original"
+						+ " event log is GONE and the current log is partial. replaceEvents is non-atomic and NOT"
+						+ " retryable here - recover from an external backup and hold an external lock per"
+						+ " sessionId to prevent concurrent writers. See AgentCoreSessionRepository Javadoc.",
+						sessionId, deleted.get(), recreated.get(), events.size(), ex);
+			}
+			else {
+				logger.error(
+						"Failed to replace AgentCore events for sessionId {} during the delete phase ({} events"
+								+ " deleted before failure); the event log may be partially deleted.",
+						sessionId, deleted.get(), ex);
+			}
 			throw new AgentCoreMemoryException.StorageException("Failed to replace events for sessionId: " + sessionId,
 					ex);
 		}

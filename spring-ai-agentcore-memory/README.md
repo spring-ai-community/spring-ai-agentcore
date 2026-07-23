@@ -14,7 +14,7 @@ For quick start and usage examples, see the [main README](../README.md#agentcore
 
 ## Session API (spring-ai-session, incubating)
 
-Since 1.2.0 the module ships an opt-in bean stack backed by the community
+Since 2.1.0 the module ships an opt-in bean stack backed by the community
 `org.springaicommunity:spring-ai-session-management` artifact. When enabled, four beans
 are added to the context: `AgentCoreSessionRepository` (implements
 `org.springframework.ai.session.SessionRepository`), `DefaultSessionService`,
@@ -60,31 +60,47 @@ chatClient.prompt()
 ```
 
 **User id precondition (HARD).** `AgentCoreSessionRepository` has no session-metadata
-store, so it derives `Session.userId` from the actor segment of the sessionId (parsed by
-`AgentCoreMemoryConversationIdParser`). Callers that set `USER_ID_CONTEXT_KEY` per-request
-MUST use the sessionId format `"userId:sessionSuffix"` and pass the SAME user id under
-`USER_ID_CONTEXT_KEY`. If the two disagree, `SessionMemoryAdvisor.before()` throws
-`IllegalStateException` on the second turn (ownership check).
+store, so it derives `Session.userId` from the actor (userId) segment of the sessionId
+(parsed by `AgentCoreMemoryConversationIdParser`). The sessionId format is therefore
+`"userId:sessionSuffix"` (for example `"alice:conv-1"`, where `alice` is the userId).
+Callers that set `USER_ID_CONTEXT_KEY` per-request MUST pass the SAME value as the userId
+prefix. On the second turn `SessionMemoryAdvisor.before()` runs an ownership check that
+compares `USER_ID_CONTEXT_KEY` against the derived `Session.userId`; a mismatch throws
+`IllegalStateException("...does not belong to user...")`. The typical break: reusing a
+sessionId while changing the advisor's user id. If you never set `USER_ID_CONTEXT_KEY`,
+the check passes vacuously.
+
+**replaceEvents is best-effort and NOT concurrency-safe.** Both `replaceEvents(String,
+List)` and the CAS variant `replaceEvents(String, List, long)` are non-atomic: they delete
+the existing event log and then recreate it in separate AgentCore calls. If a `createEvent`
+call fails after the delete phase, the original events are LOST and the log is left partial
+and unrecoverable (the failure is logged at ERROR and is NOT retryable by the repository).
+There is no server-side lock, so concurrent writers on the same sessionId can interleave
+and corrupt the log. Hold an external lock (e.g. DynamoDB conditional write or Redis SETNX)
+so that only one writer runs `replaceEvents` per sessionId, and keep a backup to recover
+from a mid-flight failure.
 
 **Known limitations.** AgentCore imposes several behaviors that differ from the
 `SessionRepository` SPI. All are documented in Javadoc on `AgentCoreSessionRepository`:
 
-- `save(Session)` is a no-op (no session-metadata store).
-- `findByUserId(String)` and `findExpiredSessionIds(Instant)` throw
-  `UnsupportedOperationException` (no cross-actor listing).
-- `replaceEvents(String, List, long)` is best-effort check-then-act, not a true CAS.
-- `appendEvent(SessionEvent)` does NOT throw when the session is unknown; the first
-  append implicitly creates the session server-side.
-- `Session.createdAt` is `Instant.EPOCH` sentinel; the last-event timestamp is exposed
-  under metadata key `agentcore.lastEventAt`.
-- `Session.expiresAt` is `null`; TTL is managed on the memory resource itself.
+| Method / field | Behavior | Caller impact |
+|----------------|----------|---------------|
+| `save(Session)` | **NO-OP** (no session-metadata store) | Metadata mutated on the `Session` (e.g. `session.withMetadata(...)`) is NOT persisted and will NOT reappear on `findById`. Do not use `save` for metadata persistence. |
+| `findByUserId(String)` | throws `UnsupportedOperationException` | No cross-actor listing; parse `actor:session` per request instead. |
+| `findExpiredSessionIds(Instant)` | throws `UnsupportedOperationException` | No cross-actor listing; expiry sweeping unsupported. |
+| `replaceEvents(String, List)` | non-atomic delete-then-recreate | Partial data / data loss on mid-flight failure; hold an external lock (see above). |
+| `replaceEvents(String, List, long)` | best-effort check-then-act, not a true CAS | Race window; hold an external lock (see above). |
+| `appendEvent(SessionEvent)` | does NOT throw when session is unknown | First append implicitly creates the session server-side. |
+| `Session.createdAt` | `Instant.EPOCH` sentinel | Real last-event timestamp exposed under metadata key `agentcore.lastEventAt`. |
+| `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
 
 **Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,
 `AgentCoreMemory.shortTermMemoryAdvisor`) and the
 `AgentCoreShortTermMemoryRepository implements ChatMemoryRepository` declaration are
-marked `@Deprecated(since = "1.2.0")` (soft; no `forRemoval` flag). They will remain in
-place until Spring AI 2.1 formally deprecates `ChatMemory` upstream. See
-[issue #152](https://github.com/spring-ai-community/spring-ai-agentcore/issues/152).
+marked `@Deprecated(since = "2.1.0")` (soft; no `forRemoval` flag, NOT scheduled for
+removal). They remain fully supported and will stay in place until upstream Spring AI
+formally deprecates `ChatMemory`, at which point a removal window is announced separately.
+See [issue #152](https://github.com/spring-ai-community/spring-ai-agentcore/issues/152).
 
 ## Memory Types
 

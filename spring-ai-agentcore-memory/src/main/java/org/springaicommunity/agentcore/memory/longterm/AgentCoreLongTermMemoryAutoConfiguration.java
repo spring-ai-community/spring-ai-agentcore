@@ -72,13 +72,13 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	 * {@link ChatMemoryRepository}.
 	 * @param shortTermMemoryRepository the AgentCore-backed short-term repository
 	 * @return the same repository typed as {@link ChatMemoryRepository}
-	 * @deprecated since 1.2.0. Prefer the Session API stack via
+	 * @deprecated since 2.1.0. Prefer the Session API stack via
 	 * {@code agentcore.memory.session.enabled=true}. See issue #152.
 	 */
 	@Bean
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
-	@Deprecated(since = "1.2.0")
+	@Deprecated(since = "2.1.0")
 	ChatMemoryRepository chatMemoryRepository(AgentCoreShortTermMemoryRepository shortTermMemoryRepository) {
 		return shortTermMemoryRepository;
 	}
@@ -88,13 +88,13 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	 * repository.
 	 * @param shortTermMemoryRepository the AgentCore-backed short-term repository
 	 * @return a {@link MessageWindowChatMemory} instance
-	 * @deprecated since 1.2.0. Prefer the Session API stack via
+	 * @deprecated since 2.1.0. Prefer the Session API stack via
 	 * {@code agentcore.memory.session.enabled=true}. See issue #152.
 	 */
 	@Bean
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
-	@Deprecated(since = "1.2.0")
+	@Deprecated(since = "2.1.0")
 	ChatMemory chatMemory(AgentCoreShortTermMemoryRepository shortTermMemoryRepository) {
 		return MessageWindowChatMemory.builder().chatMemoryRepository(shortTermMemoryRepository).build();
 	}
