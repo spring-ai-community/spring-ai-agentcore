@@ -34,8 +34,8 @@ import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
  * {@code CapturedOutput} assertions on the deprecation messages remain unchanged.
  *
  * <p>
- * Public only to allow the sibling {@code session} sub-package auto-config to call it;
- * this is internal API and MUST NOT be treated as a stable extension point.
+ * Public only so the sibling {@code session} sub-package auto-config can call it. This is
+ * internal API; do not treat it as a stable extension point.
  *
  * <p>
  * See <a href="https://github.com/spring-ai-community/spring-ai-agentcore/issues/49">

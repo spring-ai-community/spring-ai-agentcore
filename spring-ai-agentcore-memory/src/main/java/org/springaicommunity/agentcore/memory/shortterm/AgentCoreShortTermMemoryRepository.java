@@ -67,10 +67,10 @@ import org.springframework.ai.chat.messages.UserMessage;
  * @author Maximilian Schellhorn
  * @deprecated since 2.1.0. Prefer the Spring AI Session API stack backed by
  * {@link org.springaicommunity.agentcore.memory.session.AgentCoreSessionRepository} and
- * enabled via {@code agentcore.memory.session.enabled=true}. This is a SOFT deprecation
- * with NO {@code forRemoval} flag: the class is NOT scheduled for removal. It will remain
- * in place until upstream Spring AI formally deprecates {@code ChatMemoryRepository}, at
- * which point a removal window will be announced separately. See issue #152.
+ * enabled via {@code agentcore.memory.session.enabled=true}. This is a soft deprecation
+ * with no {@code forRemoval} flag, so the class is not scheduled for removal. It stays in
+ * place until upstream Spring AI formally deprecates {@code ChatMemoryRepository}, at
+ * which point a removal window is announced separately. See issue #152.
  */
 @Deprecated(since = "2.1.0")
 public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository {

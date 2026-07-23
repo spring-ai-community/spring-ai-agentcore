@@ -25,8 +25,8 @@ Each request sets the session id via
 ## Required user-side dependency
 
 `spring-ai-agentcore-memory` declares `spring-ai-session-management` as an `optional`
-dependency, so consumers on the Session API path MUST add it explicitly. This example
-does so in its `pom.xml`:
+dependency, so consumers on the Session API path add it explicitly. This example does so
+in its `pom.xml`:
 
 ```xml
 <dependency>
@@ -38,22 +38,21 @@ does so in its `pom.xml`:
 The version is managed by `spring-ai-session-bom`, imported by the examples parent pom,
 so this project never pins the version directly.
 
-## The `userId:sessionSuffix` precondition (C1)
+## The `userId:sessionSuffix` session id
 
 `AgentCoreSessionRepository` has no separate session-metadata store, so it derives
 `Session.userId` from the actor (userId) segment of the sessionId parsed by
-`AgentCoreMemoryConversationIdParser`. The sessionId MUST have the form
+`AgentCoreMemoryConversationIdParser`. The sessionId has the form
 `userId:sessionSuffix`; the example uses `"testActor:testSession"`, where `testActor`
 is the userId and `testSession` is the suffix.
 
-If you pass `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` on a request, its value MUST
-equal the userId prefix of the sessionId. On the second turn the advisor runs an
-ownership check comparing `USER_ID_CONTEXT_KEY` against the derived `Session.userId`;
-a mismatch throws `IllegalStateException("...does not belong to user...")`. This
-controller does not set `USER_ID_CONTEXT_KEY`, so the check passes vacuously. The
-common trap: copying this example, reusing a sessionId, and then passing a DIFFERENT
-`USER_ID_CONTEXT_KEY` on turn two - that fails. Keep the userId prefix and any
-`USER_ID_CONTEXT_KEY` value identical.
+If you pass `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` on a request, its value must equal
+the userId prefix of the sessionId. On the second turn the advisor runs an ownership
+check comparing `USER_ID_CONTEXT_KEY` against the derived `Session.userId`; a mismatch
+throws `IllegalStateException("...does not belong to user...")`. This controller does not
+set `USER_ID_CONTEXT_KEY`, so the check passes. The common trap is copying this example,
+reusing a sessionId, then passing a different `USER_ID_CONTEXT_KEY` on turn two. Keep the
+userId prefix and any `USER_ID_CONTEXT_KEY` value identical.
 
 ## Prerequisites
 

@@ -58,63 +58,63 @@ import org.springframework.ai.session.SessionRepository;
  * {@link SessionEvent} is stored as an AgentCore event under (memoryId, actorId,
  * sessionId, eventTimestamp).
  *
- * <h3>User id convention (HARD PRECONDITION)</h3> AgentCore has no session-metadata
- * store, so this repository CANNOT persist the userId supplied on
- * {@code CreateSessionRequest} across restarts. Instead, the repository derives
- * {@code Session.userId} from the actor segment of the sessionId (parsed by
- * {@link AgentCoreMemoryConversationIdParser}). Callers using the
- * {@code SessionMemoryAdvisor} MUST use the sessionId format
- * {@code "userId:sessionSuffix"} whenever they also set
- * {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY}. The advisor's turn-2 ownership check
- * compares {@code USER_ID_CONTEXT_KEY} against {@code Session.userId()}; if the actor
- * segment does not match, {@code SessionMemoryAdvisor.before()} throws
- * {@link IllegalStateException} with the message "Session '...' does not belong to user
- * '...'. Access denied." Callers that rely only on the advisor's {@code defaultUserId}
- * (no per-request USER_ID_CONTEXT_KEY) are unaffected.
+ * <h3>User id and session id</h3> AgentCore has no session-metadata store, so this
+ * repository cannot persist the userId supplied on {@code CreateSessionRequest} across
+ * restarts. It derives {@code Session.userId} from the actor segment of the sessionId
+ * (parsed by {@link AgentCoreMemoryConversationIdParser}). When you also set
+ * {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY}, use the sessionId format
+ * {@code "userId:sessionSuffix"} and pass that same user id under the context key. On the
+ * second turn the advisor compares {@code USER_ID_CONTEXT_KEY} against
+ * {@code Session.userId()}; if the actor segment does not match,
+ * {@code SessionMemoryAdvisor.before()} throws {@link IllegalStateException} with the
+ * message "Session '...' does not belong to user '...'. Access denied." Callers that rely
+ * only on the advisor's {@code defaultUserId} (no per-request context key) are
+ * unaffected.
  *
  * <h3>Divergences from the {@link SessionRepository} contract</h3>
  * <ul>
- * <li>{@link #save(Session)} is a NO-OP: AgentCore has no session-metadata store, so any
- * metadata mutated on the {@link Session} (e.g. via {@code session.withMetadata(...)}) is
- * NOT persisted and will not be visible on a subsequent {@link #findById(String)}. Do not
- * rely on this method for metadata persistence.</li>
+ * <li>{@link #save(Session)} is a no-op. AgentCore has no session-metadata store, so any
+ * metadata mutated on the {@link Session} (for example via
+ * {@code session.withMetadata(...)}) is not persisted and will not be visible on a
+ * subsequent {@link #findById(String)}. Do not rely on this method for metadata
+ * persistence.</li>
  * <li>{@link #findByUserId(String)} throws {@link UnsupportedOperationException}:
  * AgentCore has no cross-actor listing.</li>
  * <li>{@link #findExpiredSessionIds(Instant)} throws
  * {@link UnsupportedOperationException}: AgentCore does not expose session TTL state;
  * retention is configured on the memory resource itself.</li>
- * <li>{@link #appendEvent(SessionEvent)} does NOT throw when the session has zero prior
- * events. AgentCore has no notion of session existence separate from events; the first
- * appendEvent implicitly creates the session server-side. This is a documented deviation
- * from the SPI Javadoc.</li>
- * <li>{@link #replaceEvents(String, List)} is a non-atomic delete-then-recreate;
- * AgentCore has no server-side transactional replace, so a mid-way createEvent failure
- * may leave partial data on the event log.</li>
- * <li>{@link #replaceEvents(String, List, long)} is best-effort CAS (check-then-act with
- * a race window); AgentCore has no server-side compare-and-swap on the event log.</li>
+ * <li>{@link #appendEvent(SessionEvent)} does not throw when the session has zero prior
+ * events. AgentCore has no notion of session existence separate from events, so the first
+ * appendEvent implicitly creates the session server-side. This deviates from the SPI
+ * Javadoc.</li>
+ * <li>{@link #replaceEvents(String, List)} is a non-atomic delete-then-recreate.
+ * AgentCore has no server-side transactional replace, so a createEvent failure partway
+ * through can leave partial data on the event log.</li>
+ * <li>{@link #replaceEvents(String, List, long)} is a best-effort check-then-act with a
+ * race window; AgentCore has no server-side compare-and-swap on the event log.</li>
  * </ul>
  *
- * <h3>Production safety: replaceEvents is best-effort, not atomic</h3> Both
+ * <h3>replaceEvents is best-effort, not atomic</h3> Both
  * {@link #replaceEvents(String, List)} and its CAS variant
  * {@link #replaceEvents(String, List, long)} delete the existing event log and then
  * recreate it in separate, non-transactional AgentCore calls. If a {@code createEvent}
- * call fails after the delete phase, the original events are LOST and the log is left
- * partial and unrecoverable without an external backup. There is also no server-side
- * lock, so these methods are NOT safe under concurrent writers: two callers racing on the
- * same sessionId can interleave delete/recreate and corrupt the log. Callers MUST hold an
- * external lock (e.g. a DynamoDB conditional write or Redis SETNX) so that only one
- * writer runs replaceEvents per sessionId, and SHOULD keep a backup to recover from a
- * mid-flight failure.
+ * call fails after the delete phase, the original events are lost and the log is left
+ * partial, with no way for this repository to recover without an external backup. There
+ * is no server-side lock either, so these methods are not safe under concurrent writers:
+ * two callers racing on the same sessionId can interleave delete and recreate and corrupt
+ * the log. Hold an external lock (for example a DynamoDB conditional write or Redis
+ * SETNX) so that only one writer runs replaceEvents per sessionId, and keep a backup to
+ * recover from a mid-flight failure.
  *
  * <h3>Synthesized {@link Session} fields</h3> On {@link #findById(String)} we synthesize
  * a {@link Session} from the event-log tail:
  * <ul>
  * <li>{@code id} = the requested sessionId string.</li>
  * <li>{@code userId} = actor segment of the sessionId (see convention above).</li>
- * <li>{@code createdAt} = {@link java.time.Instant#EPOCH} SENTINEL. AgentCore does not
- * record session-creation time. The real timestamp of the most recent event is exposed
- * under metadata key {@value #LAST_EVENT_AT_METADATA_KEY} so downstream code that needs a
- * real timestamp can read it there.</li>
+ * <li>{@code createdAt} = {@link java.time.Instant#EPOCH} as a sentinel. AgentCore does
+ * not record session-creation time. The timestamp of the most recent event is exposed
+ * under metadata key {@value #LAST_EVENT_AT_METADATA_KEY}, so downstream code that needs
+ * a real timestamp can read it there.</li>
  * <li>{@code expiresAt} = {@code null}: AgentCore has no per-session TTL.</li>
  * <li>{@code metadata} = {@link Map#of} with keys {@value #ACTOR_ID_METADATA_KEY},
  * {@value #SESSION_METADATA_KEY}, and {@value #LAST_EVENT_AT_METADATA_KEY}.</li>
@@ -166,19 +166,17 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	// ==================== Sessions ====================
 
 	/**
-	 * NO-OP. AgentCore has no session-metadata store, so this repository cannot persist
+	 * No-op. AgentCore has no session-metadata store, so this repository cannot persist
 	 * session-level metadata.
 	 *
 	 * <p>
-	 * <strong>Divergence from the {@link SessionRepository} SPI.</strong> Unlike a
-	 * metadata-backed store, calling {@code save} does NOT persist anything. Any fields
-	 * mutated on the supplied {@link Session} (for example via
-	 * {@code session.withMetadata(...)} or a changed {@code expiresAt}) are silently
-	 * discarded and will NOT be visible on a subsequent {@link #findById(String)}. The
-	 * method returns the same {@link Session} instance it was given for API symmetry
-	 * only. Callers MUST NOT rely on this method for metadata persistence; session state
-	 * lives entirely in the AgentCore event log written by
-	 * {@link #appendEvent(SessionEvent)}.
+	 * <strong>Divergence from the {@link SessionRepository} SPI.</strong> Calling
+	 * {@code save} persists nothing. Any fields mutated on the supplied {@link Session}
+	 * (for example via {@code session.withMetadata(...)} or a changed {@code expiresAt})
+	 * are discarded and will not be visible on a subsequent {@link #findById(String)}.
+	 * The method returns the same {@link Session} instance it was given, for API
+	 * symmetry. Do not rely on it for metadata persistence; session state lives entirely
+	 * in the AgentCore event log written by {@link #appendEvent(SessionEvent)}.
 	 * @param session the session (must not be null)
 	 * @return the same {@code session} instance, unmodified and unpersisted
 	 */
@@ -189,7 +187,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		}
 		logger.debug(
 				"AgentCoreSessionRepository.save is a no-op for id: {}; AgentCore has no session-metadata store, so any"
-						+ " metadata on the Session is NOT persisted (see class Javadoc)",
+						+ " metadata on the Session is not persisted (see class Javadoc)",
 				session.id());
 		return session;
 	}
@@ -280,11 +278,10 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	 *
 	 * <p>
 	 * <strong>Divergence from the {@link SessionRepository} SPI.</strong> AgentCore has
-	 * no notion of session existence separate from events; unlike the SessionRepository
-	 * SPI Javadoc, this method does NOT throw {@code IllegalArgumentException} when the
-	 * sessionId has zero prior events. The first appendEvent implicitly creates the
-	 * AgentCore session. Callers that need explicit-existence semantics should first
-	 * invoke {@link #findById(String)}.
+	 * no notion of session existence separate from events. Where the SPI Javadoc says to
+	 * throw {@code IllegalArgumentException} for an unknown session, this method does
+	 * not: the first appendEvent implicitly creates the AgentCore session. If you need
+	 * explicit-existence semantics, call {@link #findById(String)} first.
 	 *
 	 * <p>
 	 * Messages already carrying the {@value #EVENT_ID_METADATA_KEY} metadata key are
@@ -350,15 +347,15 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	 * creates each supplied event in turn.
 	 *
 	 * <p>
-	 * <strong>Best-effort, NOT safe under concurrent writers.</strong> A crash or a
-	 * failing {@code createEvent} call after the delete phase leaves the log PARTIAL and
-	 * the original events LOST; the failure is logged at ERROR and is NOT retryable (the
-	 * pre-delete state cannot be reconstructed by this repository). There is no
+	 * <strong>Best-effort, not safe under concurrent writers.</strong> A crash or a
+	 * failing {@code createEvent} call after the delete phase leaves the log partial and
+	 * the original events lost; the failure is logged at ERROR and is not retryable,
+	 * since this repository cannot reconstruct the pre-delete state. There is no
 	 * server-side lock, so two callers racing on the same sessionId can interleave and
-	 * corrupt the log. Callers MUST hold an external lock (e.g. DynamoDB conditional
-	 * write, Redis SETNX) so that only one writer runs replaceEvents per sessionId, and
-	 * SHOULD keep a backup to recover from a mid-flight failure. See the class-level
-	 * "Production safety" section.
+	 * corrupt the log. Hold an external lock (for example a DynamoDB conditional write or
+	 * Redis SETNX) so that only one writer runs replaceEvents per sessionId, and keep a
+	 * backup to recover from a mid-flight failure. See the class-level "replaceEvents is
+	 * best-effort" section.
 	 * @param sessionId the session whose event log is being replaced
 	 * @param events the new events to persist after the existing log has been cleared
 	 * @throws org.springaicommunity.agentcore.memory.AgentCoreMemoryException.StorageException
@@ -371,8 +368,8 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		if (events == null) {
 			throw new IllegalArgumentException("events must not be null");
 		}
-		logger.warn("AgentCore does not support atomic event-log replacement; crash between delete/recreate may leave"
-				+ " partial data for sessionId {}", sessionId);
+		logger.warn("AgentCore does not support atomic event-log replacement; a crash between delete and recreate may"
+				+ " leave partial data for sessionId {}", sessionId);
 		this.doReplaceEvents(sessionId, events);
 	}
 
@@ -388,9 +385,8 @@ public class AgentCoreSessionRepository implements SessionRepository {
 					expectedVersion, current);
 			return false;
 		}
-		logger.warn(
-				"AgentCore does not support atomic CAS on the event log; performing check-then-act for sessionId {}",
-				sessionId);
+		logger.warn("AgentCore does not support atomic compare-and-swap on the event log; performing check-then-act for"
+				+ " sessionId {}", sessionId);
 		this.doReplaceEvents(sessionId, events);
 		return true;
 	}
@@ -475,7 +471,8 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 	private void doReplaceEvents(String sessionId, List<SessionEvent> events) {
 		// Track progress so a mid-flight failure can be logged with enough context to
-		// assess data loss and drive external recovery (this operation is non-atomic).
+		// assess data loss and drive external recovery, since this operation is
+		// non-atomic.
 		AtomicInteger deleted = new AtomicInteger();
 		AtomicInteger recreated = new AtomicInteger();
 		boolean deletePhaseComplete = false;
@@ -493,7 +490,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			}));
 			deletePhaseComplete = true;
 
-			// 2. Recreate each new event. This is a full replacement, so do NOT
+			// 2. Recreate each new event. This is a full replacement, so we do not
 			// filter by agentcore.eventId metadata.
 			for (SessionEvent event : events) {
 				Message message = event.getMessage();
@@ -520,16 +517,16 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			}
 		}
 		catch (SdkException ex) {
-			// A failure after the delete phase leaves the log PARTIAL and the original
-			// events LOST. Log at ERROR (not WARN) with recovery context; this is NOT
-			// retryable by this repository because the pre-delete state is gone.
+			// A failure after the delete phase leaves the log partial and the original
+			// events gone. Log at ERROR with recovery context; this repository cannot
+			// retry it, because the pre-delete state is no longer available.
 			if (deletePhaseComplete) {
-				logger.error("PARTIAL DATA / DATA LOSS while replacing AgentCore events for sessionId {}: delete phase"
-						+ " completed ({} events deleted) but recreate FAILED after {} of {} events; the original"
-						+ " event log is GONE and the current log is partial. replaceEvents is non-atomic and NOT"
-						+ " retryable here - recover from an external backup and hold an external lock per"
-						+ " sessionId to prevent concurrent writers. See AgentCoreSessionRepository Javadoc.",
-						sessionId, deleted.get(), recreated.get(), events.size(), ex);
+				logger.error("Data loss replacing AgentCore events for sessionId {}: delete completed ({} deleted)"
+						+ " but recreate failed after {} of {} events. The original log is gone and the current log"
+						+ " is partial. replaceEvents is non-atomic and cannot be retried here; recover from an"
+						+ " external backup and hold an external lock per sessionId to prevent concurrent writers."
+						+ " See AgentCoreSessionRepository Javadoc.", sessionId, deleted.get(), recreated.get(),
+						events.size(), ex);
 			}
 			else {
 				logger.error(

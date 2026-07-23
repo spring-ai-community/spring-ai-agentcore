@@ -26,10 +26,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@link AgentCoreSessionRepository} derives {@code Session.userId} from the actor
  * segment of the sessionId (parsed by
  * {@link org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser}).
- * Callers using {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY} MUST use the sessionId
- * format {@code "userId:sessionSuffix"} and pass the SAME user id under
- * {@code USER_ID_CONTEXT_KEY}. Any mismatch triggers an {@link IllegalStateException}
- * from the advisor on the second turn.
+ * Callers using {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY} must use the sessionId
+ * format {@code "userId:sessionSuffix"} and pass that same user id under
+ * {@code USER_ID_CONTEXT_KEY}. A mismatch triggers an {@link IllegalStateException} from
+ * the advisor on the second turn.
  *
  * @param enabled opt-in switch for the session-backed memory stack; defaults to
  * {@code false}
