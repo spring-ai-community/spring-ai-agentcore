@@ -70,15 +70,36 @@ On the second turn `SessionMemoryAdvisor.before()` runs an ownership check that 
 reusing a sessionId while changing the advisor's user id. If you never set
 `USER_ID_CONTEXT_KEY`, the check passes.
 
-**replaceEvents is best-effort and not concurrency-safe.** Both `replaceEvents(String,
-List)` and the CAS variant `replaceEvents(String, List, long)` are non-atomic: they delete
-the existing event log and then recreate it in separate AgentCore calls. If a `createEvent`
-call fails after the delete phase, the original events are gone and the log is left partial,
-with no way for the repository to recover it (the failure is logged at ERROR and is not
-retryable). There is no server-side lock, so concurrent writers on the same sessionId can
-interleave and corrupt the log. Hold an external lock (for example a DynamoDB conditional
-write or Redis SETNX) so that only one writer runs `replaceEvents` per sessionId, and keep
-a backup to recover from a mid-flight failure.
+**replaceEvents: non-destructive branch-swap (opt-in) or legacy delete-then-recreate.**
+AgentCore has no server-side transactional replace or compare-and-swap on the event log.
+Two strategies are selected by `agentcore.memory.session.branch-swap-enabled` (default
+`false`).
+
+- **Branch-swap (opt-in, `true`).** `replaceEvents` writes the full replacement timeline
+  to a fresh branch named `gen-<counter>-<8hex>`, then makes that branch current by writing
+  a small pointer marker on the main line carrying `agentcore.currentBranch`, `agentcore.gen`,
+  and `agentcore.pointer=true`. Discovery is highest-generation-wins over the pointer ledger
+  (ties broken deterministically by lexicographic branch name, not list position). It is
+  non-destructive: a failed replacement leaves the old branch current, so readers never see a
+  partial timeline. It is NOT a CAS: concurrent replacers each write an isolated branch and no
+  events are lost between replacers, but a whole replacement can be silently superseded by a
+  concurrent higher-generation one, and a concurrent `appendEvent` can land on a branch that is
+  immediately superseded (silently invisible to later reads). Migration is one-way per session;
+  prove it out in a non-production environment first. Ledger compaction reaps each superseded
+  generation's branch events as its marker is compacted (coupled so no branch outlives its
+  marker), so the steady state is roughly one live branch.
+- **Legacy (default, `false`).** For a true v1 session (no pointer markers), `replaceEvents`
+  performs the non-atomic delete-then-recreate: it deletes the existing event log and then
+  recreates it in separate AgentCore calls. If a `createEvent` fails after the delete phase,
+  the original events are gone and the log is left partial and unrecoverable by the repository
+  (logged at ERROR, not retryable). On a session that was already migrated to branch mode, the
+  flag-off path REFUSES with a `StorageException` and migrate-back guidance rather than
+  destroying the ledger; it issues zero AWS writes.
+
+For strict single-writer needs under either strategy, hold an external lock (for example a
+DynamoDB conditional write or Redis SETNX) covering `appendEvent` and both `replaceEvents`
+variants per sessionId. The clientToken idempotency applies within AgentCore's clientToken
+retention window.
 
 **Known limitations.** AgentCore imposes several behaviors that differ from the
 `SessionRepository` SPI. All are documented in Javadoc on `AgentCoreSessionRepository`:
@@ -86,13 +107,24 @@ a backup to recover from a mid-flight failure.
 | Method / field | Behavior | Caller impact |
 |----------------|----------|---------------|
 | `save(Session)` | no-op (no session-metadata store) | Metadata mutated on the `Session` (e.g. `session.withMetadata(...)`) is not persisted and will not reappear on `findById`. Do not use `save` for metadata persistence. |
-| `findByUserId(String)` | throws `UnsupportedOperationException` | No cross-actor listing; parse `actor:session` per request instead. |
-| `findExpiredSessionIds(Instant)` | throws `UnsupportedOperationException` | No cross-actor listing; expiry sweeping unsupported. |
-| `replaceEvents(String, List)` | non-atomic delete-then-recreate | Partial data or data loss on mid-flight failure; hold an external lock (see above). |
+| `findByUserId(String)` | maps `userId` to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`; unknown user yields an empty list. |
+| `findExpiredSessionIds(Instant)` | throws `UnsupportedOperationException` | Expiry is memory-level retention (`eventExpiryDuration`), not re-derivable per session; use `findByUserId(userId)` to enumerate a user's sessions. |
+| `replaceEvents(String, List)` | non-destructive branch-swap when enabled; legacy delete-then-recreate otherwise (refuses on a migrated session when disabled) | Branch-swap leaves the prior timeline intact; legacy risks partial data on mid-flight failure. Hold an external lock (see above). |
 | `replaceEvents(String, List, long)` | best-effort check-then-act, not a true CAS | Race window; hold an external lock (see above). |
 | `appendEvent(SessionEvent)` | does not throw when session is unknown | First append implicitly creates the session server-side. |
-| `Session.createdAt` | `Instant.EPOCH` sentinel | Real last-event timestamp exposed under metadata key `agentcore.lastEventAt`. |
+| `Session.createdAt` | real instant from `SessionSummary`, falling back to the tail event timestamp | Only when neither exists does it fall back to the `Instant.EPOCH` sentinel; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
 | `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
+
+**Branch-swap rollback / migrate-back.** Branch-swap migration is one-way per session: once
+a session has a pointer marker, its live timeline is on a `gen-*` branch. To roll back to the
+legacy main line, keep `agentcore.memory.session.branch-swap-enabled=true` and, for each
+affected session, read the current branch with `findEvents(sessionId, EventFilter.all())` and
+re-write those events onto a fresh session id that has never been branched (a plain
+`appendEvent` loop with branch-swap disabled). Do NOT simply flip the flag off and call
+`replaceEvents` on a migrated session: that path deliberately refuses with a `StorageException`
+(and issues zero AWS writes) precisely so it never runs the destructive main-line delete
+against a live branch. Superseded branches and stale markers are reaped by the memory-level
+`eventExpiryDuration`; lower that duration as a backstop for high replace rates.
 
 **Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,
 `AgentCoreMemory.shortTermMemoryAdvisor`) and the
