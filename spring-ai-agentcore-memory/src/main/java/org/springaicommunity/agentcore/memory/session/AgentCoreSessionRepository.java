@@ -16,10 +16,12 @@
 
 package org.springaicommunity.agentcore.memory.session;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -36,14 +38,21 @@ import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParse
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+import software.amazon.awssdk.services.bedrockagentcore.model.Branch;
+import software.amazon.awssdk.services.bedrockagentcore.model.BranchFilter;
 import software.amazon.awssdk.services.bedrockagentcore.model.Content;
 import software.amazon.awssdk.services.bedrockagentcore.model.Conversational;
 import software.amazon.awssdk.services.bedrockagentcore.model.CreateEventRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.DeleteEventRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.Event;
+import software.amazon.awssdk.services.bedrockagentcore.model.EventMetadataFilterExpression;
+import software.amazon.awssdk.services.bedrockagentcore.model.FilterInput;
+import software.amazon.awssdk.services.bedrockagentcore.model.LeftExpression;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListEventsRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListSessionsRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListSessionsResponse;
+import software.amazon.awssdk.services.bedrockagentcore.model.MetadataValue;
+import software.amazon.awssdk.services.bedrockagentcore.model.OperatorType;
 import software.amazon.awssdk.services.bedrockagentcore.model.PayloadType;
 import software.amazon.awssdk.services.bedrockagentcore.model.Role;
 import software.amazon.awssdk.services.bedrockagentcore.model.SessionSummary;
@@ -97,25 +106,44 @@ import org.springframework.ai.session.SessionRepository;
  * events. AgentCore has no notion of session existence separate from events, so the first
  * appendEvent implicitly creates the session server-side. This deviates from the SPI
  * Javadoc.</li>
- * <li>{@link #replaceEvents(String, List)} is a non-atomic delete-then-recreate.
- * AgentCore has no server-side transactional replace, so a createEvent failure partway
- * through can leave partial data on the event log.</li>
+ * <li>{@link #replaceEvents(String, List)} is a non-destructive branch-swap when
+ * branch-swap is enabled, and a legacy delete-then-recreate otherwise. See the
+ * concurrency section below.</li>
  * <li>{@link #replaceEvents(String, List, long)} is a best-effort check-then-act with a
  * race window; AgentCore has no server-side compare-and-swap on the event log.</li>
  * </ul>
  *
- * <h3>replaceEvents is best-effort, not atomic</h3> Both
- * {@link #replaceEvents(String, List)} and its CAS variant
- * {@link #replaceEvents(String, List, long)} delete the existing event log and then
- * recreate it in separate, non-transactional AgentCore calls. A concurrent reader can
- * observe the partial state between the delete and recreate phases. If a
- * {@code createEvent} call fails after the delete phase, the original events are lost and
- * the log is left partial, with no way for this repository to recover without an external
- * backup. There is no server-side lock either, so these methods are not safe under
- * concurrent writers: two callers racing on the same sessionId can interleave delete and
- * recreate and corrupt the log. Hold an external lock (for example a DynamoDB conditional
- * write or Redis SETNX) so that only one writer runs replaceEvents per sessionId, and
- * keep a backup to recover from a mid-flight failure.
+ * <h3>replaceEvents concurrency semantics</h3> AgentCore offers no server-side
+ * transactional replace and no compare-and-swap on the event log. Two strategies are
+ * supported, selected by the {@code agentcore.memory.session.branch-swap-enabled}
+ * property:
+ * <ul>
+ * <li><strong>Branch-swap (opt-in).</strong> {@code replaceEvents} writes the full
+ * replacement timeline to a fresh branch named {@code gen-<counter>-<8hex>}, then makes
+ * that branch the current read target by writing a small pointer marker on the main line
+ * carrying {@value #GENERATION_METADATA_KEY}. Discovery is highest-generation-wins over
+ * the pointer ledger (not list position, since eventTimestamp is caller-supplied and
+ * ListEvents ordering is not guaranteed); ties on generation are broken deterministically
+ * by lexicographic branch name. This is non-destructive: a failed replacement leaves the
+ * old branch current, so readers never see a partial timeline. It is NOT a CAS.
+ * Concurrent {@code replaceEvents} calls are resolved highest-generation-wins; between
+ * replacers no events are interleaved (each writes an isolated branch), but a whole
+ * replacement can be silently superseded by a concurrent higher-generation one. If you
+ * require exactly-one- winner semantics, hold an external lock per sessionId.</li>
+ * <li><strong>Legacy delete-then-recreate (default).</strong> When branch-swap is
+ * disabled, {@code replaceEvents} deletes the existing log and recreates it in separate,
+ * non-transactional calls. A {@code createEvent} failure after the delete phase leaves
+ * the log partial and the original events lost (logged at ERROR, not retryable here). On
+ * a session that was already migrated to branch mode, the disabled path refuses rather
+ * than destroying the ledger; re-enable branch-swap or run the migrate-back utility.</li>
+ * </ul>
+ * <strong>appendEvent vs replaceEvents (silent orphan window).</strong> The no-interleave
+ * guarantee is scoped to replacer-vs-replacer only. An {@link #appendEvent(SessionEvent)}
+ * that races a concurrent {@code replaceEvents} can land on a branch that is immediately
+ * superseded, making the appended event invisible to subsequent reads with no error
+ * raised. To avoid this, an external per-session lock MUST cover {@code appendEvent} AND
+ * both {@code replaceEvents} variants together, not just concurrent replacers. No code
+ * mechanism eliminates this without server CAS, which AgentCore does not provide.
  *
  * <h3>Synthesized {@link Session} fields</h3> On {@link #findById(String)} we synthesize
  * a {@link Session} from the event-log tail:
@@ -151,10 +179,21 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	/** Metadata key for the AgentCore session segment derived from the sessionId. */
 	public static final String SESSION_METADATA_KEY = "agentcore.session";
 
+	/** Pointer-marker metadata key naming the current read-target branch. */
+	public static final String CURRENT_BRANCH_METADATA_KEY = "agentcore.currentBranch";
+
+	/** Pointer-marker metadata key carrying the zero-padded generation counter. */
+	public static final String GENERATION_METADATA_KEY = "agentcore.gen";
+
+	/** Pointer-marker metadata key ({@code "true"}) flagging a pointer marker event. */
+	public static final String POINTER_MARKER_METADATA_KEY = "agentcore.pointer";
+
 	/**
 	 * Last-resort createdAt when neither a SessionSummary nor an event timestamp exists.
 	 */
 	static final Instant SYNTHETIC_CREATED_AT = Instant.EPOCH;
+
+	private static final String BRANCH_NAME_FORMAT = "gen-%05d-%s";
 
 	private static final int SERVICE_MAX_RESULTS = 100;
 
@@ -174,8 +213,26 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 	private final boolean persistSynthetic;
 
+	private final boolean branchSwapEnabled;
+
+	private final boolean deleteSupersededBranch;
+
+	private final BranchResolutionCache branchCache;
+
+	// Legacy constructor: branch-swap disabled, no superseded-branch cleanup, no branch
+	// cache. Retained for callers that predate the branch-swap tunables.
 	public AgentCoreSessionRepository(String memoryId, BedrockAgentCoreClient client, Integer totalEventsLimit,
 			String defaultSession, int pageSize, boolean ignoreUnknownRoles, boolean persistSynthetic) {
+		this(memoryId, client, totalEventsLimit, defaultSession, pageSize, ignoreUnknownRoles, persistSynthetic, false,
+				false, false, null);
+	}
+
+	// Full constructor including the branch-swap and resolution-cache tunables.
+	@SuppressWarnings("checkstyle:parameternumber")
+	public AgentCoreSessionRepository(String memoryId, BedrockAgentCoreClient client, Integer totalEventsLimit,
+			String defaultSession, int pageSize, boolean ignoreUnknownRoles, boolean persistSynthetic,
+			boolean branchSwapEnabled, boolean deleteSupersededBranch, boolean branchCacheEnabled,
+			Duration branchCacheTtl) {
 		this.memoryId = validateMemoryId(memoryId);
 		this.client = client;
 		this.totalEventsLimit = totalEventsLimit;
@@ -183,6 +240,9 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		this.pageSize = pageSize;
 		this.ignoreUnknownRoles = ignoreUnknownRoles;
 		this.persistSynthetic = persistSynthetic;
+		this.branchSwapEnabled = branchSwapEnabled;
+		this.deleteSupersededBranch = deleteSupersededBranch;
+		this.branchCache = branchCacheEnabled ? new BranchResolutionCache(branchCacheTtl) : null;
 	}
 
 	// ==================== Sessions ====================
@@ -221,14 +281,18 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			var request = ListEventsRequest.builder()
+			String branch = resolveCurrentBranch(actorAndSession);
+			var builder = ListEventsRequest.builder()
 				.actorId(actorAndSession.actor())
 				.sessionId(actorAndSession.session())
 				.memoryId(this.memoryId)
 				.maxResults(1)
-				.includePayloads(false)
-				.build();
-			var response = this.client.listEvents(request);
+				.includePayloads(false);
+			FilterInput branchFilter = branchFilter(branch);
+			if (branchFilter != null) {
+				builder.filter(branchFilter);
+			}
+			var response = this.client.listEvents(builder.build());
 			var events = response.events();
 			if (events == null || events.isEmpty()) {
 				return Optional.empty();
@@ -327,16 +391,30 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
+			List<PointerMarker> ledger = readLedger(actorAndSession);
 			AtomicInteger deleted = new AtomicInteger();
-			this.forEachEventPage(actorAndSession, false, false, (page) -> page.forEach((event) -> {
-				this.client.deleteEvent(DeleteEventRequest.builder()
-					.memoryId(this.memoryId)
-					.actorId(actorAndSession.actor())
-					.sessionId(actorAndSession.session())
-					.eventId(event.eventId())
-					.build());
+
+			// 1. Delete every branch recorded in the ledger.
+			for (PointerMarker marker : ledger) {
+				this.forEachEventPage(actorAndSession, false, false, branchFilter(marker.branchName()),
+						(page) -> page.forEach((event) -> {
+							deleteEvent(actorAndSession, event.eventId());
+							deleted.incrementAndGet();
+						}));
+			}
+			// 2. Delete all main-line pointer markers.
+			for (PointerMarker marker : ledger) {
+				deleteEvent(actorAndSession, marker.eventId());
+				deleted.incrementAndGet();
+			}
+			// 3. Delete any remaining main-line events (v1/pre-migration tail).
+			this.forEachEventPage(actorAndSession, false, false, null, (page) -> page.forEach((event) -> {
+				deleteEvent(actorAndSession, event.eventId());
 				deleted.incrementAndGet();
 			}));
+			if (this.branchCache != null) {
+				this.branchCache.invalidate(actorAndSession);
+			}
 			logger.debug("Deleted {} AgentCore events for sessionId: {}", deleted.get(), sessionId);
 		}
 		catch (SdkException ex) {
@@ -356,6 +434,21 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	 * throw {@code IllegalArgumentException} for an unknown session, this method does
 	 * not: the first appendEvent implicitly creates the AgentCore session. If you need
 	 * explicit-existence semantics, call {@link #findById(String)} first.
+	 *
+	 * <p>
+	 * When branch-swap is enabled and the session has been migrated, the event is
+	 * appended to the current branch (resolved by pointer-marker discovery). This is a
+	 * per-message hot path, so it pays a branch resolution before its write; ledger
+	 * compaction keeps the steady-state marker count at one, and the optional
+	 * per-instance resolution cache drops a warm append to zero extra AWS calls. A
+	 * main-line (never-replaced) session appends with no branch, preserving v1 behavior.
+	 *
+	 * <p>
+	 * <strong>Concurrency.</strong> An appendEvent that races a concurrent
+	 * {@code replaceEvents} can land on a branch that is immediately superseded, making
+	 * the appended event invisible to later reads with no error raised. Hold an external
+	 * per-session lock covering appendEvent AND both replaceEvents variants together (see
+	 * class Javadoc).
 	 *
 	 * <p>
 	 * Messages already carrying the {@value #EVENT_ID_METADATA_KEY} metadata key are
@@ -390,20 +483,23 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			CreateEventRequest request = CreateEventRequest.builder()
+			String branch = resolveCurrentBranch(actorAndSession);
+			CreateEventRequest.Builder builder = CreateEventRequest.builder()
 				.memoryId(this.memoryId)
 				.actorId(actorAndSession.actor())
 				.sessionId(actorAndSession.session())
 				.payload(List.of(payload))
 				.eventTimestamp((event.getTimestamp() != null) ? event.getTimestamp() : Instant.now())
-				.clientToken(UUID.randomUUID().toString())
-				.build();
-			var response = this.client.createEvent(request);
+				.clientToken(UUID.randomUUID().toString());
+			if (branch != null) {
+				builder.branch(Branch.builder().name(branch).build());
+			}
+			var response = this.client.createEvent(builder.build());
 			String eventId = (response.event() != null) ? response.event().eventId() : null;
 			if (eventId != null) {
 				message.getMetadata().put(EVENT_ID_METADATA_KEY, eventId);
 			}
-			logger.debug("Appended AgentCore event {} for sessionId {}", eventId, sessionId);
+			logger.debug("Appended AgentCore event {} for sessionId {} (branch {})", eventId, sessionId, branch);
 		}
 		catch (SdkException ex) {
 			logger.error("Failed to append AgentCore event for sessionId: {}", sessionId, ex);
@@ -417,26 +513,22 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	 *
 	 * <p>
 	 * <strong>Divergence from the {@link SessionRepository} SPI.</strong> AgentCore has
-	 * no server-side transactional replace, so this method performs a non-atomic
-	 * delete-then-recreate: it first deletes every existing event for the session, then
-	 * creates each supplied event in turn.
+	 * no server-side transactional replace. When branch-swap is enabled
+	 * ({@code agentcore.memory.session.branch-swap-enabled=true}) this method is
+	 * non-destructive: it writes the replacement set to a fresh {@code gen-*} branch and
+	 * switches the current-branch pointer (highest-generation-wins), leaving the prior
+	 * timeline intact. When branch-swap is disabled (default) it performs the legacy
+	 * non-atomic delete-then-recreate for a true v1 session, and refuses on a session
+	 * that was already migrated to branch mode (to avoid destroying the ledger).
 	 *
 	 * <p>
-	 * <strong>Best-effort, not safe under concurrent writers.</strong> A concurrent
-	 * reader can observe the partial state between the delete and recreate phases. A
-	 * crash or a failing {@code createEvent} call after the delete phase leaves the log
-	 * partial and the original events lost; the failure is logged at ERROR and is not
-	 * retryable, since this repository cannot reconstruct the pre-delete state. There is
-	 * no server-side lock, so two callers racing on the same sessionId can interleave and
-	 * corrupt the log. Hold an external lock (for example a DynamoDB conditional write or
-	 * Redis SETNX) so that only one writer runs replaceEvents per sessionId, and keep a
-	 * backup to recover from a mid-flight failure. See the class-level "replaceEvents is
-	 * best-effort" section.
+	 * <strong>Concurrency.</strong> Branch-swap is highest-generation-wins, not a CAS: a
+	 * whole replacement can be silently superseded by a concurrent higher-generation one,
+	 * and a concurrent appendEvent can be orphaned. Hold an external per-session lock
+	 * over appendEvent + both replaceEvents variants for strict single-winner semantics.
+	 * See the class-level concurrency section.
 	 * @param sessionId the session whose event log is being replaced
-	 * @param events the new events to persist after the existing log has been cleared
-	 * @throws org.springaicommunity.agentcore.memory.AgentCoreMemoryException.StorageException
-	 * if an AgentCore call fails; when this happens after the delete phase the event log
-	 * is left partial and the original events are unrecoverable (not retryable)
+	 * @param events the new events to persist
 	 */
 	@Override
 	public void replaceEvents(String sessionId, List<SessionEvent> events) {
@@ -444,6 +536,10 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		if (events == null) {
 			throw new IllegalArgumentException("events must not be null");
 		}
+		logger.warn("AgentCore has no server-side transactional replace; replaceEvents writes a new branch and switches"
+				+ " the current-branch pointer by highest generation (highest-gen-wins, non-destructive). Concurrent"
+				+ " appendEvent can be silently orphaned; hold an external per-session lock over append+replace. See"
+				+ " class Javadoc. sessionId {}", sessionId);
 		this.doReplaceEvents(sessionId, events);
 	}
 
@@ -459,6 +555,10 @@ public class AgentCoreSessionRepository implements SessionRepository {
 					expectedVersion, current);
 			return false;
 		}
+		logger.warn("AgentCore has no server-side compare-and-swap; performing check-then-act for sessionId {}. The"
+				+ " risk under concurrency is silent supersession (highest-gen-wins) and an orphaned concurrent"
+				+ " appendEvent, not partial or lost data; hold an external lock over append+replace for strict"
+				+ " single-winner needs.", sessionId);
 		this.doReplaceEvents(sessionId, events);
 		return true;
 	}
@@ -468,8 +568,14 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		validateSessionId(sessionId);
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
+			String branch = resolveCurrentBranch(actorAndSession);
 			AtomicLong count = new AtomicLong();
-			this.forEachEventPage(actorAndSession, false, false, (page) -> count.addAndGet(page.size()));
+			this.forEachEventPage(actorAndSession, false, false, branchFilter(branch),
+					(page) -> page.forEach((event) -> {
+						if (!isPointerMarker(event)) {
+							count.incrementAndGet();
+						}
+					}));
 			return count.get();
 		}
 		catch (SdkException ex) {
@@ -487,14 +593,18 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		}
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
+			String branch = resolveCurrentBranch(actorAndSession);
 			List<Event> allEvents = new ArrayList<>();
-			this.forEachEventPage(actorAndSession, true, true, allEvents::addAll);
+			this.forEachEventPage(actorAndSession, true, true, branchFilter(branch), allEvents::addAll);
 			// AgentCore returns events in descending order (newest first); reverse to
 			// chronological order.
 			Collections.reverse(allEvents);
 
 			List<SessionEvent> mapped = new ArrayList<>(allEvents.size());
 			for (Event event : allEvents) {
+				if (isPointerMarker(event)) {
+					continue;
+				}
 				List<Message> messages = this.mapPayloadsToMessages(event, sessionId);
 				if (messages.isEmpty()) {
 					continue;
@@ -546,31 +656,109 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		}
 	}
 
-	// ==================== Helpers ====================
+	// ==================== replaceEvents internals ====================
 
 	private void doReplaceEvents(String sessionId, List<SessionEvent> events) {
-		// Track progress so a mid-flight failure can be logged with enough context to
-		// assess data loss and drive external recovery, since this operation is
-		// non-atomic.
+		var actorAndSession = this.actorAndSession(sessionId);
+		if (!this.branchSwapEnabled) {
+			// Step 0a: refuse on an already-migrated session; the legacy main-line delete
+			// would destroy the ledger and orphan the live branch (N1).
+			String branch = resolveCurrentBranch(actorAndSession);
+			if (branch != null) {
+				String msg = "replaceEvents with branch-swap disabled is refused on session " + sessionId
+						+ ": it has a v2 branch timeline (current branch " + branch
+						+ "). Re-enable agentcore.memory.session.branch-swap-enabled, or run the"
+						+ " migrate-back utility (see README rollback) before disabling.";
+				throw new AgentCoreMemoryException.StorageException(msg, null);
+			}
+			// Step 0b: true v1 session -> legacy delete-then-recreate.
+			this.doReplaceEventsLegacy(sessionId, actorAndSession, events);
+			return;
+		}
+		this.doReplaceEventsBranchSwap(sessionId, actorAndSession, events);
+	}
+
+	private void doReplaceEventsBranchSwap(String sessionId,
+			AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, List<SessionEvent> events) {
+		AtomicInteger created = new AtomicInteger();
+		long nextGen = resolveGeneration(actorAndSession) + 1;
+		String branchName = String.format(BRANCH_NAME_FORMAT, nextGen, randomShortToken());
+		int intended = 0;
+		try {
+			for (SessionEvent event : events) {
+				Message message = event.getMessage();
+				if (event.isSynthetic() && !this.persistSynthetic) {
+					continue;
+				}
+				PayloadType payload = this.buildPayloadType(message);
+				if (payload == null) {
+					continue;
+				}
+				intended++;
+				CreateEventRequest request = CreateEventRequest.builder()
+					.memoryId(this.memoryId)
+					.actorId(actorAndSession.actor())
+					.sessionId(actorAndSession.session())
+					.payload(List.of(payload))
+					.eventTimestamp((event.getTimestamp() != null) ? event.getTimestamp() : Instant.now())
+					.branch(Branch.builder().name(branchName).build())
+					.clientToken(UUID.randomUUID().toString())
+					.build();
+				var response = this.client.createEvent(request);
+				String eventId = (response.event() != null) ? response.event().eventId() : null;
+				if (eventId != null) {
+					message.getMetadata().put(EVENT_ID_METADATA_KEY, eventId);
+				}
+				created.incrementAndGet();
+			}
+			// Step 5: make the new branch durable and current BEFORE compaction, so a
+			// crash never removes the only marker.
+			writeCurrentBranchPointer(actorAndSession, branchName, nextGen);
+		}
+		catch (SdkException ex) {
+			// No data loss: the pointer was not written, so the old branch stays current.
+			logger.warn("replaceEvents branch write failed for sessionId {}: created {} of {} on branch {}, pointer not"
+					+ " written, the old timeline is still current. Orphaned partial branch is reaped by memory TTL.",
+					sessionId, created.get(), intended, branchName, ex);
+			throw new AgentCoreMemoryException.StorageException("Failed to replace events for sessionId: " + sessionId,
+					ex);
+		}
+
+		// Step 6: compaction couples marker removal to branch-event deletion (D1.1a).
+		compactLedger(actorAndSession, nextGen);
+		// Step 7: optional explicit prior-branch cleanup (redundant when compaction ran).
+		if (this.deleteSupersededBranch) {
+			deleteSupersededBranches(actorAndSession, nextGen);
+		}
+		// Step 8: invalidate this instance's cached resolution.
+		if (this.branchCache != null) {
+			this.branchCache.invalidate(actorAndSession);
+		}
+		logger.info("Replaced session {} timeline onto branch {} (gen {}, {} events); prior timeline retained.",
+				sessionId, branchName, nextGen, created.get());
+	}
+
+	/*
+	 * Legacy non-atomic delete-then-recreate, kept for the flag-off path on true v1
+	 * sessions. Only reachable when branch-swap is disabled and no pointer marker exists.
+	 * Its "Data loss" ERROR log warns about the mid-flight failure window this path still
+	 * has.
+	 */
+	private void doReplaceEventsLegacy(String sessionId,
+			AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, List<SessionEvent> events) {
 		AtomicInteger deleted = new AtomicInteger();
 		AtomicInteger recreated = new AtomicInteger();
 		boolean deletePhaseComplete = false;
 		try {
-			var actorAndSession = this.actorAndSession(sessionId);
 			// 1. Delete every existing event, paginated.
-			this.forEachEventPage(actorAndSession, false, false, (page) -> page.forEach((existing) -> {
-				this.client.deleteEvent(DeleteEventRequest.builder()
-					.memoryId(this.memoryId)
-					.actorId(actorAndSession.actor())
-					.sessionId(actorAndSession.session())
-					.eventId(existing.eventId())
-					.build());
+			this.forEachEventPage(actorAndSession, false, false, null, (page) -> page.forEach((existing) -> {
+				deleteEvent(actorAndSession, existing.eventId());
 				deleted.incrementAndGet();
 			}));
 			deletePhaseComplete = true;
 
-			// 2. Recreate each new event. This is a full replacement, so we do not
-			// filter by agentcore.eventId metadata.
+			// 2. Recreate each new event. This is a full replacement, so we do not filter
+			// by agentcore.eventId metadata.
 			for (SessionEvent event : events) {
 				Message message = event.getMessage();
 				if (event.isSynthetic() && !this.persistSynthetic) {
@@ -597,15 +785,13 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			}
 		}
 		catch (SdkException ex) {
-			// A failure after the delete phase leaves the log partial and the original
-			// events gone. Log at ERROR with recovery context; this repository cannot
-			// retry it, because the pre-delete state is no longer available.
 			if (deletePhaseComplete) {
-				logger.error("Data loss replacing AgentCore events for sessionId {}: delete completed ({} deleted)"
-						+ " but recreate failed after {} of {} events. The original log is gone and the current log"
-						+ " is partial. replaceEvents is non-atomic and cannot be retried here; recover from an"
-						+ " external backup and hold an external lock per sessionId to prevent concurrent writers."
-						+ " See AgentCoreSessionRepository Javadoc.", sessionId, deleted.get(), recreated.get(),
+				logger.error("Data loss replacing AgentCore events for sessionId {}: delete completed ({}"
+						+ " deleted) but recreate failed after {} of {} events. The original log is gone and the"
+						+ " current log is partial. Legacy replaceEvents is non-atomic and cannot be retried here;"
+						+ " recover from an external backup, or enable"
+						+ " agentcore.memory.session.branch-swap-enabled for the non-destructive path. See"
+						+ " AgentCoreSessionRepository Javadoc.", sessionId, deleted.get(), recreated.get(),
 						events.size(), ex);
 			}
 			else {
@@ -617,6 +803,216 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			throw new AgentCoreMemoryException.StorageException("Failed to replace events for sessionId: " + sessionId,
 					ex);
 		}
+	}
+
+	// ==================== branch discovery / ledger ====================
+
+	/**
+	 * Resolves the current read-target branch name, or {@code null} for a main-line/v1
+	 * session. Uses the per-instance cache when enabled, otherwise a ledger scan.
+	 * @param actorAndSession the parsed actor and session
+	 * @return the current branch name, or {@code null} for a main-line/v1 session
+	 */
+	String resolveCurrentBranch(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession) {
+		if (this.branchCache != null) {
+			BranchResolutionCache.Hit hit = this.branchCache.get(actorAndSession);
+			if (hit != null) {
+				return hit.branchName();
+			}
+		}
+		String branch = resolveFromLedger(actorAndSession);
+		if (this.branchCache != null) {
+			this.branchCache.put(actorAndSession, branch);
+		}
+		return branch;
+	}
+
+	private String resolveFromLedger(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession) {
+		PointerMarker max = maxMarker(readLedger(actorAndSession));
+		return (max != null) ? max.branchName() : null;
+	}
+
+	/**
+	 * Returns the highest generation for the session, or {@code -1} for a main-line/v1
+	 * session (no pointer markers).
+	 * @param actorAndSession the parsed actor and session
+	 * @return the highest generation, or {@code -1} for a main-line/v1 session
+	 */
+	long resolveGeneration(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession) {
+		PointerMarker max = maxMarker(readLedger(actorAndSession));
+		return (max != null) ? max.gen() : -1L;
+	}
+
+	/**
+	 * Reads every pointer marker on the main line (metadata EXISTS
+	 * {@value #POINTER_MARKER_METADATA_KEY}). Discovery does not rely on ListEvents
+	 * ordering; the caller selects the winner by highest generation.
+	 * @param actorAndSession the parsed actor and session
+	 * @return every pointer marker recorded on the main line, in no guaranteed order
+	 */
+	List<PointerMarker> readLedger(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession) {
+		List<PointerMarker> markers = new ArrayList<>();
+		FilterInput filter = FilterInput.builder()
+			.eventMetadata(EventMetadataFilterExpression.builder()
+				.left(LeftExpression.fromMetadataKey(POINTER_MARKER_METADATA_KEY))
+				.operator(OperatorType.EXISTS)
+				.build())
+			.build();
+		this.forEachEventPage(actorAndSession, false, false, filter, (page) -> {
+			for (Event event : page) {
+				PointerMarker marker = toMarker(event);
+				if (marker != null) {
+					markers.add(marker);
+				}
+			}
+		});
+		return markers;
+	}
+
+	private static PointerMarker maxMarker(List<PointerMarker> markers) {
+		PointerMarker best = null;
+		for (PointerMarker marker : markers) {
+			if (best == null || marker.gen() > best.gen()
+					|| (marker.gen() == best.gen() && marker.branchName().compareTo(best.branchName()) > 0)) {
+				best = marker;
+			}
+		}
+		return best;
+	}
+
+	private static PointerMarker toMarker(Event event) {
+		if (event == null || !event.hasMetadata()) {
+			return null;
+		}
+		Map<String, MetadataValue> metadata = event.metadata();
+		MetadataValue pointer = metadata.get(POINTER_MARKER_METADATA_KEY);
+		if (pointer == null || !"true".equals(pointer.stringValue())) {
+			return null;
+		}
+		MetadataValue branch = metadata.get(CURRENT_BRANCH_METADATA_KEY);
+		MetadataValue gen = metadata.get(GENERATION_METADATA_KEY);
+		if (branch == null || branch.stringValue() == null || gen == null || gen.stringValue() == null) {
+			return null;
+		}
+		try {
+			long parsedGen = Long.parseLong(gen.stringValue().trim());
+			return new PointerMarker(parsedGen, branch.stringValue(), event.eventId());
+		}
+		catch (NumberFormatException ex) {
+			logger.debug("Skipping pointer marker {} with unparseable generation '{}'", event.eventId(),
+					gen.stringValue());
+			return null;
+		}
+	}
+
+	/**
+	 * Writes the durable current-branch pointer marker on the main line. The event is
+	 * identified as a pointer by its {@value #POINTER_MARKER_METADATA_KEY} metadata,
+	 * independent of payload shape, so all counting and mapping paths exclude it.
+	 * @param actorAndSession the parsed actor and session
+	 * @param branchName the branch this marker names as current
+	 * @param generation the generation counter for this marker
+	 */
+	void writeCurrentBranchPointer(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
+			String branchName, long generation) {
+		Map<String, MetadataValue> metadata = new HashMap<>();
+		metadata.put(CURRENT_BRANCH_METADATA_KEY, MetadataValue.fromStringValue(branchName));
+		metadata.put(GENERATION_METADATA_KEY, MetadataValue.fromStringValue(String.format("%05d", generation)));
+		metadata.put(POINTER_MARKER_METADATA_KEY, MetadataValue.fromStringValue("true"));
+		// Primary: empty payload (min-0 payload is allowed). If the live service rejects
+		// it, the IT-only fallback is a single blob payload
+		// PayloadType.builder().blob(Document.fromString("agentcore-pointer")).build();
+		// switching shapes changes nothing downstream because the pointer is keyed on
+		// metadata, not payload.
+		CreateEventRequest request = CreateEventRequest.builder()
+			.memoryId(this.memoryId)
+			.actorId(actorAndSession.actor())
+			.sessionId(actorAndSession.session())
+			.payload(List.of())
+			.metadata(metadata)
+			.eventTimestamp(Instant.now())
+			.clientToken(UUID.randomUUID().toString())
+			.build();
+		this.client.createEvent(request);
+		logger.debug("Wrote current-branch pointer for actor {} session {}: branch {} gen {}", actorAndSession.actor(),
+				actorAndSession.session(), branchName, generation);
+	}
+
+	// Compacts the ledger after a successful swap: for each marker with gen < newMaxGen,
+	// best-effort delete that generation's branch events first, then its marker. If a
+	// branch-event delete fails, KEEP its marker so delete() can still reach it. Best
+	// effort throughout; never fails the swap.
+	private void compactLedger(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, long newMaxGen) {
+		List<PointerMarker> ledger;
+		try {
+			ledger = readLedger(actorAndSession);
+		}
+		catch (SdkException ex) {
+			logger.debug("Ledger compaction skipped for actor {} session {}: could not read ledger",
+					actorAndSession.actor(), actorAndSession.session(), ex);
+			return;
+		}
+		for (PointerMarker marker : ledger) {
+			if (marker.gen() >= newMaxGen) {
+				continue;
+			}
+			boolean branchPurged = deleteBranchEvents(actorAndSession, marker.branchName());
+			if (!branchPurged) {
+				logger.debug("Keeping marker for gen {} (branch {}): branch-event deletion failed, so the ledger still"
+						+ " records it for a future delete()/retry.", marker.gen(), marker.branchName());
+				continue;
+			}
+			try {
+				deleteEvent(actorAndSession, marker.eventId());
+			}
+			catch (SdkException ex) {
+				logger.debug("Best-effort compaction: failed to delete pointer marker {} for gen {}", marker.eventId(),
+						marker.gen(), ex);
+			}
+		}
+	}
+
+	private void deleteSupersededBranches(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
+			long newMaxGen) {
+		List<PointerMarker> ledger;
+		try {
+			ledger = readLedger(actorAndSession);
+		}
+		catch (SdkException ex) {
+			logger.warn("delete-superseded-branch skipped for actor {} session {}: could not read ledger",
+					actorAndSession.actor(), actorAndSession.session(), ex);
+			return;
+		}
+		for (PointerMarker marker : ledger) {
+			if (marker.gen() < newMaxGen && !deleteBranchEvents(actorAndSession, marker.branchName())) {
+				logger.warn("delete-superseded-branch: failed to fully delete branch {} (gen {}); it is reaped by TTL.",
+						marker.branchName(), marker.gen());
+			}
+		}
+	}
+
+	// Best-effort delete of every event on a branch. Returns true on full success, false
+	// if any delete failed.
+	private boolean deleteBranchEvents(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
+			String branchName) {
+		try {
+			this.forEachEventPage(actorAndSession, false, false, branchFilter(branchName),
+					(page) -> page.forEach((event) -> deleteEvent(actorAndSession, event.eventId())));
+			return true;
+		}
+		catch (SdkException ex) {
+			logger.debug("Best-effort branch-event deletion failed for branch {}", branchName, ex);
+			return false;
+		}
+	}
+
+	private void deleteEvent(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, String eventId) {
+		this.client.deleteEvent(DeleteEventRequest.builder()
+			.memoryId(this.memoryId)
+			.actorId(actorAndSession.actor())
+			.sessionId(actorAndSession.session())
+			.eventId(eventId)
+			.build());
 	}
 
 	private Session toSession(String actorId, SessionSummary summary) {
@@ -632,6 +1028,8 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			.metadata(metadata)
 			.build();
 	}
+
+	// ==================== mapping ====================
 
 	private List<Message> mapPayloadsToMessages(Event event, String sessionId) {
 		List<Message> out = new ArrayList<>();
@@ -697,8 +1095,10 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		return PayloadType.builder().conversational(conversational).build();
 	}
 
+	// ==================== pagination ====================
+
 	private void forEachEventPage(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
-			boolean includePayloads, boolean respectLimit, Consumer<List<Event>> handler) {
+			boolean includePayloads, boolean respectLimit, FilterInput filter, Consumer<List<Event>> handler) {
 		String nextToken = null;
 		int requestPageSize = (respectLimit && this.totalEventsLimit != null)
 				? Math.min(this.pageSize, this.totalEventsLimit) : this.pageSize;
@@ -710,6 +1110,9 @@ public class AgentCoreSessionRepository implements SessionRepository {
 				.memoryId(this.memoryId)
 				.includePayloads(includePayloads)
 				.maxResults(requestPageSize);
+			if (filter != null) {
+				builder.filter(filter);
+			}
 			if (nextToken != null) {
 				builder.nextToken(nextToken);
 			}
@@ -729,6 +1132,27 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			}
 		}
 		while (nextToken != null);
+	}
+
+	private static FilterInput branchFilter(String branchName) {
+		if (branchName == null) {
+			return null;
+		}
+		return FilterInput.builder()
+			.branch(BranchFilter.builder().name(branchName).includeParentBranches(false).build())
+			.build();
+	}
+
+	private static boolean isPointerMarker(Event event) {
+		if (event == null || !event.hasMetadata()) {
+			return false;
+		}
+		MetadataValue pointer = event.metadata().get(POINTER_MARKER_METADATA_KEY);
+		return pointer != null && "true".equals(pointer.stringValue());
+	}
+
+	private static String randomShortToken() {
+		return UUID.randomUUID().toString().replace("-", "").substring(0, 8);
 	}
 
 	AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession(String sessionId) {
@@ -762,6 +1186,73 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		if (sessionId == null || sessionId.trim().isEmpty()) {
 			throw new IllegalArgumentException("sessionId must not be null or empty");
 		}
+	}
+
+	/**
+	 * A pointer marker recorded on the main line: a generation, the branch it names, and
+	 * the marker event's own id (for compaction/delete).
+	 *
+	 * @param gen the parsed generation counter
+	 * @param branchName the current-branch name the marker points to
+	 * @param eventId the marker event's id
+	 */
+	record PointerMarker(long gen, String branchName, String eventId) {
+	}
+
+	/**
+	 * Bounded per-instance cache of resolved branch names, keyed by (actor, session). A
+	 * latency optimization only: it is per-JVM, so a replace on another instance is not
+	 * seen until eviction/TTL. Compaction, not the cache, is the correctness bound.
+	 */
+	private static final class BranchResolutionCache {
+
+		private static final int MAX_ENTRIES = 1024;
+
+		private final Duration ttl;
+
+		private final LinkedHashMap<String, Entry> entries;
+
+		BranchResolutionCache(Duration ttl) {
+			this.ttl = ttl;
+			this.entries = new LinkedHashMap<>(16, 0.75f, true) {
+				@Override
+				protected boolean removeEldestEntry(Map.Entry<String, BranchResolutionCache.Entry> eldest) {
+					return size() > MAX_ENTRIES;
+				}
+			};
+		}
+
+		synchronized Hit get(AgentCoreMemoryConversationIdParser.ActorAndSession as) {
+			Entry entry = this.entries.get(key(as));
+			if (entry == null) {
+				return null;
+			}
+			if (this.ttl != null && Instant.now().isAfter(entry.expiresAt)) {
+				this.entries.remove(key(as));
+				return null;
+			}
+			return new Hit(entry.branchName);
+		}
+
+		synchronized void put(AgentCoreMemoryConversationIdParser.ActorAndSession as, String branchName) {
+			Instant expiresAt = (this.ttl != null) ? Instant.now().plus(this.ttl) : Instant.MAX;
+			this.entries.put(key(as), new Entry(branchName, expiresAt));
+		}
+
+		synchronized void invalidate(AgentCoreMemoryConversationIdParser.ActorAndSession as) {
+			this.entries.remove(key(as));
+		}
+
+		private static String key(AgentCoreMemoryConversationIdParser.ActorAndSession as) {
+			return as.actor() + " " + as.session();
+		}
+
+		private record Entry(String branchName, Instant expiresAt) {
+		}
+
+		record Hit(String branchName) {
+		}
+
 	}
 
 }

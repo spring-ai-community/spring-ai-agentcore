@@ -89,9 +89,13 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 		ShortTermPropertyResolver.warnIfIgnoreUnknownRolesExplicitlySet(shortTerm, memory);
 
 		boolean persistSynthetic = (session.persistSynthetic() != null) && session.persistSynthetic();
+		boolean branchSwapEnabled = (session.branchSwapEnabled() != null) && session.branchSwapEnabled();
+		boolean deleteSupersededBranch = (session.deleteSupersededBranch() != null) && session.deleteSupersededBranch();
+		boolean branchCacheEnabled = (session.branchCacheEnabled() != null) && session.branchCacheEnabled();
 
 		return new AgentCoreSessionRepository(memory.memoryId(), client, totalEventsLimit, defaultSession, pageSize,
-				ignoreUnknownRoles, persistSynthetic);
+				ignoreUnknownRoles, persistSynthetic, branchSwapEnabled, deleteSupersededBranch, branchCacheEnabled,
+				session.branchCacheTtl());
 	}
 
 	// Returns the session-scoped value when it is set, otherwise the short-term/legacy

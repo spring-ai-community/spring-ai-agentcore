@@ -13,9 +13,17 @@
         <property name="max" value="140"/>
     </module>
 
+    <!-- Honor @SuppressWarnings("checkstyle:...") on individual members.
+         Purely additive: only affects code that carries the annotation. -->
+    <module name="SuppressWarningsFilter"/>
+
     <!-- Additions on top of Spring: naming, sizing, and bug catchers
          that aren't part of the Spring config. -->
     <module name="TreeWalker">
+
+        <!-- Feeds SuppressWarningsFilter so @SuppressWarnings can silence
+             the checks declared in this TreeWalker (e.g. ParameterNumber). -->
+        <module name="SuppressWarningsHolder"/>
 
         <!-- Naming conventions -->
         <module name="TypeName"/>

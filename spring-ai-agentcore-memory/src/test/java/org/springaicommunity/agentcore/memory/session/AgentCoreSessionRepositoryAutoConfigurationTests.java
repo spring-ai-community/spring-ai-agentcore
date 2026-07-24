@@ -167,6 +167,35 @@ class AgentCoreSessionRepositoryAutoConfigurationTests {
 	}
 
 	@Test
+	void branchSwapPropertiesBindFromSessionNamespace() {
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true",
+					"agentcore.memory.session.branch-swap-enabled=true",
+					"agentcore.memory.session.delete-superseded-branch=true",
+					"agentcore.memory.session.branch-cache-enabled=true",
+					"agentcore.memory.session.branch-cache-ttl=30s")
+			.run((context) -> {
+				AgentCoreSessionProperties props = context.getBean(AgentCoreSessionProperties.class);
+				assertThat(props.branchSwapEnabled()).isTrue();
+				assertThat(props.deleteSupersededBranch()).isTrue();
+				assertThat(props.branchCacheEnabled()).isTrue();
+				assertThat(props.branchCacheTtl()).hasSeconds(30);
+				assertThat(context).hasSingleBean(AgentCoreSessionRepository.class);
+			});
+	}
+
+	@Test
+	void branchSwapDefaultsOffWhenUnset() {
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true")
+			.run((context) -> {
+				AgentCoreSessionProperties props = context.getBean(AgentCoreSessionProperties.class);
+				assertThat(props.branchSwapEnabled()).isNull();
+				assertThat(context).hasSingleBean(AgentCoreSessionRepository.class);
+			});
+	}
+
+	@Test
 	void autoConfigOrderedAfterShortTerm() {
 		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
 			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true")
