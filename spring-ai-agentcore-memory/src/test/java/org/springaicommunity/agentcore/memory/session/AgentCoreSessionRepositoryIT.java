@@ -126,31 +126,25 @@ class AgentCoreSessionRepositoryIT {
 	}
 
 	@Test
-	void branchSwapReplaceEventsIsNonDestructiveAndReadsBranchNative() {
-		// D1/D1.1/F8: the empty-payload pointer CreateEvent must be accepted by the live
-		// service, and a branch read with includeParentBranches=FALSE must return only
-		// the
-		// replacement (branch-native) events, not the superseded main-line ones.
-		AgentCoreSessionRepository branchSwapRepo = new AgentCoreSessionRepository(memoryId, dataClient, null,
-				"default-session", 100, true, false, true, false, false, null);
-		String sessionId = "alice-it:branch-" + System.nanoTime();
-		branchSwapRepo.appendEvent(SessionEvent.builder()
+	void replaceEventsDeletesThenRecreates() {
+		String sessionId = "alice-it:replace-" + System.nanoTime();
+		repository.appendEvent(SessionEvent.builder()
 			.sessionId(sessionId)
 			.message(UserMessage.builder().text("original-1").build())
 			.build());
 
-		branchSwapRepo.replaceEvents(sessionId,
+		repository.replaceEvents(sessionId,
 				List.of(SessionEvent.builder()
 					.sessionId(sessionId)
 					.message(UserMessage.builder().text("replacement-1").build())
 					.build()));
 
-		List<SessionEvent> afterSwap = branchSwapRepo.findEvents(sessionId, EventFilter.all());
-		assertThat(afterSwap).hasSize(1);
-		assertThat(afterSwap.get(0).getMessage().getText()).isEqualTo("replacement-1");
+		List<SessionEvent> afterReplace = repository.findEvents(sessionId, EventFilter.all());
+		assertThat(afterReplace).hasSize(1);
+		assertThat(afterReplace.get(0).getMessage().getText()).isEqualTo("replacement-1");
 
-		branchSwapRepo.delete(sessionId);
-		assertThat(branchSwapRepo.findEvents(sessionId, EventFilter.all())).isEmpty();
+		repository.delete(sessionId);
+		assertThat(repository.findEvents(sessionId, EventFilter.all())).isEmpty();
 	}
 
 }

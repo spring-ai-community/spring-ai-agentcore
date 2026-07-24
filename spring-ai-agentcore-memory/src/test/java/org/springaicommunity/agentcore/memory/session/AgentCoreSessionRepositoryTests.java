@@ -63,7 +63,6 @@ import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -73,12 +72,6 @@ import static org.mockito.Mockito.times;
  * Unit tests for {@link AgentCoreSessionRepository}. Includes the two advisor-integration
  * tests that exercise the C1 hard precondition end-to-end through the real
  * {@link SessionMemoryAdvisor#before}.
- *
- * <p>
- * Since the branch-swap (v2) rework, every read/write path first runs a pointer-ledger
- * discovery scan (a metadata-filtered {@code listEvents}). Tests stub that discovery scan
- * separately from data reads via the {@link #isLedgerScan(ListEventsRequest)} matcher, so
- * a session with no pointer markers resolves to the main line (v1 behavior).
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -101,8 +94,6 @@ class AgentCoreSessionRepositoryTests {
 	void setUp() {
 		this.repository = new AgentCoreSessionRepository(MEMORY_ID, this.client, null, "default-session", 100, true,
 				false);
-		// Default: no pointer markers -> main-line (v1) session for every read path.
-		givenNoLedgerMarkers();
 	}
 
 	// ==================== save / findById / findByUserId / findExpiredSessionIds ==
@@ -225,7 +216,7 @@ class AgentCoreSessionRepositoryTests {
 	void deletePaginatesAndDeletes() {
 		List<Event> firstPage = IntStream.range(0, 10).mapToObj((i) -> eventWithId("evt-" + i)).toList();
 		List<Event> secondPage = IntStream.range(10, 15).mapToObj((i) -> eventWithId("evt-" + i)).toList();
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(firstPage).nextToken("page2").build())
 			.willReturn(ListEventsResponse.builder().events(secondPage).build());
 
@@ -262,8 +253,6 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(req.payload()).hasSize(1);
 		assertThat(req.payload().get(0).conversational().role()).isEqualTo(Role.USER);
 		assertThat(req.payload().get(0).conversational().content().text()).isEqualTo("hi");
-		// D1.3: main-line/v1 session appends with NO branch set.
-		assertThat(req.branch()).isNull();
 		assertThat(req.clientToken()).isNotBlank();
 	}
 
@@ -341,14 +330,12 @@ class AgentCoreSessionRepositoryTests {
 			.isEqualTo("stamped-eventId");
 	}
 
-	// ==================== replaceEvents (legacy, branch-swap disabled default) =========
+	// ==================== replaceEvents (delete-then-recreate) ====================
 
 	@Test
 	void replaceEventsDeletesThenCreatesOrdered() {
-		// Default repo has branch-swap DISABLED; a true v1 session (no markers) takes the
-		// legacy delete-then-recreate path.
 		Event existing = eventWithId("old-1");
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(existing).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
@@ -369,7 +356,7 @@ class AgentCoreSessionRepositoryTests {
 	@Test
 	void replaceEventsVersionMatchReturnsTrue() {
 		Event existing = eventWithId("old-1");
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(existing).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
@@ -387,7 +374,7 @@ class AgentCoreSessionRepositoryTests {
 	@Test
 	void replaceEventsVersionMismatchReturnsFalseNoWrites() {
 		List<Event> threeEvents = List.of(eventWithId("e1"), eventWithId("e2"), eventWithId("e3"));
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(threeEvents).build());
 
 		SessionEvent newEvent = SessionEvent.builder()
@@ -406,7 +393,7 @@ class AgentCoreSessionRepositoryTests {
 	void getEventVersionMatchesEventCount() {
 		List<Event> firstPage = IntStream.range(0, 3).mapToObj((i) -> eventWithId("e" + i)).toList();
 		List<Event> secondPage = IntStream.range(3, 5).mapToObj((i) -> eventWithId("e" + i)).toList();
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(firstPage).nextToken("next").build())
 			.willReturn(ListEventsResponse.builder().events(secondPage).build());
 
@@ -424,7 +411,7 @@ class AgentCoreSessionRepositoryTests {
 	void getEventVersionAfterReplaceEventsMatchesNewSize() {
 		List<Event> initial = List.of(eventWithId("old-1"), eventWithId("old-2"), eventWithId("old-3"));
 		List<Event> afterReplace = List.of(eventWithId("new-1"), eventWithId("new-2"));
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(initial).build())
 			.willReturn(ListEventsResponse.builder().events(afterReplace).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
@@ -493,7 +480,7 @@ class AgentCoreSessionRepositoryTests {
 	@Test
 	void findByIdMatchingUserIdContextAppendMessagePasses() {
 		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r)))).willReturn(emptyPage())
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage())
 			.willReturn(ListEventsResponse.builder().events(tail).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("stamp").build()).build());
@@ -521,7 +508,7 @@ class AgentCoreSessionRepositoryTests {
 	@Test
 	void findByIdMismatchedUserIdContextAdvisorThrowsIllegalStateException() {
 		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r)))).willReturn(emptyPage())
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage())
 			.willReturn(ListEventsResponse.builder().events(tail).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("stamp").build()).build());
@@ -547,17 +534,8 @@ class AgentCoreSessionRepositoryTests {
 
 	// ==================== Helpers ====================
 
-	/** A pointer-ledger discovery scan carries a metadata (EXISTS) filter. */
-	static boolean isLedgerScan(ListEventsRequest req) {
-		return req != null && req.filter() != null && req.filter().eventMetadata() != null;
-	}
-
-	private void givenNoLedgerMarkers() {
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> isLedgerScan(r)))).willReturn(emptyPage());
-	}
-
 	private void givenDataEvents(Event... events) {
-		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
+		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(List.of(events)).build());
 	}
 
@@ -574,7 +552,7 @@ class AgentCoreSessionRepositoryTests {
 	private ListEventsRequest captureDataListEvents() {
 		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
 		then(this.client).should(Mockito.atLeastOnce()).listEvents(captor.capture());
-		return captor.getAllValues().stream().filter((r) -> !isLedgerScan(r)).reduce((a, b) -> b).orElseThrow();
+		return captor.getAllValues().stream().reduce((a, b) -> b).orElseThrow();
 	}
 
 	private static Event eventWithId(String id) {
