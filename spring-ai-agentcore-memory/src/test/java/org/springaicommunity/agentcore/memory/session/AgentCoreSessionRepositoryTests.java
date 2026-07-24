@@ -102,7 +102,7 @@ class AgentCoreSessionRepositoryTests {
 		this.repository = new AgentCoreSessionRepository(MEMORY_ID, this.client, null, "default-session", 100, true,
 				false);
 		// Default: no pointer markers -> main-line (v1) session for every read path.
-		givenNoLedgerMarkers();
+		this.givenNoLedgerMarkers();
 	}
 
 	// ==================== save / findById / findByUserId / findExpiredSessionIds ==
@@ -119,7 +119,7 @@ class AgentCoreSessionRepositoryTests {
 	void findByIdExistingSessionIdReturnsSynthesizedSession() {
 		Instant eventTs = Instant.parse("2026-05-01T12:00:00Z");
 		Event tail = Event.builder().eventId("evt-1").eventTimestamp(eventTs).build();
-		givenDataEvents(tail);
+		this.givenDataEvents(tail);
 
 		Optional<Session> result = this.repository.findById(SESSION_ID);
 
@@ -135,7 +135,7 @@ class AgentCoreSessionRepositoryTests {
 			.containsEntry(AgentCoreSessionRepository.SESSION_METADATA_KEY, SESSION_SUFFIX)
 			.containsEntry(AgentCoreSessionRepository.LAST_EVENT_AT_METADATA_KEY, eventTs);
 
-		ListEventsRequest tailReq = captureDataListEvents();
+		ListEventsRequest tailReq = this.captureDataListEvents();
 		assertThat(tailReq.actorId()).isEqualTo(ACTOR);
 		assertThat(tailReq.sessionId()).isEqualTo(SESSION_SUFFIX);
 		assertThat(tailReq.memoryId()).isEqualTo(MEMORY_ID);
@@ -149,7 +149,7 @@ class AgentCoreSessionRepositoryTests {
 		// non-sentinel value) and never calls ListSessions on the read path.
 		Instant eventTs = Instant.parse("2026-06-15T00:00:00Z");
 		Event tail = Event.builder().eventId("evt-2").eventTimestamp(eventTs).build();
-		givenDataEvents(tail);
+		this.givenDataEvents(tail);
 
 		Session synthesized = this.repository.findById(SESSION_ID).orElseThrow();
 		assertThat(synthesized.createdAt()).isEqualTo(eventTs);
@@ -161,18 +161,18 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findByIdUnknownSessionIdReturnsEmpty() {
-		givenDataEvents();
+		this.givenDataEvents();
 		assertThat(this.repository.findById(SESSION_ID)).isEmpty();
 	}
 
 	@Test
 	void findByIdActorOnlyConversationIdUsesDefaultSession() {
 		Event tail = Event.builder().eventId("evt-3").eventTimestamp(Instant.now()).build();
-		givenDataEvents(tail);
+		this.givenDataEvents(tail);
 
 		this.repository.findById("alice");
 
-		ListEventsRequest tailReq = captureDataListEvents();
+		ListEventsRequest tailReq = this.captureDataListEvents();
 		assertThat(tailReq.actorId()).isEqualTo("alice");
 		assertThat(tailReq.sessionId()).isEqualTo("default-session");
 	}
@@ -414,7 +414,7 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void getEventVersionEmptySessionReturnsZero() {
-		givenDataEvents();
+		this.givenDataEvents();
 		assertThat(this.repository.getEventVersion(SESSION_ID)).isEqualTo(0L);
 	}
 
@@ -449,7 +449,7 @@ class AgentCoreSessionRepositoryTests {
 		Event newest = payloadEvent("e-3", "third", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
 		Event middle = payloadEvent("e-2", "second", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
 		Event oldest = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		givenDataEvents(newest, middle, oldest);
+		this.givenDataEvents(newest, middle, oldest);
 
 		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, EventFilter.all());
 		assertThat(events).extracting((e) -> e.getMessage().getText()).containsExactly("first", "second", "third");
@@ -461,7 +461,7 @@ class AgentCoreSessionRepositoryTests {
 		Event e1 = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		Event e2 = payloadEvent("e-2", "second", Role.USER, Instant.parse("2026-01-02T00:00:00Z"));
 		Event e3 = payloadEvent("e-3", "third", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
-		givenDataEvents(e3, e2, e1);
+		this.givenDataEvents(e3, e2, e1);
 
 		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, EventFilter.lastN(2));
 		assertThat(events).extracting((e) -> e.getMessage().getText()).containsExactly("second", "third");
@@ -472,7 +472,7 @@ class AgentCoreSessionRepositoryTests {
 		Event userEvent = payloadEvent("e-1", "user-text", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		Event assistantEvent = payloadEvent("e-2", "assistant-text", Role.ASSISTANT,
 				Instant.parse("2026-01-02T00:00:00Z"));
-		givenDataEvents(assistantEvent, userEvent);
+		this.givenDataEvents(assistantEvent, userEvent);
 
 		EventFilter filter = EventFilter.builder().messageTypes(Set.of(MessageType.USER)).build();
 		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, filter);
@@ -482,7 +482,7 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findEventsNonExistentSessionReturnsEmptyList() {
-		givenDataEvents();
+		this.givenDataEvents();
 		assertThat(this.repository.findEvents(SESSION_ID, EventFilter.all())).isEmpty();
 	}
 

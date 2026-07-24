@@ -242,7 +242,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		this.persistSynthetic = persistSynthetic;
 		this.branchSwapEnabled = branchSwapEnabled;
 		this.deleteSupersededBranch = deleteSupersededBranch;
-		this.branchCache = branchCacheEnabled ? new BranchResolutionCache(branchCacheTtl) : null;
+		this.branchCache = (branchCacheEnabled) ? new BranchResolutionCache(branchCacheTtl) : null;
 	}
 
 	// ==================== Sessions ====================
@@ -281,7 +281,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			String branch = resolveCurrentBranch(actorAndSession);
+			String branch = this.resolveCurrentBranch(actorAndSession);
 			var builder = ListEventsRequest.builder()
 				.actorId(actorAndSession.actor())
 				.sessionId(actorAndSession.session())
@@ -361,7 +361,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 					break;
 				}
 				for (SessionSummary summary : response.sessionSummaries()) {
-					sessions.add(toSession(actorId, summary));
+					sessions.add(this.toSession(actorId, summary));
 				}
 				nextToken = response.nextToken();
 			}
@@ -391,25 +391,25 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			List<PointerMarker> ledger = readLedger(actorAndSession);
+			List<PointerMarker> ledger = this.readLedger(actorAndSession);
 			AtomicInteger deleted = new AtomicInteger();
 
 			// 1. Delete every branch recorded in the ledger.
 			for (PointerMarker marker : ledger) {
 				this.forEachEventPage(actorAndSession, false, false, branchFilter(marker.branchName()),
 						(page) -> page.forEach((event) -> {
-							deleteEvent(actorAndSession, event.eventId());
+							this.deleteEvent(actorAndSession, event.eventId());
 							deleted.incrementAndGet();
 						}));
 			}
 			// 2. Delete all main-line pointer markers.
 			for (PointerMarker marker : ledger) {
-				deleteEvent(actorAndSession, marker.eventId());
+				this.deleteEvent(actorAndSession, marker.eventId());
 				deleted.incrementAndGet();
 			}
 			// 3. Delete any remaining main-line events (v1/pre-migration tail).
 			this.forEachEventPage(actorAndSession, false, false, null, (page) -> page.forEach((event) -> {
-				deleteEvent(actorAndSession, event.eventId());
+				this.deleteEvent(actorAndSession, event.eventId());
 				deleted.incrementAndGet();
 			}));
 			if (this.branchCache != null) {
@@ -483,7 +483,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			String branch = resolveCurrentBranch(actorAndSession);
+			String branch = this.resolveCurrentBranch(actorAndSession);
 			CreateEventRequest.Builder builder = CreateEventRequest.builder()
 				.memoryId(this.memoryId)
 				.actorId(actorAndSession.actor())
@@ -565,7 +565,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		validateSessionId(sessionId);
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			String branch = resolveCurrentBranch(actorAndSession);
+			String branch = this.resolveCurrentBranch(actorAndSession);
 			AtomicLong count = new AtomicLong();
 			this.forEachEventPage(actorAndSession, false, false, branchFilter(branch),
 					(page) -> page.forEach((event) -> {
@@ -590,7 +590,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		}
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			String branch = resolveCurrentBranch(actorAndSession);
+			String branch = this.resolveCurrentBranch(actorAndSession);
 			List<Event> allEvents = new ArrayList<>();
 			this.forEachEventPage(actorAndSession, true, true, branchFilter(branch), allEvents::addAll);
 			// AgentCore returns events in descending order (newest first); reverse to
@@ -660,7 +660,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		if (!this.branchSwapEnabled) {
 			// Step 0a: refuse on an already-migrated session; the legacy main-line delete
 			// would destroy the ledger and orphan the live branch (N1).
-			String branch = resolveCurrentBranch(actorAndSession);
+			String branch = this.resolveCurrentBranch(actorAndSession);
 			if (branch != null) {
 				String msg = "replaceEvents with branch-swap disabled is refused on session " + sessionId
 						+ ": it has a v2 branch timeline (current branch " + branch
@@ -678,7 +678,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	private void doReplaceEventsBranchSwap(String sessionId,
 			AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, List<SessionEvent> events) {
 		AtomicInteger created = new AtomicInteger();
-		long nextGen = resolveGeneration(actorAndSession) + 1;
+		long nextGen = this.resolveGeneration(actorAndSession) + 1;
 		String branchName = String.format(BRANCH_NAME_FORMAT, nextGen, randomShortToken());
 		int intended = 0;
 		try {
@@ -710,7 +710,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			}
 			// Step 5: make the new branch durable and current BEFORE compaction, so a
 			// crash never removes the only marker.
-			writeCurrentBranchPointer(actorAndSession, branchName, nextGen);
+			this.writeCurrentBranchPointer(actorAndSession, branchName, nextGen);
 		}
 		catch (SdkException ex) {
 			// No data loss: the pointer was not written, so the old branch stays current.
@@ -722,10 +722,10 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		}
 
 		// Step 6: compaction couples marker removal to branch-event deletion (D1.1a).
-		compactLedger(actorAndSession, nextGen);
+		this.compactLedger(actorAndSession, nextGen);
 		// Step 7: optional explicit prior-branch cleanup (redundant when compaction ran).
 		if (this.deleteSupersededBranch) {
-			deleteSupersededBranches(actorAndSession, nextGen);
+			this.deleteSupersededBranches(actorAndSession, nextGen);
 		}
 		// Step 8: invalidate this instance's cached resolution.
 		if (this.branchCache != null) {
@@ -749,7 +749,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		try {
 			// 1. Delete every existing event, paginated.
 			this.forEachEventPage(actorAndSession, false, false, null, (page) -> page.forEach((existing) -> {
-				deleteEvent(actorAndSession, existing.eventId());
+				this.deleteEvent(actorAndSession, existing.eventId());
 				deleted.incrementAndGet();
 			}));
 			deletePhaseComplete = true;
@@ -817,7 +817,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 				return hit.branchName();
 			}
 		}
-		String branch = resolveFromLedger(actorAndSession);
+		String branch = this.resolveFromLedger(actorAndSession);
 		if (this.branchCache != null) {
 			this.branchCache.put(actorAndSession, branch);
 		}
@@ -825,7 +825,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	}
 
 	private String resolveFromLedger(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession) {
-		PointerMarker max = maxMarker(readLedger(actorAndSession));
+		PointerMarker max = maxMarker(this.readLedger(actorAndSession));
 		return (max != null) ? max.branchName() : null;
 	}
 
@@ -836,7 +836,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	 * @return the highest generation, or {@code -1} for a main-line/v1 session
 	 */
 	long resolveGeneration(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession) {
-		PointerMarker max = maxMarker(readLedger(actorAndSession));
+		PointerMarker max = maxMarker(this.readLedger(actorAndSession));
 		return (max != null) ? max.gen() : -1L;
 	}
 
@@ -942,7 +942,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 	private void compactLedger(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, long newMaxGen) {
 		List<PointerMarker> ledger;
 		try {
-			ledger = readLedger(actorAndSession);
+			ledger = this.readLedger(actorAndSession);
 		}
 		catch (SdkException ex) {
 			logger.debug("Ledger compaction skipped for actor {} session {}: could not read ledger",
@@ -953,14 +953,14 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			if (marker.gen() >= newMaxGen) {
 				continue;
 			}
-			boolean branchPurged = deleteBranchEvents(actorAndSession, marker.branchName());
+			boolean branchPurged = this.deleteBranchEvents(actorAndSession, marker.branchName());
 			if (!branchPurged) {
 				logger.debug("Keeping marker for gen {} (branch {}): branch-event deletion failed, so the ledger still"
 						+ " records it for a future delete()/retry.", marker.gen(), marker.branchName());
 				continue;
 			}
 			try {
-				deleteEvent(actorAndSession, marker.eventId());
+				this.deleteEvent(actorAndSession, marker.eventId());
 			}
 			catch (SdkException ex) {
 				logger.debug("Best-effort compaction: failed to delete pointer marker {} for gen {}", marker.eventId(),
@@ -973,7 +973,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			long newMaxGen) {
 		List<PointerMarker> ledger;
 		try {
-			ledger = readLedger(actorAndSession);
+			ledger = this.readLedger(actorAndSession);
 		}
 		catch (SdkException ex) {
 			logger.warn("delete-superseded-branch skipped for actor {} session {}: could not read ledger",
@@ -981,7 +981,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			return;
 		}
 		for (PointerMarker marker : ledger) {
-			if (marker.gen() < newMaxGen && !deleteBranchEvents(actorAndSession, marker.branchName())) {
+			if (marker.gen() < newMaxGen && !this.deleteBranchEvents(actorAndSession, marker.branchName())) {
 				logger.warn("delete-superseded-branch: failed to fully delete branch {} (gen {}); it is reaped by TTL.",
 						marker.branchName(), marker.gen());
 			}
@@ -994,7 +994,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			String branchName) {
 		try {
 			this.forEachEventPage(actorAndSession, false, false, branchFilter(branchName),
-					(page) -> page.forEach((event) -> deleteEvent(actorAndSession, event.eventId())));
+					(page) -> page.forEach((event) -> this.deleteEvent(actorAndSession, event.eventId())));
 			return true;
 		}
 		catch (SdkException ex) {
@@ -1214,7 +1214,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			this.entries = new LinkedHashMap<>(16, 0.75f, true) {
 				@Override
 				protected boolean removeEldestEntry(Map.Entry<String, BranchResolutionCache.Entry> eldest) {
-					return size() > MAX_ENTRIES;
+					return this.size() > MAX_ENTRIES;
 				}
 			};
 		}

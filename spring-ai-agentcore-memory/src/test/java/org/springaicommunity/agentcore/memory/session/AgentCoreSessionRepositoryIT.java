@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.memory.session;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 
 import org.awaitility.Awaitility;
@@ -120,7 +121,7 @@ class AgentCoreSessionRepositoryIT {
 		// D3/C9: createdAt must be a real instant from the SessionSummary (or the tail
 		// event timestamp), never the EPOCH synthetic sentinel, once events exist.
 		var session = repository.findById(sessionId).orElseThrow();
-		assertThat(session.createdAt()).isNotNull().isAfter(java.time.Instant.EPOCH);
+		assertThat(session.createdAt()).isNotNull().isAfter(Instant.EPOCH);
 
 		repository.delete(sessionId);
 	}

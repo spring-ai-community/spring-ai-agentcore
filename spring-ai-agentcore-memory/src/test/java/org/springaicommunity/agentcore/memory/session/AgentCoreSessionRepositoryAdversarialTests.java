@@ -26,6 +26,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -141,7 +142,7 @@ class AgentCoreSessionRepositoryAdversarialTests {
 		this.repository.findById("  alice : conv  ");
 
 		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
-		then(this.client).should(org.mockito.Mockito.atLeastOnce()).listEvents(captor.capture());
+		then(this.client).should(Mockito.atLeastOnce()).listEvents(captor.capture());
 		ListEventsRequest dataReq = captor.getAllValues()
 			.stream()
 			.filter((r) -> r.filter() == null || r.filter().eventMetadata() == null)

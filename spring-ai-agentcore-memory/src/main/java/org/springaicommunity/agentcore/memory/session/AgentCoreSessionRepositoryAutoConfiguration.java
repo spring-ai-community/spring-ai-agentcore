@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.memory.session;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -101,8 +102,7 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 	// Returns the session-scoped value when it is set, otherwise the short-term/legacy
 	// fallback. Emits a DEBUG breadcrumb when both the session and short-term namespaces
 	// explicitly set the same tunable, so an operator can see which one won (session).
-	private static <T> T sessionFirst(String name, T sessionValue, T shortTermValue,
-			java.util.function.Supplier<T> fallback) {
+	private static <T> T sessionFirst(String name, T sessionValue, T shortTermValue, Supplier<T> fallback) {
 		if (sessionValue != null) {
 			if (shortTermValue != null) {
 				logger

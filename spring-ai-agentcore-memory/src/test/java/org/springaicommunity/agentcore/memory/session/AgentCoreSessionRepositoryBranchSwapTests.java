@@ -89,7 +89,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void branchSwapOnMainLineWritesGenZeroBranchAndPointerWithoutDeletes() {
-		givenNoLedgerMarkers();
+		this.givenNoLedgerMarkers();
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
 
@@ -118,7 +118,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void branchSwapOnAlreadyBranchedSessionIncrementsGeneration() {
-		givenLedgerMarkers(markerEvent("m3", 3, "gen-00003-aaaaaaaa"));
+		this.givenLedgerMarkers(markerEvent("m3", 3, "gen-00003-aaaaaaaa"));
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
 		// Branch reads for the superseded gen-3 branch during compaction return empty.
@@ -146,7 +146,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void branchSwapMidWriteFailureThrowsAndWritesNoPointer() {
-		givenNoLedgerMarkers();
+		this.givenNoLedgerMarkers();
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build())
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-2").build()).build())
@@ -157,7 +157,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 			.isInstanceOf(AgentCoreMemoryException.StorageException.class);
 
 		// The pointer is never written, so the old timeline stays current; no deletes.
-		then(this.client).should(never()).createEvent(argThat((CreateEventRequest r) -> isPointerCreate(r)));
+		then(this.client).should(never()).createEvent(argThat((CreateEventRequest r) -> this.isPointerCreate(r)));
 		then(this.client).should(never()).deleteEvent(any(DeleteEventRequest.class));
 	}
 
@@ -165,7 +165,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 	void deleteSupersededBranchDeletesPriorBranchAfterSwap() {
 		AgentCoreSessionRepository repo = new AgentCoreSessionRepository(MEMORY_ID, this.client, null,
 				"default-session", 100, true, false, true, true, false, null);
-		givenLedgerMarkers(markerEvent("m3", 3, "gen-00003-aaaaaaaa"));
+		this.givenLedgerMarkers(markerEvent("m3", 3, "gen-00003-aaaaaaaa"));
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
 		given(this.client.listEvents(argThat((ListEventsRequest r) -> isBranchScan(r, "gen-00003-aaaaaaaa"))))
@@ -182,7 +182,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void appendOnBranchedSessionCarriesCurrentBranch() {
-		givenLedgerMarkers(markerEvent("m4", 4, "gen-00004-abababab"));
+		this.givenLedgerMarkers(markerEvent("m4", 4, "gen-00004-abababab"));
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("app-1").build()).build());
 
@@ -196,7 +196,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void appendOnMainLineSessionCarriesNoBranch() {
-		givenNoLedgerMarkers();
+		this.givenNoLedgerMarkers();
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("app-1").build()).build());
 
@@ -211,7 +211,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void findEventsOnNeverReplacedSessionUsesNoBranchFilter() {
-		givenNoLedgerMarkers();
+		this.givenNoLedgerMarkers();
 		given(this.client.listEvents(argThat((ListEventsRequest r) -> !isLedgerScan(r))))
 			.willReturn(ListEventsResponse.builder().events(payloadEvent("e-1", "hi")).build());
 
@@ -231,7 +231,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void deleteInBranchModeDeletesBranchEventsMarkersAndTail() {
-		givenLedgerMarkers(markerEvent("m4", 4, "gen-00004-abababab"));
+		this.givenLedgerMarkers(markerEvent("m4", 4, "gen-00004-abababab"));
 		given(this.client.listEvents(argThat((ListEventsRequest r) -> isBranchScan(r, "gen-00004-abababab"))))
 			.willReturn(ListEventsResponse.builder().events(eventWithId("branch-evt")).build());
 		// The residual main-line tail sweep (no filter) returns one legacy event.
@@ -254,7 +254,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 		// must be refused, not run the destructive legacy delete against the main line.
 		AgentCoreSessionRepository legacyRepo = new AgentCoreSessionRepository(MEMORY_ID, this.client, null,
 				"default-session", 100, true, false);
-		givenLedgerMarkers(markerEvent("m2", 2, "gen-00002-cccccccc"));
+		this.givenLedgerMarkers(markerEvent("m2", 2, "gen-00002-cccccccc"));
 
 		assertThatThrownBy(() -> legacyRepo.replaceEvents(SESSION_ID, List.of(userEvent("x"))))
 			.isInstanceOf(AgentCoreMemoryException.StorageException.class)
@@ -269,7 +269,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 		// The flag gates WRITES only; a migrated session's reads still follow the branch.
 		AgentCoreSessionRepository legacyRepo = new AgentCoreSessionRepository(MEMORY_ID, this.client, null,
 				"default-session", 100, true, false);
-		givenLedgerMarkers(markerEvent("m2", 2, "gen-00002-cccccccc"));
+		this.givenLedgerMarkers(markerEvent("m2", 2, "gen-00002-cccccccc"));
 		given(this.client.listEvents(argThat((ListEventsRequest r) -> isBranchScan(r, "gen-00002-cccccccc"))))
 			.willReturn(ListEventsResponse.builder().events(payloadEvent("e-1", "migrated")).build());
 
@@ -281,7 +281,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void compactionDeletesSupersededBranchEventsAndMarkerKeepingMax() {
-		givenLedgerMarkers(markerEvent("m3", 3, "gen-00003-aaaaaaaa"));
+		this.givenLedgerMarkers(markerEvent("m3", 3, "gen-00003-aaaaaaaa"));
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
 		given(this.client.listEvents(argThat((ListEventsRequest r) -> isBranchScan(r, "gen-00003-aaaaaaaa"))))
@@ -297,7 +297,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void compactionKeepsMarkerWhenBranchEventDeleteFails() {
-		givenLedgerMarkers(markerEvent("m3", 3, "gen-00003-aaaaaaaa"));
+		this.givenLedgerMarkers(markerEvent("m3", 3, "gen-00003-aaaaaaaa"));
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
 		// Branch-event listing fails -> deleteBranchEvents returns false -> marker kept.
@@ -314,7 +314,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 	void resolutionCacheServesSecondAppendWithoutRescan() {
 		AgentCoreSessionRepository cachedRepo = new AgentCoreSessionRepository(MEMORY_ID, this.client, null,
 				"default-session", 100, true, false, true, false, true, null);
-		givenNoLedgerMarkers();
+		this.givenNoLedgerMarkers();
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("app").build()).build());
 
@@ -327,7 +327,7 @@ class AgentCoreSessionRepositoryBranchSwapTests {
 
 	@Test
 	void resolutionCacheIsPerInstance() {
-		givenNoLedgerMarkers();
+		this.givenNoLedgerMarkers();
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("app").build()).build());
 		AgentCoreSessionRepository repoA = new AgentCoreSessionRepository(MEMORY_ID, this.client, null,
