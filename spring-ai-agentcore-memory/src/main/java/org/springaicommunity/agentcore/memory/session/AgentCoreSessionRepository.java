@@ -1243,7 +1243,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			this.ttl = ttl;
 			this.entries = new LinkedHashMap<>(16, 0.75f, true) {
 				@Override
-				protected boolean removeEldestEntry(Map.Entry<String, Entry> eldest) {
+				protected boolean removeEldestEntry(Map.Entry<String, BranchResolutionCache.Entry> eldest) {
 					return size() > MAX_ENTRIES;
 				}
 			};
