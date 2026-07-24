@@ -536,10 +536,8 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		if (events == null) {
 			throw new IllegalArgumentException("events must not be null");
 		}
-		logger.warn("AgentCore has no server-side transactional replace; replaceEvents writes a new branch and switches"
-				+ " the current-branch pointer by highest generation (highest-gen-wins, non-destructive). Concurrent"
-				+ " appendEvent can be silently orphaned; hold an external per-session lock over append+replace. See"
-				+ " class Javadoc. sessionId {}", sessionId);
+		logger.debug("replaceEvents for sessionId {} uses branch-swap (highest-gen-wins, non-destructive); a concurrent"
+				+ " appendEvent can be orphaned. See the class Javadoc concurrency section.", sessionId);
 		this.doReplaceEvents(sessionId, events);
 	}
 
@@ -555,10 +553,9 @@ public class AgentCoreSessionRepository implements SessionRepository {
 					expectedVersion, current);
 			return false;
 		}
-		logger.warn("AgentCore has no server-side compare-and-swap; performing check-then-act for sessionId {}. The"
-				+ " risk under concurrency is silent supersession (highest-gen-wins) and an orphaned concurrent"
-				+ " appendEvent, not partial or lost data; hold an external lock over append+replace for strict"
-				+ " single-winner needs.", sessionId);
+		logger.debug("replaceEvents with expectedVersion for sessionId {} is check-then-act, not a server-side CAS;"
+				+ " concurrent replacements resolve by highest generation. See the class Javadoc concurrency section.",
+				sessionId);
 		this.doReplaceEvents(sessionId, events);
 		return true;
 	}
@@ -1244,7 +1241,7 @@ public class AgentCoreSessionRepository implements SessionRepository {
 		}
 
 		private static String key(AgentCoreMemoryConversationIdParser.ActorAndSession as) {
-			return as.actor() + " " + as.session();
+			return as.actor() + "\u0000" + as.session();
 		}
 
 		private record Entry(String branchName, Instant expiresAt) {

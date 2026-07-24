@@ -85,6 +85,29 @@
       "name": "agentcore.memory.session.default-session",
       "type": "java.lang.String",
       "description": "Session-scoped default session id used when the conversation id carries no session segment. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.default-session, then the legacy agentcore.memory.default-session, then 'default-session'."
+    },
+    {
+      "name": "agentcore.memory.session.branch-swap-enabled",
+      "type": "java.lang.Boolean",
+      "description": "When true, replaceEvents writes the replacement timeline to a fresh AgentCore branch and switches the current-branch pointer (non-destructive, highest generation wins) instead of the legacy delete-then-recreate. The migration is one-way per session: once a session has a branch pointer, turning this flag back off makes replaceEvents refuse with a StorageException rather than corrupt the ledger. Prove it out in a non-production environment first. Applies only when agentcore.memory.session.enabled=true.",
+      "defaultValue": false
+    },
+    {
+      "name": "agentcore.memory.session.delete-superseded-branch",
+      "type": "java.lang.Boolean",
+      "description": "When true, best-effort delete the superseded branch's events after a successful branch-swap replaceEvents. Deletion failures are logged and left to ledger compaction or the memory-level event expiry as backstops. Applies only when agentcore.memory.session.branch-swap-enabled=true.",
+      "defaultValue": false
+    },
+    {
+      "name": "agentcore.memory.session.branch-cache-enabled",
+      "type": "java.lang.Boolean",
+      "description": "When true, cache the resolved current branch per (actor, session) in a bounded per-instance map to save one listEvents round-trip per read. Latency optimization only, per-JVM, invalidated on writes through the same instance; a stale entry self-heals on the next resolution. Applies only when agentcore.memory.session.branch-swap-enabled=true.",
+      "defaultValue": false
+    },
+    {
+      "name": "agentcore.memory.session.branch-cache-ttl",
+      "type": "java.time.Duration",
+      "description": "Time-to-live for cached branch resolutions when agentcore.memory.session.branch-cache-enabled=true. When null, entries stay until size-based eviction."
     }
   ]
 }
