@@ -46,6 +46,24 @@ set, the module logs a startup WARN and creates no session beans.
 </dependency>
 ```
 
+The snippet omits a `<version>` because the version is expected to come from the
+`spring-ai-session-bom`. Import that BOM in your `dependencyManagement` (or pin an explicit
+`<version>0.5.0</version>` on the dependency above) so the artifact resolves:
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.springaicommunity</groupId>
+            <artifactId>spring-ai-session-bom</artifactId>
+            <version>0.5.0</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+```
+
 **Usage.** `SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY` equals `ChatMemory.CONVERSATION_ID`,
 so the same conversation-id constant works for both stacks:
 
@@ -107,7 +125,7 @@ retention window.
 | Method / field | Behavior | Caller impact |
 |----------------|----------|---------------|
 | `save(Session)` | no-op (no session-metadata store) | Metadata mutated on the `Session` (e.g. `session.withMetadata(...)`) is not persisted and will not reappear on `findById`. Do not use `save` for metadata persistence. |
-| `findByUserId(String)` | maps `userId` to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`; unknown user yields an empty list. |
+| `findByUserId(String)` | maps `userId` to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`, falling back to the `Instant.EPOCH` sentinel when the summary has none (the same fallback documented on the `Session.createdAt` row); unknown user yields an empty list. |
 | `findExpiredSessionIds(Instant)` | throws `UnsupportedOperationException` | Expiry is memory-level retention (`eventExpiryDuration`), not re-derivable per session; use `findByUserId(userId)` to enumerate a user's sessions. |
 | `replaceEvents(String, List)` | non-destructive branch-swap when enabled; legacy delete-then-recreate otherwise (refuses on a migrated session when disabled) | Branch-swap leaves the prior timeline intact; legacy risks partial data on mid-flight failure. Hold an external lock (see above). |
 | `replaceEvents(String, List, long)` | best-effort check-then-act, not a true CAS | Race window; hold an external lock (see above). |
@@ -117,10 +135,11 @@ retention window.
 
 **Branch-swap rollback / migrate-back.** Branch-swap migration is one-way per session: once
 a session has a pointer marker, its live timeline is on a `gen-*` branch. To roll back to the
-legacy main line, keep `agentcore.memory.session.branch-swap-enabled=true` and, for each
-affected session, read the current branch with `findEvents(sessionId, EventFilter.all())` and
-re-write those events onto a fresh session id that has never been branched (a plain
-`appendEvent` loop with branch-swap disabled). Do NOT simply flip the flag off and call
+legacy main line, do it in two phases. First, with `agentcore.memory.session.branch-swap-enabled=true`,
+read the current branch of each affected session with `findEvents(sessionId, EventFilter.all())`.
+Then re-write those events onto a fresh session id that has never been branched via a plain
+`appendEvent` loop; because a never-branched session has no pointer markers, the append lands on
+the main line regardless of the flag value. Do NOT simply flip the flag off and call
 `replaceEvents` on a migrated session: that path deliberately refuses with a `StorageException`
 (and issues zero AWS writes) precisely so it never runs the destructive main-line delete
 against a live branch. Superseded branches and stale markers are reaped by the memory-level
@@ -392,6 +411,7 @@ void deleteByConversationId(String conversationId);
    - `bedrock-agentcore:ListEvents`
    - `bedrock-agentcore:CreateEvent`
    - `bedrock-agentcore:DeleteEvent`
+   - `bedrock-agentcore:ListSessions` (for `findByUserId` and `createdAt` resolution)
    - `bedrock-agentcore:RetrieveMemoryRecords` (for LTM)
 
 3. **Debug logging**:
@@ -403,7 +423,7 @@ void deleteByConversationId(String conversationId);
 
 ## Requirements
 
-- Java 17+
+- Java 21+
 - Spring Boot 4.x
 - Spring AI 2.0.0+
 
