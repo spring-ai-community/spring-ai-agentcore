@@ -65,6 +65,26 @@
       "type": "java.lang.Boolean",
       "description": "When true, synthetic session events (framework-generated, e.g. compaction summaries) are persisted to AgentCore via AgentCoreSessionRepository.appendEvent. Default false: synthetic events are skipped because AgentCore stores real dialogue only.",
       "defaultValue": false
+    },
+    {
+      "name": "agentcore.memory.session.total-events-limit",
+      "type": "java.lang.Integer",
+      "description": "Session-scoped maximum number of events AgentCoreSessionRepository retrieves per session. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.total-events-limit, then the legacy agentcore.memory.total-events-limit, then no limit."
+    },
+    {
+      "name": "agentcore.memory.session.page-size",
+      "type": "java.lang.Integer",
+      "description": "Session-scoped page size AgentCoreSessionRepository uses when paginating AgentCore listEvents and listSessions. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.page-size, then the legacy agentcore.memory.page-size, then the built-in default."
+    },
+    {
+      "name": "agentcore.memory.session.ignore-unknown-roles",
+      "type": "java.lang.Boolean",
+      "description": "Session-scoped switch for silently skipping messages with unsupported roles instead of failing. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.ignore-unknown-roles, then the legacy agentcore.memory.ignore-unknown-roles, then true."
+    },
+    {
+      "name": "agentcore.memory.session.default-session",
+      "type": "java.lang.String",
+      "description": "Session-scoped default session id used when the conversation id carries no session segment. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.default-session, then the legacy agentcore.memory.default-session, then 'default-session'."
     }
   ]
 }

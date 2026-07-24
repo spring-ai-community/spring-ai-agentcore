@@ -118,15 +118,18 @@ import org.springframework.ai.session.SessionRepository;
  * keep a backup to recover from a mid-flight failure.
  *
  * <h3>Synthesized {@link Session} fields</h3> On {@link #findById(String)} we synthesize
- * a {@link Session} from the event-log tail and the session's {@code SessionSummary}:
+ * a {@link Session} from the event-log tail:
  * <ul>
  * <li>{@code id} = the requested sessionId string.</li>
  * <li>{@code userId} = actor segment of the sessionId (see convention above).</li>
- * <li>{@code createdAt} = the {@code SessionSummary.createdAt} when the summary is
- * visible; otherwise the timestamp of the most recent event (a real, non-sentinel value);
- * only if neither is available does it fall back to {@link #SYNTHETIC_CREATED_AT}. The
- * most recent event timestamp is also exposed under metadata key
- * {@value #LAST_EVENT_AT_METADATA_KEY}.</li>
+ * <li>{@code createdAt} = the timestamp of the most recent event (a real, non-sentinel
+ * value already fetched for the tail read); only when that event carries no timestamp
+ * does it fall back to {@link #SYNTHETIC_CREATED_AT}. {@code findById} intentionally does
+ * not call {@code ListSessions} to read {@code SessionSummary.createdAt}: that would add
+ * an O(all-sessions) scan and the {@code ListSessions} IAM permission to the common read
+ * path for a field most callers ignore. {@link #findByUserId(String)} still surfaces the
+ * true {@code SessionSummary.createdAt}. The most recent event timestamp is also exposed
+ * under metadata key {@value #LAST_EVENT_AT_METADATA_KEY}.</li>
  * <li>{@code expiresAt} = {@code null}: AgentCore has no per-session TTL.</li>
  * <li>{@code metadata} = {@link Map} with keys {@value #ACTOR_ID_METADATA_KEY},
  * {@value #SESSION_METADATA_KEY}, and {@value #LAST_EVENT_AT_METADATA_KEY}.</li>
@@ -237,7 +240,14 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			if (tail.eventTimestamp() != null) {
 				metadata.put(LAST_EVENT_AT_METADATA_KEY, tail.eventTimestamp());
 			}
-			Instant createdAt = resolveCreatedAt(actorAndSession, tail);
+			// createdAt is derived from the tail event timestamp already fetched here (a
+			// real, non-sentinel value), falling back to SYNTHETIC_CREATED_AT only when
+			// the
+			// tail carries no timestamp. findById does NOT call ListSessions: paying an
+			// O(all-sessions) scan to synthesize a field most callers ignore is not worth
+			// it, and it keeps the ListSessions IAM permission off the common read path
+			// (findByUserId is the only method that needs it).
+			Instant createdAt = (tail.eventTimestamp() != null) ? tail.eventTimestamp() : SYNTHETIC_CREATED_AT;
 			Session synthesized = Session.builder()
 				.id(sessionId)
 				.userId(actorAndSession.actor())
@@ -607,41 +617,6 @@ public class AgentCoreSessionRepository implements SessionRepository {
 			throw new AgentCoreMemoryException.StorageException("Failed to replace events for sessionId: " + sessionId,
 					ex);
 		}
-	}
-
-	private Instant resolveCreatedAt(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, Event tail) {
-		try {
-			String nextToken = null;
-			int maxResults = Math.min(Math.max(this.pageSize, 1), SERVICE_MAX_RESULTS);
-			do {
-				ListSessionsRequest.Builder builder = ListSessionsRequest.builder()
-					.memoryId(this.memoryId)
-					.actorId(actorAndSession.actor())
-					.maxResults(maxResults);
-				if (nextToken != null) {
-					builder.nextToken(nextToken);
-				}
-				ListSessionsResponse response = this.client.listSessions(builder.build());
-				if (response == null || response.sessionSummaries() == null) {
-					break;
-				}
-				for (SessionSummary summary : response.sessionSummaries()) {
-					if (actorAndSession.session().equals(summary.sessionId()) && summary.createdAt() != null) {
-						return summary.createdAt();
-					}
-				}
-				nextToken = response.nextToken();
-			}
-			while (nextToken != null);
-		}
-		catch (SdkException ex) {
-			logger.debug("Could not read SessionSummary.createdAt for actor {} session {}; falling back to the tail"
-					+ " event timestamp", actorAndSession.actor(), actorAndSession.session(), ex);
-		}
-		if (tail != null && tail.eventTimestamp() != null) {
-			return tail.eventTimestamp();
-		}
-		return SYNTHETIC_CREATED_AT;
 	}
 
 	private Session toSession(String actorId, SessionSummary summary) {

@@ -108,11 +108,9 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findByIdExistingSessionIdReturnsSynthesizedSession() {
-		Instant summaryTs = Instant.parse("2026-04-01T08:00:00Z");
 		Instant eventTs = Instant.parse("2026-05-01T12:00:00Z");
 		Event tail = Event.builder().eventId("evt-1").eventTimestamp(eventTs).build();
 		givenDataEvents(tail);
-		givenSessionSummary(SESSION_SUFFIX, summaryTs);
 
 		Optional<Session> result = this.repository.findById(SESSION_ID);
 
@@ -120,8 +118,9 @@ class AgentCoreSessionRepositoryTests {
 		Session synthesized = result.get();
 		assertThat(synthesized.id()).isEqualTo(SESSION_ID);
 		assertThat(synthesized.userId()).isEqualTo(ACTOR);
-		// D3: createdAt is the real SessionSummary.createdAt, not an EPOCH sentinel.
-		assertThat(synthesized.createdAt()).isEqualTo(summaryTs);
+		// I4: createdAt is the tail event timestamp (already fetched), not a ListSessions
+		// lookup and not an EPOCH sentinel.
+		assertThat(synthesized.createdAt()).isEqualTo(eventTs);
 		assertThat(synthesized.expiresAt()).isNull();
 		assertThat(synthesized.metadata()).containsEntry(AgentCoreSessionRepository.ACTOR_ID_METADATA_KEY, ACTOR)
 			.containsEntry(AgentCoreSessionRepository.SESSION_METADATA_KEY, SESSION_SUFFIX)
@@ -136,20 +135,19 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void findByIdCreatedAtFallsBackToTailTimestampWhenNoSummary() {
-		// D3: no matching SessionSummary -> createdAt falls back to the tail event
-		// timestamp (a real, non-sentinel value), never Instant.EPOCH.
+	void findByIdCreatedAtIsTailTimestampAndDoesNotCallListSessions() {
+		// I4: findById derives createdAt from the tail event timestamp (a real,
+		// non-sentinel value) and never calls ListSessions on the read path.
 		Instant eventTs = Instant.parse("2026-06-15T00:00:00Z");
 		Event tail = Event.builder().eventId("evt-2").eventTimestamp(eventTs).build();
 		givenDataEvents(tail);
-		given(this.client.listSessions(any(ListSessionsRequest.class)))
-			.willReturn(ListSessionsResponse.builder().sessionSummaries(List.of()).build());
 
 		Session synthesized = this.repository.findById(SESSION_ID).orElseThrow();
 		assertThat(synthesized.createdAt()).isEqualTo(eventTs);
 		assertThat(synthesized.createdAt()).isNotEqualTo(Instant.EPOCH);
 		assertThat(synthesized.metadata().get(AgentCoreSessionRepository.LAST_EVENT_AT_METADATA_KEY))
 			.isEqualTo(eventTs);
+		then(this.client).should(never()).listSessions(any(ListSessionsRequest.class));
 	}
 
 	@Test
@@ -537,16 +535,6 @@ class AgentCoreSessionRepositoryTests {
 	private void givenDataEvents(Event... events) {
 		given(this.client.listEvents(any(ListEventsRequest.class)))
 			.willReturn(ListEventsResponse.builder().events(List.of(events)).build());
-	}
-
-	private void givenSessionSummary(String sessionSuffix, Instant createdAt) {
-		SessionSummary summary = SessionSummary.builder()
-			.sessionId(sessionSuffix)
-			.actorId(ACTOR)
-			.createdAt(createdAt)
-			.build();
-		given(this.client.listSessions(any(ListSessionsRequest.class)))
-			.willReturn(ListSessionsResponse.builder().sessionSummaries(summary).build());
 	}
 
 	private ListEventsRequest captureDataListEvents() {

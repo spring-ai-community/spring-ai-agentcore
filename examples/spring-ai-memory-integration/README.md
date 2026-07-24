@@ -6,7 +6,7 @@ This example creates and uses the AgentCore Long-Term Memory Summary Strategy.
 
 ## Prerequisites
 
-- Java 21+
+- Java 17+
 - Maven 3.6+
 - AWS credentials configured locally
 

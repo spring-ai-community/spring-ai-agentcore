@@ -47,8 +47,10 @@ set, the module logs a startup WARN and creates no session beans.
 ```
 
 The snippet omits a `<version>` because the version is expected to come from the
-`spring-ai-session-bom`. Import that BOM in your `dependencyManagement` (or pin an explicit
-`<version>0.5.0</version>` on the dependency above) so the artifact resolves:
+`spring-ai-session-bom`. This project already imports that BOM at the version pinned by
+the `spring-ai-session.version` property in the root `pom.xml`; standalone consumers should
+import the BOM in their own `dependencyManagement` and let it manage the version rather
+than pinning it inline:
 
 ```xml
 <dependencyManagement>
@@ -56,7 +58,7 @@ The snippet omits a `<version>` because the version is expected to come from the
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-session-bom</artifactId>
-            <version>0.5.0</version>
+            <version>${spring-ai-session.version}</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -119,9 +121,9 @@ idempotency applies within AgentCore's clientToken retention window.
 **Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,
 `AgentCoreMemory.shortTermMemoryAdvisor`) and the
 `AgentCoreShortTermMemoryRepository implements ChatMemoryRepository` declaration are
-marked `@Deprecated(since = "2.1.0")`. This is a soft deprecation with no `forRemoval`
-flag; nothing is scheduled for removal. They stay fully supported until upstream Spring AI
-formally deprecates `ChatMemory`, at which point a removal window is announced separately.
+marked `@Deprecated(since = "2.1.0", forRemoval = true)` and are scheduled for removal in
+3.0.0. Migrate to the Session API stack (`agentcore.memory.session.enabled=true`) before
+upgrading to the next major. They remain fully supported in the 2.x line.
 See [issue #152](https://github.com/spring-ai-community/spring-ai-agentcore/issues/152).
 
 ## Memory Types
@@ -382,7 +384,7 @@ void deleteByConversationId(String conversationId);
    - `bedrock-agentcore:ListEvents`
    - `bedrock-agentcore:CreateEvent`
    - `bedrock-agentcore:DeleteEvent`
-   - `bedrock-agentcore:ListSessions` (for `findByUserId` and `createdAt` resolution)
+   - `bedrock-agentcore:ListSessions` (for `findByUserId` only; `findById` derives `createdAt` from the event tail and does not call `ListSessions`)
    - `bedrock-agentcore:RetrieveMemoryRecords` (for LTM)
 
 3. **Debug logging**:
@@ -394,7 +396,7 @@ void deleteByConversationId(String conversationId);
 
 ## Requirements
 
-- Java 21+
+- Java: this module follows the `java.version` set in the root `pom.xml`
 - Spring Boot 4.x
 - Spring AI 2.0.0+
 
