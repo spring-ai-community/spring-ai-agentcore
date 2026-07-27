@@ -16,7 +16,7 @@
     <description>Build-time-only OpenRewrite recipes for enforcing project conventions. Not published as part of the library.</description>
 
     <properties>
-        <rewrite.version>8.87.5</rewrite.version>
+        <rewrite.version>8.87.7</rewrite.version>
         <!-- Don't generate javadoc/sources for tooling artifact. -->
         <maven.javadoc.skip>true</maven.javadoc.skip>
         <maven.source.skip>true</maven.source.skip>
