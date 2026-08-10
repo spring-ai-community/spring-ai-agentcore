@@ -90,7 +90,7 @@
         <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
         <spring-javaformat-maven-plugin.version>0.0.47</spring-javaformat-maven-plugin.version>
         <spring-ai.version>2.0.0</spring-ai.version>
-        <awssdk.version>2.50.2</awssdk.version>
+        <awssdk.version>2.51.3</awssdk.version>
     </properties>
 
 
