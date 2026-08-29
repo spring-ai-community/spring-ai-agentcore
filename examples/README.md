@@ -48,6 +48,20 @@ Basic AgentCore integration with minimal configuration. Demonstrates:
 - Simple request/response handling
 - Health checks and task tracking
 
+### spring-ai-identity
+Standalone AgentCore Identity example. Demonstrates:
+- JWT-to-workload-token exchange
+- Explicit API-key retrieval
+- M2M OAuth 2.0 credential retrieval
+- USER_FEDERATION authorization start/completion with CSRF state and expiring session validation
+- Both direct servlet endpoints and event-loop-safe reactive endpoints using bounded elastic scheduling
+
+### spring-ai-identity-agentcore
+AgentCore Runtime Identity example. Demonstrates:
+- Automatic workload-token extraction from Runtime invocation headers
+- Ambient API-key retrieval without passing tokens through application code
+- Token propagation into lazy reactive execution when Reactor is present
+
 ### spring-ai-browser
 Browser automation example using AgentCore Browser. Features:
 - Headless browser navigation and content extraction

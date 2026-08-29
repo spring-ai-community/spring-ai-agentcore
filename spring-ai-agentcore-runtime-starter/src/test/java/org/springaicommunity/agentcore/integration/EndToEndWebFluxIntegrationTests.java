@@ -18,7 +18,7 @@ package org.springaicommunity.agentcore.integration;
 
 import java.time.Duration;
 
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -41,18 +41,22 @@ import org.springframework.web.server.ResponseStatusException;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(classes = EndToEndWebFluxIntegrationTests.FluxTestApp.class,
-		webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Disabled
+		webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+		properties = "spring.main.web-application-type=reactive")
 class EndToEndWebFluxIntegrationTests {
 
 	@LocalServerPort
 	private int port;
 
-	@Autowired
 	private WebTestClient webTestClient;
 
 	@Autowired
 	private AgentCoreTaskTracker agentCoreTaskTracker;
+
+	@BeforeEach
+	void setUpWebTestClient() {
+		this.webTestClient = WebTestClient.bindToServer().baseUrl("http://localhost:" + this.port).build();
+	}
 
 	@Test
 	void shouldStreamFluxResponseAsSSE() {
@@ -61,12 +65,13 @@ class EndToEndWebFluxIntegrationTests {
 		FluxExchangeResult<String> result = this.webTestClient.post()
 			.uri("http://localhost:" + this.port + "/invocations")
 			.contentType(MediaType.APPLICATION_JSON)
+			.accept(MediaType.TEXT_EVENT_STREAM)
 			.bodyValue(request)
 			.exchange()
 			.expectStatus()
 			.isOk()
 			.expectHeader()
-			.contentType(MediaType.TEXT_EVENT_STREAM)
+			.contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM)
 			.returnResult(String.class);
 
 		StepVerifier.create(result.getResponseBody())
@@ -85,12 +90,13 @@ class EndToEndWebFluxIntegrationTests {
 		FluxExchangeResult<String> result = this.webTestClient.post()
 			.uri("http://localhost:" + this.port + "/invocations")
 			.contentType(MediaType.APPLICATION_JSON)
+			.accept(MediaType.TEXT_EVENT_STREAM)
 			.bodyValue(request)
 			.exchange()
 			.expectStatus()
 			.isOk()
 			.expectHeader()
-			.contentType(MediaType.TEXT_EVENT_STREAM)
+			.contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM)
 			.returnResult(String.class);
 
 		StepVerifier.create(result.getResponseBody()).expectNext("""
@@ -109,6 +115,7 @@ class EndToEndWebFluxIntegrationTests {
 		this.webTestClient.post()
 			.uri("http://localhost:" + this.port + "/invocations")
 			.contentType(MediaType.APPLICATION_JSON)
+			.accept(MediaType.TEXT_EVENT_STREAM)
 			.bodyValue(request)
 			.exchange()
 			.expectStatus()

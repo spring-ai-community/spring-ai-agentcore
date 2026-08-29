@@ -11,6 +11,7 @@ An open-source library that brings Amazon Bedrock AgentCore capabilities into Sp
 | Module | Description |
 |--------|-------------|
 | [Runtime Starter](spring-ai-agentcore-runtime-starter/) | Auto-configures `/invocations` and `/ping` endpoints, SSE streaming, health checks, rate limiting |
+| [Identity](spring-ai-agentcore-identity/) | Workload tokens, API keys, OAuth 2.0 credentials, Runtime header integration, reactive propagation |
 | [Memory](spring-ai-agentcore-memory/) | Short-term (conversation history) and long-term memory (semantic, preferences, summaries, episodic) |
 | [Browser](spring-ai-agentcore-browser/) | Web navigation, content extraction, screenshots, form interaction via Playwright |
 | [Code Interpreter](spring-ai-agentcore-code-interpreter/) | Secure Python/JavaScript/TypeScript execution with file retrieval |
@@ -43,6 +44,10 @@ dependencies below are declared without a `<version>`:
         <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
     </dependency>
     <!-- Add as needed -->
+    <dependency>
+        <groupId>org.springaicommunity</groupId>
+        <artifactId>spring-ai-agentcore-identity</artifactId>
+    </dependency>
     <dependency>
         <groupId>org.springaicommunity</groupId>
         <artifactId>spring-ai-agentcore-memory</artifactId>
@@ -112,6 +117,8 @@ See [examples/terraform/](examples/terraform/) for infrastructure-as-code with I
 | [simple-spring-boot-app](examples/simple-spring-boot-app/) | Minimal agent with request handling |
 | [spring-ai-sse-chat-client](examples/spring-ai-sse-chat-client/) | Streaming responses with SSE |
 | [spring-ai-memory-integration](examples/spring-ai-memory-integration/) | Short-term and long-term memory |
+| [spring-ai-identity](examples/spring-ai-identity/) | Standalone JWT exchange, API-key retrieval, and OAuth credential retrieval |
+| [spring-ai-identity-agentcore](examples/spring-ai-identity-agentcore/) | Ambient Runtime workload-token and API-key retrieval |
 | [spring-ai-extended-chat-client](examples/spring-ai-extended-chat-client/) | OAuth auth with per-user memory isolation |
 | [spring-ai-browser](examples/spring-ai-browser/) | Web browsing and screenshots |
 | [spring-ai-simple-chat-client](examples/spring-ai-simple-chat-client/) | Traditional Spring AI (without runtime starter) |

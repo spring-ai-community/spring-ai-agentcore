@@ -16,6 +16,8 @@
 
 package org.springaicommunity.agentcore.autoconfigure;
 
+import java.util.List;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
 import org.springaicommunity.agentcore.controller.AgentCoreInvocationsController;
@@ -24,6 +26,7 @@ import org.springaicommunity.agentcore.controller.AgentCorePingController;
 import org.springaicommunity.agentcore.controller.AgentCorePingHandler;
 import org.springaicommunity.agentcore.ping.AgentCorePingService;
 import org.springaicommunity.agentcore.ping.AgentCoreTaskTracker;
+import org.springaicommunity.agentcore.service.AgentCoreInvocationCallback;
 import org.springaicommunity.agentcore.service.AgentCoreMethodInvoker;
 import org.springaicommunity.agentcore.service.AgentCoreMethodRegistry;
 import org.springaicommunity.agentcore.service.AgentCoreMethodScanner;
@@ -56,8 +59,9 @@ public class AgentCoreAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	public AgentCoreMethodInvoker agentCoreMethodInvoker(ObjectMapper mapper, AgentCoreMethodRegistry registry) {
-		return new AgentCoreMethodInvoker(mapper, registry);
+	public AgentCoreMethodInvoker agentCoreMethodInvoker(ObjectMapper mapper, AgentCoreMethodRegistry registry,
+			List<AgentCoreInvocationCallback> callbacks) {
+		return new AgentCoreMethodInvoker(mapper, registry, callbacks);
 	}
 
 	@Bean

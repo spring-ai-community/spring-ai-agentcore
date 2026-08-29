@@ -32,6 +32,8 @@
         <module>spring-ai-override-invocations</module>
         <module>spring-ai-simple-chat-client</module>
         <module>spring-ai-sse-chat-client</module>
+        <module>spring-ai-identity</module>
+        <module>spring-ai-identity-agentcore</module>
     </modules>
 
     <!--

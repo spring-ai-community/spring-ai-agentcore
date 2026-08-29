@@ -70,4 +70,25 @@ public class AgentCoreContext {
 		return this.headers.getFirst(headerName);
 	}
 
+	/**
+	 * Gets the workload access token automatically provided by AgentCore Runtime. This
+	 * token authorizes the agent to access AgentCore Identity credential providers (API
+	 * keys, OAuth tokens) without manual token exchange.
+	 * @return the workload access token, or {@code null} if not running on AgentCore
+	 * Runtime
+	 */
+	public String getWorkloadAccessToken() {
+		return this.headers.getFirst(AgentCoreHeaders.WORKLOAD_ACCESS_TOKEN_RUNTIME);
+	}
+
+	/**
+	 * Gets the end-user identifier extracted by AgentCore Runtime from the inbound
+	 * authentication token. This identifies the user on whose behalf the agent is acting.
+	 * @return the user ID, or {@code null} if no user identity is bound to this
+	 * invocation
+	 */
+	public String getUserId() {
+		return this.headers.getFirst(AgentCoreHeaders.USER_ID);
+	}
+
 }
