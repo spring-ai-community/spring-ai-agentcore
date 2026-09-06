@@ -16,6 +16,8 @@
 
 package org.springaicommunity.agentcore.rewrite;
 
+import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.openrewrite.test.RecipeSpec;
 import org.openrewrite.test.RewriteTest;
@@ -23,6 +25,20 @@ import org.openrewrite.test.RewriteTest;
 import static org.openrewrite.java.Assertions.java;
 
 class SpringLambdaTests implements RewriteTest {
+
+	// OpenRewrite ships a javac-internals-bound parser per JDK (rewrite-java-17/21/25).
+	// There is no parser for JDK 26 yet, so on JDK 26+ the newest available parser
+	// mis-computes lambda source offsets and throws while parsing. Skip (not fail) until
+	// an OpenRewrite parser for the running JDK is published. CI runs on JDK 21, where
+	// these tests execute normally.
+	@BeforeEach
+	void requireJdkSupportedByOpenRewrite() {
+		int feature = Runtime.version().feature();
+		Assumptions.assumeTrue(feature <= 25, () -> "Skipping SpringLambda parse tests: OpenRewrite has no Java parser "
+				+ "for JDK " + feature + " (latest is rewrite-java-25). On this JDK the newest available parser "
+				+ "mis-computes lambda source offsets and throws StringIndexOutOfBoundsException while parsing. "
+				+ "Run on JDK <= 25 (CI uses JDK 21) to exercise these tests.");
+	}
 
 	@Override
 	public void defaults(RecipeSpec spec) {

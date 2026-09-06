@@ -41,11 +41,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * — preserves the single-message baseline wire shape verified against the Evaluate API.
  * Opt-in because the multi-message payload grows with conversation length; long sessions
  * at high sample rates produce O(n²) bytes on the wire.
+ * @param executorPoolSize number of threads in the fixed pool used to run evaluations
+ * asynchronously and to fan out per-evaluator calls (default: 10). Boxed so that
+ * {@code null} means "not set" and we apply the intended default; a primitive {@code int}
+ * would silently default to {@code 0} (an illegal pool size). Sized for blocking Bedrock
+ * I/O rather than CPU work.
  * @author Andrei Shakirin
  */
 @ConfigurationProperties(AgentCoreEvaluationProperties.CONFIG_PREFIX)
 public record AgentCoreEvaluationProperties(boolean enabled, String region, List<String> evaluatorIds, Boolean async,
-		Boolean metricsEnabled, Double sampleRate, Boolean includeHistory) {
+		Boolean metricsEnabled, Double sampleRate, Boolean includeHistory, Integer executorPoolSize) {
 
 	/**
 	 * configuration prefix for evaluation properties.
@@ -56,6 +61,11 @@ public record AgentCoreEvaluationProperties(boolean enabled, String region, List
 	 * default evaluator IDs used when none are configured.
 	 */
 	public static final List<String> DEFAULT_EVALUATOR_IDS = List.of("Builtin.Helpfulness");
+
+	/**
+	 * default size of the evaluation executor thread pool.
+	 */
+	public static final int DEFAULT_EXECUTOR_POOL_SIZE = 10;
 
 	public AgentCoreEvaluationProperties {
 		if (evaluatorIds == null || evaluatorIds.isEmpty()) {
@@ -72,6 +82,9 @@ public record AgentCoreEvaluationProperties(boolean enabled, String region, List
 		}
 		if (includeHistory == null) {
 			includeHistory = Boolean.FALSE;
+		}
+		if (executorPoolSize == null || executorPoolSize < 1) {
+			executorPoolSize = DEFAULT_EXECUTOR_POOL_SIZE;
 		}
 	}
 

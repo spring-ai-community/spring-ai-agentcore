@@ -68,7 +68,7 @@ class AgentCoreEvaluationClientProbeIT {
 		log.put("body", body);
 		try {
 			List<EvaluationResult> r = this.client.evaluate(EVALUATOR_ID, List.of(span, log));
-			EvaluationResult res = (r.isEmpty()) ? null : r.getFirst();
+			EvaluationResult res = (r.isEmpty()) ? null : r.get(0);
 			System.out.printf("[%s] size=%d score=%s err=%s%n", name, r.size(), (res != null) ? res.score() : null,
 					(res != null) ? res.errorCode() : null);
 		}

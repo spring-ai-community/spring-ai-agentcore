@@ -45,9 +45,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'corretto'
           cache: 'maven'
 

@@ -27,6 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -121,12 +122,21 @@ public final class AgentCoreEvaluationAdvisor implements CallAdvisor, StreamAdvi
 	private final boolean includeHistory;
 
 	/**
-	 * Shared default executor used when the caller does not supply one. A single
-	 * virtual-thread-per-task executor is kept for the JVM lifetime so that manually
-	 * constructed advisors do not each leak their own executor. Production setups should
-	 * inject a managed executor via the builder.
+	 * Shared default executor used when the caller does not supply one. A single fixed
+	 * pool of daemon platform threads is kept for the JVM lifetime so that manually
+	 * constructed advisors do not each leak their own executor. Sized for blocking
+	 * Bedrock I/O; a platform-thread pool (instead of virtual threads) keeps the Java 17
+	 * baseline. Production setups should inject a managed executor via the builder.
 	 */
-	private static final Executor DEFAULT_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+	private static final AtomicInteger DEFAULT_THREAD_COUNTER = new AtomicInteger();
+
+	private static final Executor DEFAULT_EXECUTOR = Executors
+		.newFixedThreadPool(AgentCoreEvaluationProperties.DEFAULT_EXECUTOR_POOL_SIZE, (runnable) -> {
+			Thread thread = new Thread(runnable,
+					"agentcore-evaluation-default-" + DEFAULT_THREAD_COUNTER.incrementAndGet());
+			thread.setDaemon(true);
+			return thread;
+		});
 
 	private AgentCoreEvaluationAdvisor(Builder builder) {
 		this.client = builder.client;

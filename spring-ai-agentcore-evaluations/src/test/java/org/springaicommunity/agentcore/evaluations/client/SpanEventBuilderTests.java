@@ -60,9 +60,7 @@ class SpanEventBuilderTests {
 
 	@Test
 	void spanShouldCarrySessionAndScope() {
-		Map<String, Object> span = SpanEventBuilder.agentInvocation(TRACE_ID, SESSION_ID)
-			.buildSessionSpans()
-			.getFirst();
+		Map<String, Object> span = SpanEventBuilder.agentInvocation(TRACE_ID, SESSION_ID).buildSessionSpans().get(0);
 
 		assertThat(attributes(span)).containsEntry("session.id", SESSION_ID);
 		assertThat(scope(span)).containsEntry("name", SpanEventBuilder.SCOPE_NAME);
@@ -109,7 +107,7 @@ class SpanEventBuilderTests {
 		Map<String, Object> span = SpanEventBuilder.agentInvocation(TRACE_ID, SESSION_ID)
 			.tokenUsage(input, output)
 			.buildSessionSpans()
-			.getFirst();
+			.get(0);
 
 		Map<String, Object> attrs = attributes(span);
 		if (inputEmitted) {

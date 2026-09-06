@@ -71,7 +71,7 @@ class AwsSdkGenAiSpanRenamingExporterTests {
 
 		new AwsSdkGenAiSpanRenamingExporter(delegate).export(List.of(span));
 
-		return delegate.getFinishedSpanItems().getFirst().getName();
+		return delegate.getFinishedSpanItems().get(0).getName();
 	}
 
 }

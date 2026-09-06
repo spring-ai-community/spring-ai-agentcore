@@ -64,7 +64,7 @@ class AgentCoreEvaluationClientTests {
 		List<Document> sent = captor.getValue().evaluationInput().sessionSpans();
 
 		assertThat(sent).hasSize(1);
-		Map<String, Document> root = sent.getFirst().asMap();
+		Map<String, Document> root = sent.get(0).asMap();
 		assertThat(root.get("traceId").asString()).isEqualTo("t1");
 		assertThat(root.get("flags").asNumber().intValue()).isEqualTo(1);
 		assertThat(root.get("parentSpanId").isNull()).isTrue();
@@ -89,7 +89,7 @@ class AgentCoreEvaluationClientTests {
 				List.of(Map.of("k", "v")));
 
 		assertThat(results).hasSize(1);
-		EvaluationResult r = results.getFirst();
+		EvaluationResult r = results.get(0);
 		assertThat(r.isError()).isTrue();
 		assertThat(r.errorCode()).isEqualTo("AgentSpanMappingException");
 		assertThat(r.errorMessage()).isEqualTo("bad span");

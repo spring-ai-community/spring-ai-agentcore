@@ -1,5 +1,7 @@
 # Spring AI AgentCore SDK
 
+[![Maven Central](https://img.shields.io/maven-central/v/org.springaicommunity/spring-ai-agentcore-bom?label=Maven%20Central)](https://central.sonatype.com/artifact/org.springaicommunity/spring-ai-agentcore-bom)
+
 📖 **[Documentation](https://springaicommunity.mintlify.app/projects/incubating/spring-ai-bedrock-agentcore)**
 
 An open-source library that brings Amazon Bedrock AgentCore capabilities into Spring AI through familiar patterns: annotations, auto-configuration, and composable advisors.
@@ -18,7 +20,9 @@ An open-source library that brings Amazon Bedrock AgentCore capabilities into Sp
 
 ## Quick Start
 
-Add the BOM and the modules you need:
+Add the BOM (use the latest version from the Maven Central badge above) and the
+modules you need. Importing the BOM aligns every module version, so the module
+dependencies below are declared without a `<version>`:
 
 ```xml
 <dependencyManagement>
@@ -26,7 +30,7 @@ Add the BOM and the modules you need:
         <dependency>
             <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-bom</artifactId>
-            <version>1.0.0</version>
+            <version>LATEST_VERSION</version> <!-- see the Maven Central badge above -->
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -118,8 +122,8 @@ See [examples/terraform/](examples/terraform/) for infrastructure-as-code with I
 
 ## Requirements
 
-- Java 17+ (Java 25 recommended)
-- Spring Boot 4.1+
+- Java 17+
+- Spring Boot 4.x
 - An AWS account
 
 ## Development
@@ -134,7 +138,7 @@ mvn spring-javaformat:apply    # Format (required before commit)
 
 The [`examples/`](examples/) tree is a separate multi-module Maven build that depends on
 the AgentCore modules. Run `mvn -DskipTests install` at the repo root first so the
-examples can resolve the `1.1.0-SNAPSHOT` artifacts locally, then:
+examples can resolve the locally built snapshot artifacts, then:
 
 ```bash
 mvn clean verify -f examples/pom.xml

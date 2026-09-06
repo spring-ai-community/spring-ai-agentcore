@@ -25,33 +25,43 @@ class AgentCoreEvaluationPropertiesTests {
 	@Test
 	void unsetDefaultsMatchDocumentedValues() {
 		AgentCoreEvaluationProperties props = new AgentCoreEvaluationProperties(true, null, null, null, null, null,
-				null);
+				null, null);
 
 		assertThat(props.evaluatorIds()).isEqualTo(AgentCoreEvaluationProperties.DEFAULT_EVALUATOR_IDS);
 		assertThat(props.async()).isTrue();
 		assertThat(props.metricsEnabled()).isTrue();
 		assertThat(props.sampleRate()).isEqualTo(1.0);
 		assertThat(props.includeHistory()).isFalse();
+		assertThat(props.executorPoolSize()).isEqualTo(AgentCoreEvaluationProperties.DEFAULT_EXECUTOR_POOL_SIZE);
 	}
 
 	@Test
 	void explicitValuesAreHonoured() {
 		AgentCoreEvaluationProperties props = new AgentCoreEvaluationProperties(true, "us-west-2", null, false, false,
-				0.25, true);
+				0.25, true, 4);
 
 		assertThat(props.async()).isFalse();
 		assertThat(props.metricsEnabled()).isFalse();
 		assertThat(props.sampleRate()).isEqualTo(0.25);
 		assertThat(props.region()).isEqualTo("us-west-2");
 		assertThat(props.includeHistory()).isTrue();
+		assertThat(props.executorPoolSize()).isEqualTo(4);
 	}
 
 	@Test
 	void outOfRangeSampleRateFallsBackToOne() {
-		assertThat(new AgentCoreEvaluationProperties(true, null, null, null, null, -0.5, null).sampleRate())
+		assertThat(new AgentCoreEvaluationProperties(true, null, null, null, null, -0.5, null, null).sampleRate())
 			.isEqualTo(1.0);
-		assertThat(new AgentCoreEvaluationProperties(true, null, null, null, null, 1.5, null).sampleRate())
+		assertThat(new AgentCoreEvaluationProperties(true, null, null, null, null, 1.5, null, null).sampleRate())
 			.isEqualTo(1.0);
+	}
+
+	@Test
+	void nonPositiveExecutorPoolSizeFallsBackToDefault() {
+		assertThat(new AgentCoreEvaluationProperties(true, null, null, null, null, null, null, 0).executorPoolSize())
+			.isEqualTo(AgentCoreEvaluationProperties.DEFAULT_EXECUTOR_POOL_SIZE);
+		assertThat(new AgentCoreEvaluationProperties(true, null, null, null, null, null, null, -1).executorPoolSize())
+			.isEqualTo(AgentCoreEvaluationProperties.DEFAULT_EXECUTOR_POOL_SIZE);
 	}
 
 }
