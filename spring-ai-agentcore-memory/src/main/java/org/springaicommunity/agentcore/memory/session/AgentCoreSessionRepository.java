@@ -82,10 +82,10 @@ import org.springframework.ai.session.SessionRepository;
  * conversationId chooses the actor, and the advisor's ownership check compares two values
  * derived from that same string, so it does not by itself stop a hostile caller from
  * reading another user's session. Where an authenticated principal exists, the
- * application layer MUST build the conversationId's actor segment from the principal —
+ * application layer must build the conversationId's actor segment from the principal,
  * never from unvalidated request input. Deriving only the {@code USER_ID_CONTEXT_KEY}
- * value from the principal is NOT sufficient: the advisor's ownership check runs only
- * when the target session already exists, so a first write to a fresh sessionId passes
+ * value from the principal is not enough: the advisor's ownership check runs only when
+ * the target session already exists, so a first write to a fresh sessionId passes
  * regardless of the context key. See the module README security section.
  *
  * <h3>Divergences from the {@link SessionRepository} contract</h3>
@@ -114,7 +114,7 @@ import org.springframework.ai.session.SessionRepository;
  * or a branch-plus-pointer swap) is inherently racy: a concurrent {@code appendEvent} can
  * be silently lost and a mid-flight failure can leave a partial log. The AgentCore-native
  * way to bound context is read-windowing ({@code totalEventsLimit},
- * {@code EventFilter.lastN(int)}) plus long-term memory extraction — not in-place log
+ * {@code EventFilter.lastN(int)}) plus long-term memory extraction, not in-place log
  * rewriting. The event log is append-only here: {@link #appendEvent(SessionEvent)} and
  * {@link #delete(String)} are the only write paths, and neither needs locking.</li>
  * </ul>
@@ -495,9 +495,10 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * server-side time or content filtering, so the remaining predicates
 	 * ({@code from}/{@code to}, message types, keyword) are applied client-side. Because
 	 * the service returns events newest-first, a {@code lastN} query stops paginating as
-	 * soon as {@code lastN} matches are collected instead of fetching the whole log —
-	 * this keeps the common per-turn advisor read O(lastN), not O(session). Paged queries
-	 * and unbounded queries fetch up to {@code totalEventsLimit} (when configured).
+	 * soon as {@code lastN} matches are collected instead of fetching the whole log,
+	 * which keeps the common per-turn advisor read O(lastN), not O(session). Paged
+	 * queries and unbounded queries fetch up to {@code totalEventsLimit} (when
+	 * configured).
 	 * @param sessionId the session to read
 	 * @param filter the filter to apply (must not be null)
 	 * @return the matching events in chronological order

@@ -33,8 +33,8 @@ agentcore:
       default-user-id: default-user   # optional
 ```
 
-The remaining `agentcore.memory.session.*` properties — `total-events-limit`, `page-size`,
-`ignore-unknown-roles`, `default-session` — are optional session-scoped overrides; when
+The remaining `agentcore.memory.session.*` properties (`total-events-limit`, `page-size`,
+`ignore-unknown-roles`, `default-session`) are optional session-scoped overrides; when
 unset they fall back to the `agentcore.memory.short-term.*` (then legacy) values.
 
 **Required dependency.** The memory module declares `spring-ai-session-management` as an
@@ -93,7 +93,7 @@ On the second turn `SessionMemoryAdvisor.before()` runs an ownership check that 
 reusing a sessionId while changing the advisor's user id. If you never set
 `USER_ID_CONTEXT_KEY`, the check passes.
 
-**Security.** The sessionId/conversationId — and therefore the derived `Session.userId` —
+**Security.** The sessionId/conversationId, and therefore the derived `Session.userId`,
 is client-supplied input. The advisor's ownership check compares two values derived from
 that same client string, so it does not by itself stop a hostile caller from reading
 another user's session. Where an authenticated principal exists, the application must
@@ -121,7 +121,7 @@ queries.
 | `replaceEvents(String, List)` | throws `UnsupportedOperationException` | AgentCore has no transactional replace or CAS; bound context via read-windowing (`totalEventsLimit`, `EventFilter.lastN`) and long-term memory extraction instead. |
 | `replaceEvents(String, List, long)` | throws `UnsupportedOperationException` | Same as above; the `expectedVersion` check cannot be made atomic without a server-side CAS. |
 | `appendEvent(SessionEvent)` | does not throw when session is unknown | First append implicitly creates the session server-side. |
-| `Session.createdAt` | `findByUserId`: real instant from each `SessionSummary`; `findById`: the tail (most recent) event timestamp — it never calls `ListSessions` | Either path falls back to the `Instant.EPOCH` sentinel when its source carries no timestamp; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
+| `Session.createdAt` | `findByUserId`: real instant from each `SessionSummary`; `findById`: the tail (most recent) event timestamp, without calling `ListSessions` | Either path falls back to the `Instant.EPOCH` sentinel when its source carries no timestamp; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
 | `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
 
 **Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,
