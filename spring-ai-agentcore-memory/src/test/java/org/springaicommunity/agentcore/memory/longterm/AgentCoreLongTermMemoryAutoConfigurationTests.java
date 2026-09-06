@@ -25,6 +25,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
+import org.springaicommunity.agentcore.memory.session.AgentCoreSessionMemory;
+import org.springaicommunity.agentcore.memory.session.AgentCoreSessionMissingDepDiagnostics;
+import org.springaicommunity.agentcore.memory.session.AgentCoreSessionRepository;
+import org.springaicommunity.agentcore.memory.session.AgentCoreSessionRepositoryAutoConfiguration;
 import org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
@@ -34,6 +38,11 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategyType;
 
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.session.DefaultSessionService;
+import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
@@ -455,6 +464,43 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				@SuppressWarnings("unchecked")
 				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
 				assertThat(advisors).hasSize(3);
+			});
+	}
+
+	// ==================== Coexistence with Session API auto-config ====================
+
+	@Test
+	@DisplayName("Legacy ChatMemory beans and Session API beans coexist when both stacks are enabled")
+	void legacyBeansCoexistWithSessionEnabled() {
+		new ApplicationContextRunner()
+			.withConfiguration(AutoConfigurations.of(AgentCoreShortTermMemoryRepositoryAutoConfiguration.class,
+					AgentCoreLongTermMemoryAutoConfiguration.class, AgentCoreSessionRepositoryAutoConfiguration.class,
+					AgentCoreSessionMissingDepDiagnostics.class))
+			.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP, "agentcore.memory.session.enabled=true")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(ChatMemoryRepository.class);
+				assertThat(context).hasSingleBean(ChatMemory.class);
+				assertThat(context).hasSingleBean(AgentCoreMemory.class);
+				assertThat(context.getBean(AgentCoreMemory.class).shortTermMemoryAdvisor)
+					.isInstanceOf(MessageChatMemoryAdvisor.class);
+			});
+	}
+
+	@Test
+	@DisplayName("Session API beans resolve alongside legacy beans when both stacks are enabled")
+	void sessionBeansCoexistWithLegacyEnabled() {
+		new ApplicationContextRunner()
+			.withConfiguration(AutoConfigurations.of(AgentCoreShortTermMemoryRepositoryAutoConfiguration.class,
+					AgentCoreLongTermMemoryAutoConfiguration.class, AgentCoreSessionRepositoryAutoConfiguration.class,
+					AgentCoreSessionMissingDepDiagnostics.class))
+			.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP, "agentcore.memory.session.enabled=true")
+			.run((context) -> {
+				assertThat(context).hasSingleBean(AgentCoreSessionRepository.class);
+				assertThat(context).hasSingleBean(DefaultSessionService.class);
+				assertThat(context).hasSingleBean(SessionMemoryAdvisor.class);
+				assertThat(context).hasSingleBean(AgentCoreSessionMemory.class);
 			});
 	}
 

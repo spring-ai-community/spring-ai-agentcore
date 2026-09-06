@@ -48,6 +48,41 @@
         "level": "warning",
         "reason": "Misnamed (TOOL/OTHER are first-class AgentCore Roles, not 'unknown') and the throw-mode has no production use. Skipping non-dialogue messages will become hardcoded behaviour. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/109."
       }
+    },
+    {
+      "name": "agentcore.memory.session.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enable the Spring AI Session API bean stack (AgentCoreSessionRepository, DefaultSessionService, SessionMemoryAdvisor). When false (default) only the legacy ChatMemory stack is auto-configured. REQUIRES the optional dependency 'org.springaicommunity:spring-ai-session-management' on the classpath; without it, no session beans are created and a startup WARN is logged. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/152.",
+      "defaultValue": false
+    },
+    {
+      "name": "agentcore.memory.session.default-user-id",
+      "type": "java.lang.String",
+      "description": "Default user id passed to SessionMemoryAdvisor when the request does not carry chat_memory_user_id. Applies only when agentcore.memory.session.enabled=true. PRECONDITION: AgentCoreSessionRepository derives Session.userId from the actor segment of the sessionId (parsed by AgentCoreMemoryConversationIdParser). Callers that set chat_memory_user_id per-request MUST use sessionId format 'userId:sessionSuffix' where userId equals the value passed under chat_memory_user_id; otherwise the SessionMemoryAdvisor throws IllegalStateException on the second turn (ownership check)."
+    },
+    {
+      "name": "agentcore.memory.session.total-events-limit",
+      "type": "java.lang.Integer",
+      "description": "Session-scoped maximum number of events AgentCoreSessionRepository retrieves per session. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.total-events-limit, then the legacy agentcore.memory.total-events-limit, then no limit."
+    },
+    {
+      "name": "agentcore.memory.session.page-size",
+      "type": "java.lang.Integer",
+      "description": "Session-scoped page size AgentCoreSessionRepository uses when paginating AgentCore listEvents and listSessions. The AgentCore service accepts 1-100; values outside that range are clamped. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.page-size, then the legacy agentcore.memory.page-size, then the built-in default."
+    },
+    {
+      "name": "agentcore.memory.session.ignore-unknown-roles",
+      "type": "java.lang.Boolean",
+      "description": "Session-scoped switch for silently skipping messages with unsupported roles instead of failing. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.ignore-unknown-roles, then the legacy agentcore.memory.ignore-unknown-roles, then true.",
+      "deprecation": {
+        "level": "warning",
+        "reason": "Same fate as its short-term/legacy fallbacks: skipping non-dialogue messages will become hardcoded behaviour and the switch will be removed. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/109."
+      }
+    },
+    {
+      "name": "agentcore.memory.session.default-session",
+      "type": "java.lang.String",
+      "description": "Session-scoped default session id used when the conversation id carries no session segment. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.default-session, then the legacy agentcore.memory.default-session, then 'default-session'."
     }
   ]
 }

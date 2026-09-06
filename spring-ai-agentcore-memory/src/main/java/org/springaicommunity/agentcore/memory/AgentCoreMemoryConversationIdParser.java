@@ -23,6 +23,20 @@ package org.springaicommunity.agentcore.memory;
  * <li>{@code "actorId:sessionId"} → actor: actorId, session: sessionId</li>
  * </ul>
  *
+ * <p>
+ * <strong>Ownership rule.</strong> The {@code actorId} segment is the user id. When this
+ * conversationId doubles as a Session API sessionId (via
+ * {@code SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY}),
+ * {@code AgentCoreSessionRepository} derives {@code Session.userId} from the
+ * {@code actorId} segment, because AgentCore has no session-metadata store to persist a
+ * user id separately. So any caller that also sets
+ * {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY} must use the
+ * {@code "actorId:sessionId"} form and pass the same value as the {@code actorId}
+ * segment. If the two disagree, {@code SessionMemoryAdvisor.before()} throws
+ * {@link IllegalStateException} ("...does not belong to user...") on the second turn,
+ * when the ownership check runs against the derived {@code Session.userId}. A caller that
+ * never sets {@code USER_ID_CONTEXT_KEY} is unaffected.
+ *
  * @author Yuriy Bezsonov
  */
 public final class AgentCoreMemoryConversationIdParser {
@@ -64,6 +78,29 @@ public final class AgentCoreMemoryConversationIdParser {
 			return new ActorAndSession(parts[0], parts[1]);
 		}
 		return new ActorAndSession(conversationId, (defaultSession != null) ? defaultSession : DEFAULT_SESSION);
+	}
+
+	/**
+	 * Compose a compound conversationId from a user id and a session suffix.
+	 *
+	 * <p>
+	 * This is additive sugar so callers stop hand-concatenating
+	 * {@code userId + ":" + sessionSuffix}. It does not change {@link #parse}. Both
+	 * segments are trimmed and must be non-blank; the result is always accepted by the
+	 * session repository seam (which applies the same trim and empty-segment rejection).
+	 * @param userId the user id (actor segment); must not be blank
+	 * @param sessionSuffix the session suffix; must not be blank
+	 * @return {@code trimmedUserId + ":" + trimmedSessionSuffix}
+	 * @throws IllegalArgumentException if either segment is null or blank after trimming
+	 */
+	public static String of(String userId, String sessionSuffix) {
+		if (userId == null || userId.trim().isEmpty()) {
+			throw new IllegalArgumentException("userId must not be null or blank");
+		}
+		if (sessionSuffix == null || sessionSuffix.trim().isEmpty()) {
+			throw new IllegalArgumentException("sessionSuffix must not be null or blank");
+		}
+		return userId.trim() + ":" + sessionSuffix.trim();
 	}
 
 	/**

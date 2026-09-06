@@ -85,4 +85,39 @@ class AgentCoreMemoryConversationIdParserTests {
 		assertThat(AgentCoreMemoryConversationIdParser.DEFAULT_SESSION).isEqualTo("default-session");
 	}
 
+	// ==================== D6e: of(...) composition (additive, round-trips) ==========
+
+	@Test
+	void ofComposesCompoundIdThatRoundTripsThroughParse() {
+		String compound = AgentCoreMemoryConversationIdParser.of("alice", "conv-1");
+		assertThat(compound).isEqualTo("alice:conv-1");
+
+		var parsed = AgentCoreMemoryConversationIdParser.parse(compound);
+		assertThat(parsed.actor()).isEqualTo("alice");
+		assertThat(parsed.session()).isEqualTo("conv-1");
+	}
+
+	@Test
+	void ofTrimsBothSegments() {
+		assertThat(AgentCoreMemoryConversationIdParser.of("  alice  ", "  conv-1  ")).isEqualTo("alice:conv-1");
+	}
+
+	@Test
+	void ofRejectsBlankUserId() {
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("   ", "conv-1"))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("userId");
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of(null, "conv-1"))
+			.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	void ofRejectsBlankSessionSuffix() {
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("alice", "  "))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("sessionSuffix");
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("alice", null))
+			.isInstanceOf(IllegalArgumentException.class);
+	}
+
 }

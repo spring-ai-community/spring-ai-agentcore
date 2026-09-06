@@ -10,6 +10,127 @@ For quick start and usage examples, see the [main README](../README.md#agentcore
 - **Auto-configuration**: Zero-configuration setup with Spring Boot
 - **Short-Term Memory**: Conversation history with `MessageWindowChatMemory`
 - **Long-Term Memory**: 4 consolidation strategies (Semantic, User Preference, Summary, Episodic)
+- **Session API (incubating)**: Optional Spring AI Session API bean stack (opt-in via `agentcore.memory.session.enabled=true`)
+
+## Session API (spring-ai-session, incubating)
+
+Since 2.2.0 the module ships an opt-in bean stack backed by the community
+`org.springaicommunity:spring-ai-session-management` artifact. When enabled, four beans
+are added to the context: `AgentCoreSessionRepository` (implements
+`org.springframework.ai.session.SessionRepository`), `DefaultSessionService`,
+`SessionMemoryAdvisor`, and `AgentCoreSessionMemory` (bundles the session advisor with
+any configured long-term memory advisors). The existing ChatMemory stack is unaffected;
+both stacks can coexist and are wired independently.
+
+Enable it with:
+
+```yaml
+agentcore:
+  memory:
+    memory-id: your-memory-id
+    session:
+      enabled: true
+      default-user-id: default-user   # optional
+```
+
+The remaining `agentcore.memory.session.*` properties (`total-events-limit`, `page-size`,
+`ignore-unknown-roles`, `default-session`) are optional session-scoped overrides; when
+unset they fall back to the `agentcore.memory.short-term.*` (then legacy) values.
+
+**Required dependency.** The memory module declares `spring-ai-session-management` as an
+`optional` dependency, so consumers on the Session API path add it to their own
+`pom.xml`. If the artifact is missing while `agentcore.memory.session.enabled=true` is
+set, the module logs a startup WARN and creates no session beans.
+
+```xml
+<dependency>
+    <groupId>org.springaicommunity</groupId>
+    <artifactId>spring-ai-session-management</artifactId>
+</dependency>
+```
+
+The snippet omits a `<version>` because the version is expected to come from the
+`spring-ai-session-bom`. This project already imports that BOM at the version pinned by
+the `spring-ai-session.version` property in the root `pom.xml`; standalone consumers should
+import the BOM in their own `dependencyManagement` and let it manage the version rather
+than pinning it inline:
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.springaicommunity</groupId>
+            <artifactId>spring-ai-session-bom</artifactId>
+            <version>${spring-ai-session.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+```
+
+**Usage.** `SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY` equals `ChatMemory.CONVERSATION_ID`,
+so the same conversation-id constant works for both stacks:
+
+```java
+chatClient.prompt()
+    .user("Hi")
+    .advisors(a -> a
+        .param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, "alice:conv-1")
+        .param(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, "alice"))
+    .call()
+    .content();
+```
+
+**User id and session id.** `AgentCoreSessionRepository` has no session-metadata store,
+so it derives `Session.userId` from the actor (userId) segment of the sessionId (parsed
+by `AgentCoreMemoryConversationIdParser`). The sessionId format is therefore
+`"userId:sessionSuffix"` (for example `"alice:conv-1"`, where `alice` is the userId).
+When you set `USER_ID_CONTEXT_KEY` per-request, pass the same value as the userId prefix.
+On the second turn `SessionMemoryAdvisor.before()` runs an ownership check that compares
+`USER_ID_CONTEXT_KEY` against the derived `Session.userId`; a mismatch throws
+`IllegalStateException("...does not belong to user...")`. The usual way to hit this is
+reusing a sessionId while changing the advisor's user id. If you never set
+`USER_ID_CONTEXT_KEY`, the check passes.
+
+**Security.** The sessionId/conversationId, and therefore the derived `Session.userId`,
+is client-supplied input. The advisor's ownership check compares two values derived from
+that same client string, so it does not by itself stop a hostile caller from reading
+another user's session. Where an authenticated principal exists, the application must
+derive the conversationId's actor segment from the principal, never from unvalidated
+request input. Deriving only the `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` value from the
+principal is not sufficient: the advisor's ownership check runs only when the target
+session already exists, so a first write to a fresh sessionId passes regardless of the
+context key.
+
+**Reads and writes.** The event log is append-only: `appendEvent` and `delete` are the
+only write paths, synthetic events (framework generated, for example compaction summaries)
+are never persisted, and both `replaceEvents` variants throw
+`UnsupportedOperationException` (see the table below). `findEvents` pushes
+`EventFilter.branch()` down to AgentCore and stops paginating early for plain `lastN`
+queries.
+
+**Known limitations.** AgentCore imposes several behaviors that differ from the
+`SessionRepository` SPI. All are documented in Javadoc on `AgentCoreSessionRepository`:
+
+| Method / field | Behavior | Caller impact |
+|----------------|----------|---------------|
+| `save(Session)` | no-op (no session-metadata store) | Metadata mutated on the `Session` (e.g. `session.withMetadata(...)`) is not persisted and will not reappear on `findById`. Do not use `save` for metadata persistence. |
+| `findByUserId(String)` | maps `userId` to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`, falling back to the `Instant.EPOCH` sentinel when the summary has none (the same fallback documented on the `Session.createdAt` row); unknown user yields an empty list. |
+| `findExpiredSessionIds(Instant)` | throws `UnsupportedOperationException` | Expiry is memory-level retention (`eventExpiryDuration`), not re-derivable per session; use `findByUserId(userId)` to enumerate a user's sessions. |
+| `replaceEvents(String, List)` | throws `UnsupportedOperationException` | AgentCore has no transactional replace or CAS; bound context via read-windowing (`totalEventsLimit`, `EventFilter.lastN`) and long-term memory extraction instead. |
+| `replaceEvents(String, List, long)` | throws `UnsupportedOperationException` | Same as above; the `expectedVersion` check cannot be made atomic without a server-side CAS. |
+| `appendEvent(SessionEvent)` | does not throw when session is unknown | First append implicitly creates the session server-side. |
+| `Session.createdAt` | `findByUserId`: real instant from each `SessionSummary`; `findById`: the tail (most recent) event timestamp, without calling `ListSessions` | Either path falls back to the `Instant.EPOCH` sentinel when its source carries no timestamp; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
+| `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
+
+**Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,
+`AgentCoreMemory.shortTermMemoryAdvisor`) and the
+`AgentCoreShortTermMemoryRepository implements ChatMemoryRepository` declaration are
+marked `@Deprecated(since = "2.2.0", forRemoval = true)` and are scheduled for removal in
+3.0.0. Migrate to the Session API stack (`agentcore.memory.session.enabled=true`) before
+upgrading to the next major. They remain fully supported in the 2.x line.
+See [issue #152](https://github.com/spring-ai-community/spring-ai-agentcore/issues/152).
 
 ## Memory Types
 
@@ -269,6 +390,7 @@ void deleteByConversationId(String conversationId);
    - `bedrock-agentcore:ListEvents`
    - `bedrock-agentcore:CreateEvent`
    - `bedrock-agentcore:DeleteEvent`
+   - `bedrock-agentcore:ListSessions` (for `findByUserId` only; `findById` derives `createdAt` from the event tail and does not call `ListSessions`)
    - `bedrock-agentcore:RetrieveMemoryRecords` (for LTM)
 
 3. **Debug logging**:
@@ -280,7 +402,7 @@ void deleteByConversationId(String conversationId);
 
 ## Requirements
 
-- Java 17+
+- Java: this module follows the `java.version` set in the root `pom.xml`
 - Spring Boot 4.x
 - Spring AI 2.0.0+
 

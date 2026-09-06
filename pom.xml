@@ -90,6 +90,7 @@
         <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
         <spring-javaformat-maven-plugin.version>0.0.48</spring-javaformat-maven-plugin.version>
         <spring-ai.version>2.0.0</spring-ai.version>
+        <spring-ai-session.version>0.5.0</spring-ai-session.version>
         <awssdk.version>2.53.1</awssdk.version>
     </properties>
 
@@ -107,6 +108,13 @@
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
                 <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springaicommunity</groupId>
+                <artifactId>spring-ai-session-bom</artifactId>
+                <version>${spring-ai-session.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
