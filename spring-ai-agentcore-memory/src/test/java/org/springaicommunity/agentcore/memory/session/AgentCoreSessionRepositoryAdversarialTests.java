@@ -26,7 +26,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
@@ -77,8 +76,11 @@ class AgentCoreSessionRepositoryAdversarialTests {
 
 	@BeforeEach
 	void setUp() {
-		this.repository = new AgentCoreSessionRepository(MEMORY_ID, this.client, null, "default-session", 100, true,
-				false);
+		this.repository = AgentCoreSessionRepository.builder()
+			.memoryId(MEMORY_ID)
+			.client(this.client)
+			.defaultSession("default-session")
+			.build();
 	}
 
 	// ==================== sessionId validation ====================
@@ -142,12 +144,8 @@ class AgentCoreSessionRepositoryAdversarialTests {
 		this.repository.findById("  alice : conv  ");
 
 		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
-		then(this.client).should(Mockito.atLeastOnce()).listEvents(captor.capture());
-		ListEventsRequest dataReq = captor.getAllValues()
-			.stream()
-			.filter((r) -> r.filter() == null || r.filter().eventMetadata() == null)
-			.reduce((a, b) -> b)
-			.orElseThrow();
+		then(this.client).should().listEvents(captor.capture());
+		ListEventsRequest dataReq = captor.getValue();
 		assertThat(dataReq.actorId()).isEqualTo("alice");
 		assertThat(dataReq.sessionId()).isEqualTo("conv");
 	}
@@ -224,7 +222,7 @@ class AgentCoreSessionRepositoryAdversarialTests {
 		assertThat(mapped.get(0).getMessage().getText()).isEqualTo(text);
 	}
 
-	// ==================== null-arg guards ====================
+	// ==================== null-arg guards and unsupported ops ====================
 
 	@Test
 	void appendEventRejectsNull() {
@@ -238,9 +236,14 @@ class AgentCoreSessionRepositoryAdversarialTests {
 	}
 
 	@Test
-	void replaceEventsRejectsNullEvents() {
-		assertThatThrownBy(() -> this.repository.replaceEvents("alice:conv", null))
-			.isInstanceOf(IllegalArgumentException.class);
+	void replaceEventsAlwaysThrowsUnsupportedOperation() {
+		// AgentCore has no transactional replace / CAS; both overloads always throw,
+		// regardless of arguments, and never touch the client.
+		assertThatThrownBy(() -> this.repository.replaceEvents("alice:conv", List.of()))
+			.isInstanceOf(UnsupportedOperationException.class);
+		assertThatThrownBy(() -> this.repository.replaceEvents("alice:conv", List.of(), 0L))
+			.isInstanceOf(UnsupportedOperationException.class);
+		then(this.client).shouldHaveNoInteractions();
 	}
 
 }

@@ -48,6 +48,12 @@ public class ChatController {
 	 * {@code IllegalStateException("...does not belong to user...")}. This controller does
 	 * not set {@code USER_ID_CONTEXT_KEY}, so the check passes; if you add it, keep the
 	 * actor prefix and the USER_ID value in sync.
+	 *
+	 * <p>
+	 * <strong>Security.</strong> This example hardcodes the id for brevity. In a real
+	 * application, build the actor prefix from the authenticated principal (for example
+	 * the Spring Security username), never from unvalidated request input: a caller who
+	 * controls the conversationId chooses whose session they read.
 	 */
 	private static final String SESSION_ID = "testActor:testSession";
 

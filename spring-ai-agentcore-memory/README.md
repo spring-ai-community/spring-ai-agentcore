@@ -14,7 +14,7 @@ For quick start and usage examples, see the [main README](../README.md#agentcore
 
 ## Session API (spring-ai-session, incubating)
 
-Since 2.1.0 the module ships an opt-in bean stack backed by the community
+Since 2.2.0 the module ships an opt-in bean stack backed by the community
 `org.springaicommunity:spring-ai-session-management` artifact. When enabled, four beans
 are added to the context: `AgentCoreSessionRepository` (implements
 `org.springframework.ai.session.SessionRepository`), `DefaultSessionService`,
@@ -31,8 +31,11 @@ agentcore:
     session:
       enabled: true
       default-user-id: default-user   # optional
-      persist-synthetic: false        # optional; synthetic events are skipped by default
 ```
+
+The remaining `agentcore.memory.session.*` properties — `total-events-limit`, `page-size`,
+`ignore-unknown-roles`, `default-session` — are optional session-scoped overrides; when
+unset they fall back to the `agentcore.memory.short-term.*` (then legacy) values.
 
 **Required dependency.** The memory module declares `spring-ai-session-management` as an
 `optional` dependency, so consumers on the Session API path add it to their own
@@ -90,36 +93,19 @@ On the second turn `SessionMemoryAdvisor.before()` runs an ownership check that 
 reusing a sessionId while changing the advisor's user id. If you never set
 `USER_ID_CONTEXT_KEY`, the check passes.
 
-**replaceEvents: non-destructive branch-swap (opt-in) or legacy delete-then-recreate.**
-AgentCore has no server-side transactional replace or compare-and-swap on the event log.
-Two strategies are selected by `agentcore.memory.session.branch-swap-enabled` (default
-`false`).
+**Security.** The sessionId/conversationId — and therefore the derived `Session.userId` —
+is client-supplied input. The advisor's ownership check compares two values derived from
+that same client string, so it does not by itself stop a hostile caller from reading
+another user's session. Where an authenticated principal exists, the application must
+derive the conversationId (or the `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` value) from
+the principal, never from unvalidated request input.
 
-- **Branch-swap (opt-in, `true`).** `replaceEvents` writes the full replacement timeline
-  to a fresh branch named `gen-<counter>-<8hex>`, then makes that branch current by writing
-  a small pointer marker on the main line carrying `agentcore.currentBranch`, `agentcore.gen`,
-  and `agentcore.pointer=true`. Discovery is highest-generation-wins over the pointer ledger
-  (ties broken deterministically by lexicographic branch name, not list position). It is
-  non-destructive: a failed replacement leaves the old branch current, so readers never see a
-  partial timeline. It is NOT a CAS: concurrent replacers each write an isolated branch and no
-  events are lost between replacers, but a whole replacement can be silently superseded by a
-  concurrent higher-generation one, and a concurrent `appendEvent` can land on a branch that is
-  immediately superseded (silently invisible to later reads). Migration is one-way per session;
-  prove it out in a non-production environment first. Ledger compaction reaps each superseded
-  generation's branch events as its marker is compacted (coupled so no branch outlives its
-  marker), so the steady state is roughly one live branch.
-- **Legacy (default, `false`).** For a true v1 session (no pointer markers), `replaceEvents`
-  performs the non-atomic delete-then-recreate: it deletes the existing event log and then
-  recreates it in separate AgentCore calls. If a `createEvent` fails after the delete phase,
-  the original events are gone and the log is left partial and unrecoverable by the repository
-  (logged at ERROR, not retryable). On a session that was already migrated to branch mode, the
-  flag-off path REFUSES with a `StorageException` and migrate-back guidance rather than
-  destroying the ledger; it issues zero AWS writes.
-
-For strict single-writer needs under either strategy, hold an external lock (for example a
-DynamoDB conditional write or Redis SETNX) covering `appendEvent` and both `replaceEvents`
-variants per sessionId. The clientToken idempotency applies within AgentCore's clientToken
-retention window.
+**Reads and writes.** The event log is append-only: `appendEvent` and `delete` are the
+only write paths, synthetic events (framework generated, for example compaction summaries)
+are never persisted, and both `replaceEvents` variants throw
+`UnsupportedOperationException` (see the table below). `findEvents` pushes
+`EventFilter.branch()` down to AgentCore and stops paginating early for plain `lastN`
+queries.
 
 **Known limitations.** AgentCore imposes several behaviors that differ from the
 `SessionRepository` SPI. All are documented in Javadoc on `AgentCoreSessionRepository`:
@@ -129,28 +115,16 @@ retention window.
 | `save(Session)` | no-op (no session-metadata store) | Metadata mutated on the `Session` (e.g. `session.withMetadata(...)`) is not persisted and will not reappear on `findById`. Do not use `save` for metadata persistence. |
 | `findByUserId(String)` | maps `userId` to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`, falling back to the `Instant.EPOCH` sentinel when the summary has none (the same fallback documented on the `Session.createdAt` row); unknown user yields an empty list. |
 | `findExpiredSessionIds(Instant)` | throws `UnsupportedOperationException` | Expiry is memory-level retention (`eventExpiryDuration`), not re-derivable per session; use `findByUserId(userId)` to enumerate a user's sessions. |
-| `replaceEvents(String, List)` | non-destructive branch-swap when enabled; legacy delete-then-recreate otherwise (refuses on a migrated session when disabled) | Branch-swap leaves the prior timeline intact; legacy risks partial data on mid-flight failure. Hold an external lock (see above). |
-| `replaceEvents(String, List, long)` | best-effort check-then-act, not a true CAS | Race window; hold an external lock (see above). |
+| `replaceEvents(String, List)` | throws `UnsupportedOperationException` | AgentCore has no transactional replace or CAS; bound context via read-windowing (`totalEventsLimit`, `EventFilter.lastN`) and long-term memory extraction instead. |
+| `replaceEvents(String, List, long)` | throws `UnsupportedOperationException` | Same as above; the `expectedVersion` check cannot be made atomic without a server-side CAS. |
 | `appendEvent(SessionEvent)` | does not throw when session is unknown | First append implicitly creates the session server-side. |
 | `Session.createdAt` | real instant from `SessionSummary`, falling back to the tail event timestamp | Only when neither exists does it fall back to the `Instant.EPOCH` sentinel; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
 | `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
 
-**Branch-swap rollback / migrate-back.** Branch-swap migration is one-way per session: once
-a session has a pointer marker, its live timeline is on a `gen-*` branch. To roll back to the
-legacy main line, do it in two phases. First, with `agentcore.memory.session.branch-swap-enabled=true`,
-read the current branch of each affected session with `findEvents(sessionId, EventFilter.all())`.
-Then re-write those events onto a fresh session id that has never been branched via a plain
-`appendEvent` loop; because a never-branched session has no pointer markers, the append lands on
-the main line regardless of the flag value. Do NOT simply flip the flag off and call
-`replaceEvents` on a migrated session: that path deliberately refuses with a `StorageException`
-(and issues zero AWS writes) precisely so it never runs the destructive main-line delete
-against a live branch. Superseded branches and stale markers are reaped by the memory-level
-`eventExpiryDuration`; lower that duration as a backstop for high replace rates.
-
 **Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,
 `AgentCoreMemory.shortTermMemoryAdvisor`) and the
 `AgentCoreShortTermMemoryRepository implements ChatMemoryRepository` declaration are
-marked `@Deprecated(since = "2.1.0", forRemoval = true)` and are scheduled for removal in
+marked `@Deprecated(since = "2.2.0", forRemoval = true)` and are scheduled for removal in
 3.0.0. Migrate to the Session API stack (`agentcore.memory.session.enabled=true`) before
 upgrading to the next major. They remain fully supported in the 2.x line.
 See [issue #152](https://github.com/spring-ai-community/spring-ai-agentcore/issues/152).

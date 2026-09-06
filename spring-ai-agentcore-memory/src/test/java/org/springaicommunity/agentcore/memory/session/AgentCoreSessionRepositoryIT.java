@@ -39,6 +39,7 @@ import org.springframework.ai.session.EventFilter;
 import org.springframework.ai.session.SessionEvent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration test for {@link AgentCoreSessionRepository} against real AWS. Self
@@ -71,7 +72,13 @@ class AgentCoreSessionRepositoryIT {
 			.until(() -> controlClient.getMemory(GetMemoryRequest.builder().memoryId(memoryId).build())
 				.memory()
 				.status() == MemoryStatus.ACTIVE);
-		repository = new AgentCoreSessionRepository(memoryId, dataClient, null, "default-session", 100, true, false);
+		repository = AgentCoreSessionRepository.builder()
+			.memoryId(memoryId)
+			.client(dataClient)
+			.defaultSession("default-session")
+			.pageSize(100)
+			.ignoreUnknownRoles(true)
+			.build();
 	}
 
 	@AfterAll
@@ -111,15 +118,15 @@ class AgentCoreSessionRepositoryIT {
 	}
 
 	@Test
-	void listSessionsCreatedAtRoundTripsIntoFindById() {
+	void findByIdSynthesizesCreatedAtFromTailEvent() {
 		String sessionId = "alice-it:created-" + System.nanoTime();
 		repository.appendEvent(SessionEvent.builder()
 			.sessionId(sessionId)
 			.message(UserMessage.builder().text("seed").build())
 			.build());
 
-		// D3/C9: createdAt must be a real instant from the SessionSummary (or the tail
-		// event timestamp), never the EPOCH synthetic sentinel, once events exist.
+		// createdAt must be a real instant taken from the tail event timestamp, never
+		// the EPOCH synthetic sentinel, once events exist.
 		var session = repository.findById(sessionId).orElseThrow();
 		assertThat(session.createdAt()).isNotNull().isAfter(Instant.EPOCH);
 
@@ -127,31 +134,21 @@ class AgentCoreSessionRepositoryIT {
 	}
 
 	@Test
-	void branchSwapReplaceEventsIsNonDestructiveAndReadsBranchNative() {
-		// D1/D1.1/F8: the empty-payload pointer CreateEvent must be accepted by the live
-		// service, and a branch read with includeParentBranches=FALSE must return only
-		// the
-		// replacement (branch-native) events, not the superseded main-line ones.
-		AgentCoreSessionRepository branchSwapRepo = new AgentCoreSessionRepository(memoryId, dataClient, null,
-				"default-session", 100, true, false, true, false, false, null);
-		String sessionId = "alice-it:branch-" + System.nanoTime();
-		branchSwapRepo.appendEvent(SessionEvent.builder()
+	void replaceEventsIsUnsupported() {
+		// replaceEvents throws before any AWS call: AgentCore has no transactional
+		// replace and no compare-and-set, so the repository refuses to rewrite the log.
+		String sessionId = "alice-it:replace-" + System.nanoTime();
+		List<SessionEvent> replacement = List.of(SessionEvent.builder()
 			.sessionId(sessionId)
-			.message(UserMessage.builder().text("original-1").build())
+			.message(UserMessage.builder().text("replacement-1").build())
 			.build());
 
-		branchSwapRepo.replaceEvents(sessionId,
-				List.of(SessionEvent.builder()
-					.sessionId(sessionId)
-					.message(UserMessage.builder().text("replacement-1").build())
-					.build()));
-
-		List<SessionEvent> afterSwap = branchSwapRepo.findEvents(sessionId, EventFilter.all());
-		assertThat(afterSwap).hasSize(1);
-		assertThat(afterSwap.get(0).getMessage().getText()).isEqualTo("replacement-1");
-
-		branchSwapRepo.delete(sessionId);
-		assertThat(branchSwapRepo.findEvents(sessionId, EventFilter.all())).isEmpty();
+		assertThatThrownBy(() -> repository.replaceEvents(sessionId, replacement))
+			.isInstanceOf(UnsupportedOperationException.class)
+			.hasMessageContaining("replaceEvents is unsupported");
+		assertThatThrownBy(() -> repository.replaceEvents(sessionId, replacement, 1L))
+			.isInstanceOf(UnsupportedOperationException.class)
+			.hasMessageContaining("replaceEvents is unsupported");
 	}
 
 }

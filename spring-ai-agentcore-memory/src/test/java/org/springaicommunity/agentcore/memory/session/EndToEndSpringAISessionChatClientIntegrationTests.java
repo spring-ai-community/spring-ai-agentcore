@@ -70,7 +70,13 @@ class EndToEndSpringAISessionChatClientIntegrationTests {
 			.until(() -> controlClient.getMemory(GetMemoryRequest.builder().memoryId(memoryId).build())
 				.memory()
 				.status() == MemoryStatus.ACTIVE);
-		repository = new AgentCoreSessionRepository(memoryId, dataClient, null, "default-session", 100, true, false);
+		repository = AgentCoreSessionRepository.builder()
+			.memoryId(memoryId)
+			.client(dataClient)
+			.defaultSession("default-session")
+			.pageSize(100)
+			.ignoreUnknownRoles(true)
+			.build();
 	}
 
 	@AfterAll
