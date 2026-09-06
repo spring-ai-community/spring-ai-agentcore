@@ -33,6 +33,7 @@ import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParse
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+import software.amazon.awssdk.services.bedrockagentcore.model.Branch;
 import software.amazon.awssdk.services.bedrockagentcore.model.BranchFilter;
 import software.amazon.awssdk.services.bedrockagentcore.model.Content;
 import software.amazon.awssdk.services.bedrockagentcore.model.Conversational;
@@ -81,9 +82,11 @@ import org.springframework.ai.session.SessionRepository;
  * conversationId chooses the actor, and the advisor's ownership check compares two values
  * derived from that same string, so it does not by itself stop a hostile caller from
  * reading another user's session. Where an authenticated principal exists, the
- * application layer MUST build the conversationId (or the {@code USER_ID_CONTEXT_KEY}
- * value) from the principal — never from unvalidated request input. See the module README
- * security section.
+ * application layer MUST build the conversationId's actor segment from the principal —
+ * never from unvalidated request input. Deriving only the {@code USER_ID_CONTEXT_KEY}
+ * value from the principal is NOT sufficient: the advisor's ownership check runs only
+ * when the target session already exists, so a first write to a fresh sessionId passes
+ * regardless of the context key. See the module README security section.
  *
  * <h3>Divergences from the {@link SessionRepository} contract</h3>
  * <ul>
@@ -181,6 +184,16 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		this.memoryId = validateMemoryId(builder.memoryId);
 		if (builder.client == null) {
 			throw new IllegalArgumentException("client must not be null");
+		}
+		if (builder.pageSize < 1) {
+			throw new IllegalArgumentException("pageSize must be >= 1, got " + builder.pageSize);
+		}
+		if (builder.totalEventsLimit != null && builder.totalEventsLimit < 1) {
+			throw new IllegalArgumentException(
+					"totalEventsLimit must be null (unbounded) or >= 1, got " + builder.totalEventsLimit);
+		}
+		if (builder.defaultSession == null || builder.defaultSession.isBlank()) {
+			throw new IllegalArgumentException("defaultSession must not be null or blank");
 		}
 		this.client = builder.client;
 		this.totalEventsLimit = builder.totalEventsLimit;
@@ -366,7 +379,9 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * persisted; they are skipped with a DEBUG log. Messages already carrying the
 	 * {@value #EVENT_ID_METADATA_KEY} metadata key are treated as previously persisted
 	 * and silently skipped (delta-append behavior); this lets a caller re-append a loaded
-	 * event stream without producing duplicates.
+	 * event stream without producing duplicates. When the event carries a branch
+	 * ({@code SessionEvent.getBranch()}), it is written to that AgentCore branch so a
+	 * later {@code findEvents} with {@code EventFilter.forBranch(...)} round-trips.
 	 * @param event the event to append
 	 */
 	@Override
@@ -396,14 +411,17 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			var response = this.client.createEvent(CreateEventRequest.builder()
+			CreateEventRequest.Builder request = CreateEventRequest.builder()
 				.memoryId(this.memoryId)
 				.actorId(actorAndSession.actor())
 				.sessionId(actorAndSession.session())
 				.payload(List.of(payload))
 				.eventTimestamp((event.getTimestamp() != null) ? event.getTimestamp() : Instant.now())
-				.clientToken(UUID.randomUUID().toString())
-				.build());
+				.clientToken(UUID.randomUUID().toString());
+			if (event.getBranch() != null && !event.getBranch().isBlank()) {
+				request.branch(Branch.builder().name(event.getBranch()).build());
+			}
+			var response = this.client.createEvent(request.build());
 			String eventId = (response.event() != null) ? response.event().eventId() : null;
 			if (eventId != null) {
 				message.getMetadata().put(EVENT_ID_METADATA_KEY, eventId);
@@ -471,14 +489,15 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * Fetches events for a session, applying the {@link EventFilter}.
 	 *
 	 * <p>
-	 * {@code filter.branch()} is pushed down to the service as an AgentCore branch
-	 * filter. AgentCore's ListEvents offers no server-side time or content filtering, so
-	 * the remaining predicates ({@code from}/{@code to}, message types, keyword) are
-	 * applied client-side. Because the service returns events newest-first, a
-	 * {@code lastN} query stops paginating as soon as {@code lastN} matches are collected
-	 * instead of fetching the whole log — this keeps the common per-turn advisor read
-	 * O(lastN), not O(session). Paged queries and unbounded queries fetch up to
-	 * {@code totalEventsLimit} (when configured).
+	 * {@code filter.branch()} is pushed down to the service as an AgentCore branch filter
+	 * with {@code includeParentBranches=true}, matching the SPI reference semantics (a
+	 * branch read returns the pre-fork history too). AgentCore's ListEvents offers no
+	 * server-side time or content filtering, so the remaining predicates
+	 * ({@code from}/{@code to}, message types, keyword) are applied client-side. Because
+	 * the service returns events newest-first, a {@code lastN} query stops paginating as
+	 * soon as {@code lastN} matches are collected instead of fetching the whole log —
+	 * this keeps the common per-turn advisor read O(lastN), not O(session). Paged queries
+	 * and unbounded queries fetch up to {@code totalEventsLimit} (when configured).
 	 * @param sessionId the session to read
 	 * @param filter the filter to apply (must not be null)
 	 * @return the matching events in chronological order
@@ -489,8 +508,11 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		if (filter == null) {
 			throw new IllegalArgumentException("filter must not be null");
 		}
+		// Parse outside the try: a malformed sessionId must surface as the documented
+		// IllegalArgumentException, not be swallowed by the RetrievalException wrap
+		// below.
+		var actorAndSession = this.actorAndSession(sessionId);
 		try {
-			var actorAndSession = this.actorAndSession(sessionId);
 			// Events arrive newest-first; collect matches grouped per event so the
 			// early-stop for lastN never splits one event's messages.
 			List<List<SessionEvent>> matchedPerEvent = new ArrayList<>();
@@ -555,13 +577,22 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 			return List.of();
 		}
 		List<SessionEvent> matched = new ArrayList<>(messages.size());
-		for (Message msg : messages) {
-			String generatedId = (event.eventId() != null) ? event.eventId() : UUID.randomUUID().toString();
+		for (int i = 0; i < messages.size(); i++) {
+			// SessionEvent equality is (id, sessionId), so the messages of one
+			// multi-payload event need distinct ids; the raw eventId stays available
+			// under EVENT_ID_METADATA_KEY.
+			String generatedId;
+			if (event.eventId() == null) {
+				generatedId = UUID.randomUUID().toString();
+			}
+			else {
+				generatedId = (messages.size() == 1) ? event.eventId() : event.eventId() + "#" + i;
+			}
 			SessionEvent sessionEvent = SessionEvent.builder()
 				.sessionId(sessionId)
 				.id(generatedId)
 				.timestamp((event.eventTimestamp() != null) ? event.eventTimestamp() : Instant.EPOCH)
-				.message(msg)
+				.message(messages.get(i))
 				.metadata(Map.of(EVENT_ID_METADATA_KEY, (event.eventId() != null) ? event.eventId() : ""))
 				.build();
 			if (filter.matches(sessionEvent)) {
@@ -669,6 +700,9 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		String nextToken = null;
 		int requestPageSize = (respectLimit && this.totalEventsLimit != null)
 				? Math.min(this.pageSize, this.totalEventsLimit) : this.pageSize;
+		// ListEvents accepts maxResults 1-100; clamp like findByUserId does for
+		// ListSessions so an oversized page-size property degrades instead of failing.
+		requestPageSize = Math.min(Math.max(requestPageSize, 1), SERVICE_MAX_RESULTS);
 		int seen = 0;
 		do {
 			ListEventsRequest.Builder builder = ListEventsRequest.builder()
@@ -707,8 +741,11 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		if (branchName == null) {
 			return null;
 		}
+		// includeParentBranches(true) matches the SPI reference semantics
+		// (InMemorySessionRepository): reading a branch returns its full history,
+		// including the pre-fork main-line events.
 		return FilterInput.builder()
-			.branch(BranchFilter.builder().name(branchName).includeParentBranches(false).build())
+			.branch(BranchFilter.builder().name(branchName).includeParentBranches(true).build())
 			.build();
 	}
 
@@ -742,6 +779,15 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	private static void validateSessionId(String sessionId) {
 		if (sessionId == null || sessionId.trim().isEmpty()) {
 			throw new IllegalArgumentException("sessionId must not be null or empty");
+		}
+		// The sessionId is client-supplied and is echoed into logs and AWS requests;
+		// control characters are never legitimate and enable log forging (CRLF).
+		for (int i = 0; i < sessionId.length(); i++) {
+			char c = sessionId.charAt(i);
+			if (c < 0x20 || c == 0x7F) {
+				String found = "(found U+%04X at index %d)".formatted((int) c, i);
+				throw new IllegalArgumentException("sessionId must not contain control characters " + found);
+			}
 		}
 	}
 

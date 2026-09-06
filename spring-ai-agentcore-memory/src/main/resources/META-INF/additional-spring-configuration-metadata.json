@@ -68,12 +68,16 @@
     {
       "name": "agentcore.memory.session.page-size",
       "type": "java.lang.Integer",
-      "description": "Session-scoped page size AgentCoreSessionRepository uses when paginating AgentCore listEvents and listSessions. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.page-size, then the legacy agentcore.memory.page-size, then the built-in default."
+      "description": "Session-scoped page size AgentCoreSessionRepository uses when paginating AgentCore listEvents and listSessions. The AgentCore service accepts 1-100; values outside that range are clamped. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.page-size, then the legacy agentcore.memory.page-size, then the built-in default."
     },
     {
       "name": "agentcore.memory.session.ignore-unknown-roles",
       "type": "java.lang.Boolean",
-      "description": "Session-scoped switch for silently skipping messages with unsupported roles instead of failing. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.ignore-unknown-roles, then the legacy agentcore.memory.ignore-unknown-roles, then true."
+      "description": "Session-scoped switch for silently skipping messages with unsupported roles instead of failing. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.ignore-unknown-roles, then the legacy agentcore.memory.ignore-unknown-roles, then true.",
+      "deprecation": {
+        "level": "warning",
+        "reason": "Same fate as its short-term/legacy fallbacks: skipping non-dialogue messages will become hardcoded behaviour and the switch will be removed. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/109."
+      }
     },
     {
       "name": "agentcore.memory.session.default-session",

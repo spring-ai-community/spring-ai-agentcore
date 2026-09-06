@@ -17,7 +17,6 @@
 package org.springaicommunity.agentcore.memory.session;
 
 import java.util.List;
-import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,7 +64,7 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreSessionRepositoryAutoConfiguration.class);
 
 	@Bean
-	@ConditionalOnMissingBean
+	@ConditionalOnMissingBean(SessionRepository.class)
 	AgentCoreSessionRepository agentCoreSessionRepository(AgentCoreMemoryProperties memory,
 			AgentCoreShortTermMemoryProperties shortTerm, AgentCoreSessionProperties session,
 			BedrockAgentCoreClient client) {
@@ -76,17 +75,13 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 		// is null we defer to the existing short-term/legacy resolver (unchanged wording,
 		// unchanged deprecation warnings).
 		Integer totalEventsLimit = sessionFirst("total-events-limit", session.totalEventsLimit(),
-				shortTerm.totalEventsLimit(), () -> ShortTermPropertyResolver.resolve("total-events-limit",
-						shortTerm.totalEventsLimit(), memory.totalEventsLimit(), null));
+				shortTerm.totalEventsLimit(), memory.totalEventsLimit(), null);
 		String defaultSession = sessionFirst("default-session", session.defaultSession(), shortTerm.defaultSession(),
-				() -> ShortTermPropertyResolver.resolve("default-session", shortTerm.defaultSession(),
-						memory.defaultSession(), AgentCoreMemoryConversationIdParser.DEFAULT_SESSION));
-		int pageSize = sessionFirst("page-size", session.pageSize(), shortTerm.pageSize(),
-				() -> ShortTermPropertyResolver.resolve("page-size", shortTerm.pageSize(), memory.pageSize(),
-						ShortTermPropertyResolver.DEFAULT_PAGE_SIZE));
+				memory.defaultSession(), AgentCoreMemoryConversationIdParser.DEFAULT_SESSION);
+		int pageSize = sessionFirst("page-size", session.pageSize(), shortTerm.pageSize(), memory.pageSize(),
+				ShortTermPropertyResolver.DEFAULT_PAGE_SIZE);
 		boolean ignoreUnknownRoles = sessionFirst("ignore-unknown-roles", session.ignoreUnknownRoles(),
-				shortTerm.ignoreUnknownRoles(), () -> ShortTermPropertyResolver.resolve("ignore-unknown-roles",
-						shortTerm.ignoreUnknownRoles(), memory.ignoreUnknownRoles(), Boolean.TRUE));
+				shortTerm.ignoreUnknownRoles(), memory.ignoreUnknownRoles(), Boolean.TRUE);
 		ShortTermPropertyResolver.warnIfIgnoreUnknownRolesExplicitlySet(shortTerm, memory);
 
 		return AgentCoreSessionRepository.builder()
@@ -99,10 +94,12 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 			.build();
 	}
 
-	// Returns the session-scoped value when it is set, otherwise the short-term/legacy
-	// fallback. Emits a DEBUG breadcrumb when both the session and short-term namespaces
-	// explicitly set the same tunable, so an operator can see which one won (session).
-	private static <T> T sessionFirst(String name, T sessionValue, T shortTermValue, Supplier<T> fallback) {
+	// Returns the session-scoped value when it is set, otherwise defers to the existing
+	// short-term/legacy resolver (kept lazy so its deprecation WARN only fires when the
+	// fallback is actually consulted). Emits a DEBUG breadcrumb when both the session and
+	// short-term namespaces explicitly set the same tunable, so an operator can see which
+	// one won (session).
+	private static <T> T sessionFirst(String name, T sessionValue, T shortTermValue, T legacyValue, T defaultValue) {
 		if (sessionValue != null) {
 			if (shortTermValue != null) {
 				logger
@@ -111,7 +108,7 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 			}
 			return sessionValue;
 		}
-		return fallback.get();
+		return ShortTermPropertyResolver.resolve(name, shortTermValue, legacyValue, defaultValue);
 	}
 
 	@Bean

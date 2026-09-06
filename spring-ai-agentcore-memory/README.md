@@ -97,8 +97,11 @@ reusing a sessionId while changing the advisor's user id. If you never set
 is client-supplied input. The advisor's ownership check compares two values derived from
 that same client string, so it does not by itself stop a hostile caller from reading
 another user's session. Where an authenticated principal exists, the application must
-derive the conversationId (or the `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` value) from
-the principal, never from unvalidated request input.
+derive the conversationId's actor segment from the principal, never from unvalidated
+request input. Deriving only the `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` value from the
+principal is not sufficient: the advisor's ownership check runs only when the target
+session already exists, so a first write to a fresh sessionId passes regardless of the
+context key.
 
 **Reads and writes.** The event log is append-only: `appendEvent` and `delete` are the
 only write paths, synthetic events (framework generated, for example compaction summaries)
@@ -118,7 +121,7 @@ queries.
 | `replaceEvents(String, List)` | throws `UnsupportedOperationException` | AgentCore has no transactional replace or CAS; bound context via read-windowing (`totalEventsLimit`, `EventFilter.lastN`) and long-term memory extraction instead. |
 | `replaceEvents(String, List, long)` | throws `UnsupportedOperationException` | Same as above; the `expectedVersion` check cannot be made atomic without a server-side CAS. |
 | `appendEvent(SessionEvent)` | does not throw when session is unknown | First append implicitly creates the session server-side. |
-| `Session.createdAt` | real instant from `SessionSummary`, falling back to the tail event timestamp | Only when neither exists does it fall back to the `Instant.EPOCH` sentinel; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
+| `Session.createdAt` | `findByUserId`: real instant from each `SessionSummary`; `findById`: the tail (most recent) event timestamp — it never calls `ListSessions` | Either path falls back to the `Instant.EPOCH` sentinel when its source carries no timestamp; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
 | `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
 
 **Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,

@@ -56,7 +56,7 @@ userId prefix and any `USER_ID_CONTEXT_KEY` value identical.
 
 ## Prerequisites
 
-- Java 21+
+- Java 17+
 - Maven 3.6+
 - AWS credentials with permission to call AgentCore Memory
 - A real `AGENTCORE_MEMORY_ID` (the placeholder in `application.properties` is

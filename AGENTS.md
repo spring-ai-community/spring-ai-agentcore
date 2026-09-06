@@ -45,7 +45,7 @@ spring-ai-agentcore/
 
 | Class                                | Purpose |
 |--------------------------------------|---------|
-| `AgentCoreShortTermMemoryRepository` | STM - implements `ChatMemoryRepository` (soft-deprecated since 2.1.0, no `forRemoval`) |
+| `AgentCoreShortTermMemoryRepository` | STM - implements `ChatMemoryRepository` (`@Deprecated(since = "2.2.0", forRemoval = true)`; removal scheduled for 3.0.0) |
 | `AgentCoreLongTermMemoryAdvisor`     | LTM - Spring AI advisor for prompt augmentation |
 | `AgentCoreLongTermMemoryRetriever`   | LTM - retrieves memories from AgentCore |
 | `AgentCoreMemory`                    | Combines STM + LTM advisors (ChatMemory path) |

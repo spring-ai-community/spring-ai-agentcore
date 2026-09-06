@@ -118,6 +118,24 @@ class AgentCoreSessionRepositoryTests {
 			.isInstanceOf(IllegalArgumentException.class);
 	}
 
+	@Test
+	void builderRejectsInvalidPageSizeTotalEventsLimitAndBlankDefaultSession() {
+		assertThatThrownBy(
+				() -> AgentCoreSessionRepository.builder().memoryId(MEMORY_ID).client(this.client).pageSize(0).build())
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("pageSize");
+		assertThatThrownBy(() -> AgentCoreSessionRepository.builder()
+			.memoryId(MEMORY_ID)
+			.client(this.client)
+			.totalEventsLimit(0)
+			.build()).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("totalEventsLimit");
+		assertThatThrownBy(() -> AgentCoreSessionRepository.builder()
+			.memoryId(MEMORY_ID)
+			.client(this.client)
+			.defaultSession("  ")
+			.build()).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("defaultSession");
+	}
+
 	// ==================== save / findById / findByUserId / findExpiredSessionIds ==
 
 	@Test
@@ -248,6 +266,27 @@ class AgentCoreSessionRepositoryTests {
 		then(this.client).shouldHaveNoInteractions();
 	}
 
+	@Test
+	void sessionIdWithControlCharactersIsRejected() {
+		// Control characters in a sessionId are never legitimate and enable log
+		// forging (CRLF injection); they are rejected before any client call.
+		assertThatThrownBy(() -> this.repository.findById("alice\nB:conv")).isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("control characters");
+		then(this.client).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void findEventsMalformedSeamThrowsIllegalArgumentNotRetrievalException() {
+		// The (actor, session) seam is parsed OUTSIDE the try/catch in findEvents:
+		// malformed ids surface as the documented IllegalArgumentException and are
+		// never swallowed into a RetrievalException.
+		assertThatThrownBy(() -> this.repository.findEvents(":conv", EventFilter.all()))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> this.repository.findEvents("actor:", EventFilter.all()))
+			.isInstanceOf(IllegalArgumentException.class);
+		then(this.client).shouldHaveNoInteractions();
+	}
+
 	// ==================== delete ====================
 
 	@Test
@@ -291,7 +330,7 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(req.payload()).hasSize(1);
 		assertThat(req.payload().get(0).conversational().role()).isEqualTo(Role.USER);
 		assertThat(req.payload().get(0).conversational().content().text()).isEqualTo("hi");
-		// appendEvent never sets a branch on the CreateEventRequest.
+		// No branch is set when the event carries none.
 		assertThat(req.branch()).isNull();
 		assertThat(req.clientToken()).isNotBlank();
 	}
@@ -370,6 +409,52 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
+	void appendEventPropagatesEventTimestamp() {
+		given(this.client.createEvent(any(CreateEventRequest.class)))
+			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
+
+		Instant fixed = Instant.parse("2026-03-01T10:15:30Z");
+		SessionEvent explicit = SessionEvent.builder()
+			.sessionId(SESSION_ID)
+			.timestamp(fixed)
+			.message(UserMessage.builder().text("hi").build())
+			.build();
+		this.repository.appendEvent(explicit);
+
+		// SessionEvent.Builder defaults the timestamp to now and build() rejects
+		// null, so a builder-made event always carries one; either way the request
+		// must never go out with a null eventTimestamp.
+		SessionEvent defaulted = SessionEvent.builder()
+			.sessionId(SESSION_ID)
+			.message(UserMessage.builder().text("again").build())
+			.build();
+		this.repository.appendEvent(defaulted);
+
+		ArgumentCaptor<CreateEventRequest> captor = ArgumentCaptor.forClass(CreateEventRequest.class);
+		then(this.client).should(times(2)).createEvent(captor.capture());
+		assertThat(captor.getAllValues().get(0).eventTimestamp()).isEqualTo(fixed);
+		assertThat(captor.getAllValues().get(1).eventTimestamp()).isNotNull();
+	}
+
+	@Test
+	void appendEventMapsSessionEventBranchToCreateEventBranch() {
+		given(this.client.createEvent(any(CreateEventRequest.class)))
+			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
+
+		SessionEvent event = SessionEvent.builder()
+			.sessionId(SESSION_ID)
+			.branch("b7")
+			.message(UserMessage.builder().text("hi").build())
+			.build();
+		this.repository.appendEvent(event);
+
+		ArgumentCaptor<CreateEventRequest> captor = ArgumentCaptor.forClass(CreateEventRequest.class);
+		then(this.client).should().createEvent(captor.capture());
+		assertThat(captor.getValue().branch()).isNotNull();
+		assertThat(captor.getValue().branch().name()).isEqualTo("b7");
+	}
+
+	@Test
 	void appendEventWrapsSdkExceptionInStorageException() {
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willThrow(SdkException.builder().message("boom").build());
@@ -429,6 +514,22 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(this.repository.getEventVersion(SESSION_ID)).isEqualTo(0L);
 	}
 
+	@Test
+	void paginationEchoesNextTokenFromPreviousPage() {
+		List<Event> firstPage = IntStream.range(0, 3).mapToObj((i) -> eventWithId("e" + i)).toList();
+		List<Event> secondPage = IntStream.range(3, 5).mapToObj((i) -> eventWithId("e" + i)).toList();
+		given(this.client.listEvents(any(ListEventsRequest.class)))
+			.willReturn(ListEventsResponse.builder().events(firstPage).nextToken("page2").build())
+			.willReturn(ListEventsResponse.builder().events(secondPage).build());
+
+		this.repository.getEventVersion(SESSION_ID);
+
+		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
+		then(this.client).should(times(2)).listEvents(captor.capture());
+		assertThat(captor.getAllValues().get(0).nextToken()).isNull();
+		assertThat(captor.getAllValues().get(1).nextToken()).isEqualTo("page2");
+	}
+
 	// ==================== findEvents ====================
 
 	@Test
@@ -475,6 +576,109 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
+	void findEventsLastNWithMessageTypeFilterStopsPaginatingAtNthMatch() {
+		// The early stop counts client-side MATCHES, not fetched events: page 1
+		// yields one USER match (the ASSISTANT event does not match), page 2 yields
+		// the second match, so page 3 must never be requested.
+		Event userNewest = payloadEvent("u-2", "second-user", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
+		Event assistantNoise = payloadEvent("a-1", "noise", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
+		Event userOldest = payloadEvent("u-1", "first-user", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		given(this.client.listEvents(any(ListEventsRequest.class)))
+			.willReturn(ListEventsResponse.builder().events(userNewest, assistantNoise).nextToken("page2").build())
+			.willReturn(ListEventsResponse.builder().events(userOldest).nextToken("page3").build())
+			.willReturn(emptyPage());
+
+		EventFilter filter = EventFilter.builder().lastN(2).messageTypes(Set.of(MessageType.USER)).build();
+		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, filter);
+
+		assertThat(events).extracting((e) -> e.getMessage().getText()).containsExactly("first-user", "second-user");
+		then(this.client).should(times(2)).listEvents(any(ListEventsRequest.class));
+	}
+
+	@Test
+	void findEventsMultiPayloadEventYieldsDistinctIdsInIntraEventOrder() {
+		Conversational question = Conversational.builder()
+			.role(Role.USER)
+			.content(Content.builder().text("question").build())
+			.build();
+		Conversational answer = Conversational.builder()
+			.role(Role.ASSISTANT)
+			.content(Content.builder().text("answer").build())
+			.build();
+		Event multi = Event.builder()
+			.memoryId(MEMORY_ID)
+			.eventId("e-1")
+			.eventTimestamp(Instant.parse("2026-01-01T00:00:00Z"))
+			.payload(PayloadType.builder().conversational(question).build(),
+					PayloadType.builder().conversational(answer).build())
+			.build();
+		this.givenDataEvents(multi);
+
+		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, EventFilter.all());
+
+		// SessionEvent equality is (id, sessionId): the messages of one multi-payload
+		// AgentCore event need DISTINCT ids ("eventId#i"); the raw eventId stays
+		// available under EVENT_ID_METADATA_KEY.
+		assertThat(events).extracting((e) -> e.getMessage().getText()).containsExactly("question", "answer");
+		assertThat(events).extracting(SessionEvent::getId).containsExactly("e-1#0", "e-1#1");
+		assertThat(events).allSatisfy((e) -> assertThat(e.getMetadata())
+			.containsEntry(AgentCoreSessionRepository.EVENT_ID_METADATA_KEY, "e-1"));
+
+		// lastN(1) over the single event keeps only its newest (last) message.
+		List<SessionEvent> lastOne = this.repository.findEvents(SESSION_ID, EventFilter.lastN(1));
+		assertThat(lastOne).extracting((e) -> e.getMessage().getText()).containsExactly("answer");
+	}
+
+	@Test
+	void findEventsRespectsTotalEventsLimitAcrossPages() {
+		AgentCoreSessionRepository limited = AgentCoreSessionRepository.builder()
+			.memoryId(MEMORY_ID)
+			.client(this.client)
+			.defaultSession("default-session")
+			.pageSize(2)
+			.totalEventsLimit(3)
+			.build();
+		Event e4 = payloadEvent("e-4", "fourth", Role.USER, Instant.parse("2026-01-04T00:00:00Z"));
+		Event e3 = payloadEvent("e-3", "third", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
+		Event e2 = payloadEvent("e-2", "second", Role.USER, Instant.parse("2026-01-02T00:00:00Z"));
+		Event e1 = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		given(this.client.listEvents(any(ListEventsRequest.class)))
+			.willReturn(ListEventsResponse.builder().events(e4, e3).nextToken("page2").build())
+			.willReturn(ListEventsResponse.builder().events(e2, e1).nextToken("page3").build());
+
+		List<SessionEvent> events = limited.findEvents(SESSION_ID, EventFilter.all());
+
+		// Only the first event of page 2 is consumed (limit 3); the trailing e-1 and
+		// page 3 are never read, and maxResults is min(pageSize, totalEventsLimit).
+		assertThat(events).extracting((e) -> e.getMessage().getText()).containsExactly("second", "third", "fourth");
+		ArgumentCaptor<ListEventsRequest> captor = ArgumentCaptor.forClass(ListEventsRequest.class);
+		then(this.client).should(times(2)).listEvents(captor.capture());
+		assertThat(captor.getAllValues()).allSatisfy((req) -> assertThat(req.maxResults()).isEqualTo(2));
+	}
+
+	@Test
+	void findEventsPageAndPageSizeSliceChronologically() {
+		Event e5 = payloadEvent("e-5", "fifth", Role.USER, Instant.parse("2026-01-05T00:00:00Z"));
+		Event e4 = payloadEvent("e-4", "fourth", Role.USER, Instant.parse("2026-01-04T00:00:00Z"));
+		Event e3 = payloadEvent("e-3", "third", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
+		Event e2 = payloadEvent("e-2", "second", Role.USER, Instant.parse("2026-01-02T00:00:00Z"));
+		Event e1 = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		this.givenDataEvents(e5, e4, e3, e2, e1);
+
+		List<SessionEvent> pageZero = this.repository.findEvents(SESSION_ID,
+				EventFilter.builder().pageSize(2).page(0).build());
+		assertThat(pageZero).extracting((e) -> e.getMessage().getText()).containsExactly("first", "second");
+
+		List<SessionEvent> tailPage = this.repository.findEvents(SESSION_ID,
+				EventFilter.builder().pageSize(2).page(2).build());
+		assertThat(tailPage).extracting((e) -> e.getMessage().getText()).containsExactly("fifth");
+
+		List<SessionEvent> beyondEnd = this.repository.findEvents(SESSION_ID,
+				EventFilter.builder().pageSize(2).page(5).build());
+		assertThat(beyondEnd).isEmpty();
+	}
+
+	@Test
 	void findEventsPushesBranchFilterDownToListEvents() {
 		this.givenDataEvents();
 
@@ -484,7 +688,8 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(req.filter()).isNotNull();
 		assertThat(req.filter().branch()).isNotNull();
 		assertThat(req.filter().branch().name()).isEqualTo("b1");
-		assertThat(req.filter().branch().includeParentBranches()).isFalse();
+		// true = SPI reference semantics: a branch read includes pre-fork history.
+		assertThat(req.filter().branch().includeParentBranches()).isTrue();
 	}
 
 	@Test
