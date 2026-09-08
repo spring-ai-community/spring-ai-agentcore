@@ -21,11 +21,13 @@
     <properties>
         <java.version>17</java.version>
         <spring-ai.version>2.0.1</spring-ai.version>
+        <spring-ai-session.version>0.5.0</spring-ai-session.version>
     </properties>
 
     <modules>
         <module>simple-spring-boot-app</module>
         <module>spring-ai-agentcore-observability</module>
+        <module>spring-ai-agentcore-session</module>
         <module>spring-ai-browser</module>
         <module>spring-ai-extended-chat-client</module>
         <module>spring-ai-memory-integration</module>
@@ -38,6 +40,7 @@
         BOMs import managed dependency versions so examples never pin versions directly:
         - spring-ai-agentcore-bom: all org.springaicommunity agentcore artifacts
         - spring-ai-bom: Spring AI starters (Bedrock, etc.)
+        - spring-ai-session-bom: Spring AI Session API artifacts (used by spring-ai-agentcore-session)
     -->
     <dependencyManagement>
         <dependencies>
@@ -52,6 +55,13 @@
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
                 <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springaicommunity</groupId>
+                <artifactId>spring-ai-session-bom</artifactId>
+                <version>${spring-ai-session.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
