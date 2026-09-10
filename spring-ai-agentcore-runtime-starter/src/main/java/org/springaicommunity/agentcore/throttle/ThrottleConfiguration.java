@@ -16,14 +16,18 @@
 
 package org.springaicommunity.agentcore.throttle;
 
+import jakarta.servlet.Filter;
+
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.server.WebFilter;
 
 @Configuration
-@ConditionalOnClass(name = "jakarta.servlet.Filter")
 @ConfigurationProperties(prefix = "agentcore.throttle")
 public class ThrottleConfiguration {
 
@@ -36,15 +40,6 @@ public class ThrottleConfiguration {
 	private int invocationsLimit;
 
 	private int pingLimit;
-
-	@Bean
-	public FilterRegistrationBean<RateLimitingFilter> rateLimitingFilter() {
-		FilterRegistrationBean<RateLimitingFilter> registrationBean = new FilterRegistrationBean<>();
-		registrationBean.setFilter(new RateLimitingFilter(this.invocationsLimit, this.pingLimit));
-		registrationBean.addUrlPatterns(INVOCATIONS_PATH, PING_PATH);
-		registrationBean.setOrder(1);
-		return registrationBean;
-	}
 
 	public int getInvocationsLimit() {
 		return this.invocationsLimit;
@@ -60,6 +55,35 @@ public class ThrottleConfiguration {
 
 	public void setPingLimit(int pingLimit) {
 		this.pingLimit = pingLimit;
+	}
+
+	@Configuration
+	@ConditionalOnClass(Filter.class)
+	@ConditionalOnWebApplication(type = Type.SERVLET)
+	static class ServletRateLimitingConfiguration {
+
+		@Bean
+		FilterRegistrationBean<RateLimitingFilter> rateLimitingFilter(ThrottleConfiguration properties) {
+			FilterRegistrationBean<RateLimitingFilter> registrationBean = new FilterRegistrationBean<>();
+			registrationBean
+				.setFilter(new RateLimitingFilter(properties.getInvocationsLimit(), properties.getPingLimit()));
+			registrationBean.addUrlPatterns(INVOCATIONS_PATH, PING_PATH);
+			registrationBean.setOrder(1);
+			return registrationBean;
+		}
+
+	}
+
+	@Configuration
+	@ConditionalOnClass(WebFilter.class)
+	@ConditionalOnWebApplication(type = Type.REACTIVE)
+	static class ReactiveRateLimitingConfiguration {
+
+		@Bean
+		ReactiveRateLimitingWebFilter reactiveRateLimitingWebFilter(ThrottleConfiguration properties) {
+			return new ReactiveRateLimitingWebFilter(properties.getInvocationsLimit(), properties.getPingLimit());
+		}
+
 	}
 
 }
