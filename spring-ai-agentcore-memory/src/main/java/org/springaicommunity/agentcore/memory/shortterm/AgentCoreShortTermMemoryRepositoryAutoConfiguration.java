@@ -35,8 +35,6 @@ public class AgentCoreShortTermMemoryRepositoryAutoConfiguration {
 	private static final Logger logger = LoggerFactory
 		.getLogger(AgentCoreShortTermMemoryRepositoryAutoConfiguration.class);
 
-	private static final int DEFAULT_PAGE_SIZE = 100;
-
 	@Bean(destroyMethod = "close")
 	@ConditionalOnMissingBean
 	@ConditionalOnProperty(prefix = AgentCoreMemoryProperties.CONFIG_PREFIX, name = "memory-id")
@@ -52,40 +50,18 @@ public class AgentCoreShortTermMemoryRepositoryAutoConfiguration {
 			AgentCoreShortTermMemoryProperties shortTerm, BedrockAgentCoreClient client) {
 		logger.info("Creating AgentCoreShortTermMemoryRepository bean with memoryId: {}", memory.memoryId());
 
-		Integer totalEventsLimit = resolve("total-events-limit", shortTerm.totalEventsLimit(),
+		Integer totalEventsLimit = ShortTermPropertyResolver.resolve("total-events-limit", shortTerm.totalEventsLimit(),
 				memory.totalEventsLimit(), null);
-		String defaultSession = resolve("default-session", shortTerm.defaultSession(), memory.defaultSession(),
-				AgentCoreMemoryConversationIdParser.DEFAULT_SESSION);
-		int pageSize = resolve("page-size", shortTerm.pageSize(), memory.pageSize(), DEFAULT_PAGE_SIZE);
-		boolean ignoreUnknownRoles = resolve("ignore-unknown-roles", shortTerm.ignoreUnknownRoles(),
-				memory.ignoreUnknownRoles(), Boolean.TRUE);
-		warnIfIgnoreUnknownRolesExplicitlySet(shortTerm, memory);
+		String defaultSession = ShortTermPropertyResolver.resolve("default-session", shortTerm.defaultSession(),
+				memory.defaultSession(), AgentCoreMemoryConversationIdParser.DEFAULT_SESSION);
+		int pageSize = ShortTermPropertyResolver.resolve("page-size", shortTerm.pageSize(), memory.pageSize(),
+				ShortTermPropertyResolver.DEFAULT_PAGE_SIZE);
+		boolean ignoreUnknownRoles = ShortTermPropertyResolver.resolve("ignore-unknown-roles",
+				shortTerm.ignoreUnknownRoles(), memory.ignoreUnknownRoles(), Boolean.TRUE);
+		ShortTermPropertyResolver.warnIfIgnoreUnknownRolesExplicitlySet(shortTerm, memory);
 
 		return new AgentCoreShortTermMemoryRepository(memory.memoryId(), client, totalEventsLimit, defaultSession,
 				pageSize, ignoreUnknownRoles);
-	}
-
-	private static void warnIfIgnoreUnknownRolesExplicitlySet(AgentCoreShortTermMemoryProperties shortTerm,
-			AgentCoreMemoryProperties memory) {
-		if (shortTerm.ignoreUnknownRoles() == null && memory.ignoreUnknownRoles() == null) {
-			return;
-		}
-		logger.warn("Property 'ignore-unknown-roles' is deprecated and will be removed in a future release. "
-				+ "Skipping non-dialogue messages will become hardcoded behaviour; remove this property. See "
-				+ "https://github.com/spring-ai-community/spring-ai-agentcore/issues/109");
-	}
-
-	private static <T> T resolve(String name, T modern, T legacy, T fallback) {
-		if (modern != null) {
-			return modern;
-		}
-		if (legacy != null) {
-			logger.warn("Property 'agentcore.memory.{}' is deprecated and will be removed in a future release. "
-					+ "Use 'agentcore.memory.short-term.{}' instead. See "
-					+ "https://github.com/spring-ai-community/spring-ai-agentcore/issues/49", name, name);
-			return legacy;
-		}
-		return fallback;
 	}
 
 }

@@ -25,7 +25,7 @@ spring-ai-agentcore/
 |--------|---------|-------------|
 | `artifact-store` | Session-scoped artifact storage | `ArtifactStore.java`, `CaffeineArtifactStore.java` |
 | `starter` | AgentCore Runtime contract | `AgentCoreAutoConfiguration.java` |
-| `memory` | Spring AI ChatMemory integration | `AgentCoreShortTermMemoryRepositoryAutoConfiguration.java`, `AgentCoreLongTermMemoryAutoConfiguration.java` |
+| `memory` | Spring AI ChatMemory + Session API integration | `AgentCoreShortTermMemoryRepositoryAutoConfiguration.java`, `AgentCoreLongTermMemoryAutoConfiguration.java`, `AgentCoreSessionRepositoryAutoConfiguration.java` |
 | `browser` | Browser automation tools | `AgentCoreBrowserAutoConfiguration.java` |
 | `codeinterpreter` | Code execution tools | `AgentCoreCodeInterpreterAutoConfiguration.java` |
 
@@ -45,10 +45,13 @@ spring-ai-agentcore/
 
 | Class                                | Purpose |
 |--------------------------------------|---------|
-| `AgentCoreShortTermMemoryRepository` | STM - implements `ChatMemoryRepository` |
+| `AgentCoreShortTermMemoryRepository` | STM - implements `ChatMemoryRepository` (`@Deprecated(since = "2.2.0", forRemoval = true)`; removal scheduled for 3.0.0) |
 | `AgentCoreLongTermMemoryAdvisor`     | LTM - Spring AI advisor for prompt augmentation |
 | `AgentCoreLongTermMemoryRetriever`   | LTM - retrieves memories from AgentCore |
-| `AgentCoreMemory`                    | Combines STM + LTM advisors |
+| `AgentCoreMemory`                    | Combines STM + LTM advisors (ChatMemory path) |
+| `AgentCoreSessionRepository`         | Session API - implements `org.springframework.ai.session.SessionRepository` (opt-in via `agentcore.memory.session.enabled=true`) |
+| `AgentCoreSessionMemory`             | Combines Session API STM + LTM advisors |
+| `AgentCoreSessionMissingDepDiagnostics` | Startup WARN when `agentcore.memory.session.enabled=true` but the session artifact is missing |
 
 ## Build & Test
 

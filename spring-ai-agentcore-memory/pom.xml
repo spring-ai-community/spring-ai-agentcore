@@ -74,6 +74,12 @@
 
         <dependency>
             <groupId>org.springaicommunity</groupId>
+            <artifactId>spring-ai-session-management</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springaicommunity</groupId>
             <artifactId>spring-ai-agentcore-common</artifactId>
             <version>${project.version}</version>
         </dependency>

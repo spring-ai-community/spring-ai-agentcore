@@ -94,7 +94,10 @@ class LocalBrowserClientTests {
 	@Order(4)
 	@DisplayName("Should fill form field")
 	void shouldFillFormField() {
-		String result = client.fill("https://duckduckgo.com", "input[name='q']", "test query");
+		// Use a self-contained data: URL so the test does not depend on a live
+		// third-party page whose markup or bot protection can change and flake.
+		String page = "data:text/html,<input name='q'>";
+		String result = client.fill(page, "input[name='q']", "test query");
 
 		assertThat(result).containsIgnoringCase("filled");
 	}
