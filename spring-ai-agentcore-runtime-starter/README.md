@@ -33,6 +33,13 @@ A Spring Boot starter that enables existing Spring Boot applications to conform 
         <groupId>org.springaicommunity</groupId>
         <artifactId>spring-ai-agentcore-runtime-starter</artifactId>
     </dependency>
+
+    <!-- Choose one web stack. -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <!-- Or use spring-boot-starter-webflux for a reactive Netty application. -->
 </dependencies>
 ```
 

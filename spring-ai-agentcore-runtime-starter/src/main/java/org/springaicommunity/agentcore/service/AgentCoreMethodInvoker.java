@@ -17,22 +17,39 @@
 package org.springaicommunity.agentcore.service;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.context.AgentCoreContext;
 import org.springaicommunity.agentcore.exception.AgentCoreInvocationException;
 
+import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.http.HttpHeaders;
 
 public class AgentCoreMethodInvoker {
+
+	private static final Logger logger = LoggerFactory.getLogger(AgentCoreMethodInvoker.class);
 
 	private final ObjectMapper objectMapper;
 
 	private final AgentCoreMethodRegistry registry;
 
+	private final List<AgentCoreInvocationCallback> callbacks;
+
 	public AgentCoreMethodInvoker(ObjectMapper objectMapper, AgentCoreMethodRegistry registry) {
+		this(objectMapper, registry, List.of());
+	}
+
+	public AgentCoreMethodInvoker(ObjectMapper objectMapper, AgentCoreMethodRegistry registry,
+			List<AgentCoreInvocationCallback> callbacks) {
 		this.objectMapper = objectMapper;
 		this.registry = registry;
+		List<AgentCoreInvocationCallback> orderedCallbacks = new ArrayList<>(callbacks);
+		AnnotationAwareOrderComparator.sort(orderedCallbacks);
+		this.callbacks = orderedCallbacks;
 	}
 
 	public Object invokeAgentMethod(Object request, HttpHeaders headers) throws Exception {
@@ -40,26 +57,80 @@ public class AgentCoreMethodInvoker {
 			throw new AgentCoreInvocationException("No @AgentCoreInvocation method found");
 		}
 
-		var method = this.registry.getAgentMethod();
-		var bean = this.registry.getAgentBean();
-		var paramTypes = method.getParameterTypes();
-
-		Object[] args = this.prepareArguments(request, headers, paramTypes);
-
+		List<AgentCoreInvocationCallback> startedCallbacks = new ArrayList<>();
+		Throwable invocationFailure = null;
 		try {
-			return method.invoke(bean, args);
-		}
-
-		catch (InvocationTargetException ex) {
-			if (ex.getCause() instanceof Exception exception) {
-				throw exception;
+			for (AgentCoreInvocationCallback callback : this.callbacks) {
+				startedCallbacks.add(callback);
+				callback.beforeInvocation(request, headers);
 			}
-			throw new AgentCoreInvocationException("Method invocation failed", ex);
+			var method = this.registry.getAgentMethod();
+			var bean = this.registry.getAgentBean();
+			var paramTypes = method.getParameterTypes();
+
+			Object[] args = this.prepareArguments(request, headers, paramTypes);
+
+			try {
+				Object result = method.invoke(bean, args);
+				for (AgentCoreInvocationCallback callback : this.callbacks) {
+					result = callback.processResult(request, headers, result);
+				}
+				return result;
+			}
+			catch (InvocationTargetException ex) {
+				if (ex.getCause() instanceof Exception exception) {
+					throw exception;
+				}
+				throw new AgentCoreInvocationException("Method invocation failed", ex);
+			}
+		}
+		catch (Exception | Error ex) {
+			invocationFailure = ex;
+			throw ex;
+		}
+		finally {
+			cleanupStartedCallbacks(startedCallbacks, request, headers, invocationFailure);
 		}
 	}
 
 	public Object invokeAgentMethod(Object request) throws Exception {
 		return this.invokeAgentMethod(request, new HttpHeaders());
+	}
+
+	private static void cleanupStartedCallbacks(List<AgentCoreInvocationCallback> startedCallbacks, Object request,
+			HttpHeaders headers, Throwable invocationFailure) throws Exception {
+		Throwable cleanupFailure = null;
+		for (int i = startedCallbacks.size() - 1; i >= 0; i--) {
+			AgentCoreInvocationCallback callback = startedCallbacks.get(i);
+			try {
+				callback.afterInvocation(request, headers);
+			}
+			catch (Throwable ex) {
+				logger.warn("AgentCore invocation callback cleanup failed: {}", callback.getClass().getName(), ex);
+				if (invocationFailure != null) {
+					invocationFailure.addSuppressed(ex);
+				}
+				else if (cleanupFailure == null) {
+					cleanupFailure = ex;
+				}
+				else {
+					cleanupFailure.addSuppressed(ex);
+				}
+			}
+		}
+		if (invocationFailure == null && cleanupFailure != null) {
+			rethrowCleanupFailure(cleanupFailure);
+		}
+	}
+
+	private static void rethrowCleanupFailure(Throwable failure) throws Exception {
+		if (failure instanceof Exception exception) {
+			throw exception;
+		}
+		if (failure instanceof Error error) {
+			throw error;
+		}
+		throw new AgentCoreInvocationException("Invocation callback cleanup failed", failure);
 	}
 
 	private Object[] prepareArguments(Object request, HttpHeaders headers, Class<?>[] paramTypes) {
