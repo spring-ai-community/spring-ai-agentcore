@@ -31,7 +31,7 @@
         <module>spring-ai-browser</module>
         <module>spring-ai-extended-chat-client</module>
         <module>spring-ai-memory-integration</module>
-        <module>spring-ai-override-invocations</module>
+        <module>spring-ai-reactive-runtime</module>
         <module>spring-ai-simple-chat-client</module>
         <module>spring-ai-sse-chat-client</module>
         <module>spring-ai-identity</module>
