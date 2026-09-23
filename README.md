@@ -125,7 +125,7 @@ See [examples/terraform/](examples/terraform/) for infrastructure-as-code with I
 | [spring-ai-extended-chat-client](examples/spring-ai-extended-chat-client/) | OAuth auth with per-user memory isolation |
 | [spring-ai-browser](examples/spring-ai-browser/) | Web browsing and screenshots |
 | [spring-ai-simple-chat-client](examples/spring-ai-simple-chat-client/) | Traditional Spring AI (without runtime starter) |
-| [spring-ai-override-invocations](examples/spring-ai-override-invocations/) | Custom controller override |
+| [spring-ai-reactive-runtime](examples/spring-ai-reactive-runtime/) | AgentCore runtime on a reactive (Netty) server with reactive throttling |
 
 ## Requirements
 

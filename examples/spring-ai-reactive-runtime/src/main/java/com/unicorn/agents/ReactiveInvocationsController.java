@@ -26,11 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
 @RestController
-public class CustomAgentCoreInvocationsController implements AgentCoreInvocationsHandler {
+public class ReactiveInvocationsController implements AgentCoreInvocationsHandler {
 
     private final ChatClient chatClient;
 
-    public CustomAgentCoreInvocationsController(ChatClient.Builder chatClient) {
+    public ReactiveInvocationsController(ChatClient.Builder chatClient) {
         this.chatClient = chatClient
                 .defaultTools(new DateTimeTools())
                 .build();

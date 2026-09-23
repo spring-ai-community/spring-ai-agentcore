@@ -13,16 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.unicorn.agents;
+package com.unicorn;
 
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 
-@SpringBootTest
-class OverrideInvocationsApplicationTests {
+@SpringBootApplication
+public class ReactiveRuntimeApplication {
 
-	@Test
-	void contextLoads() {
+	public static void main(String[] args) {
+		SpringApplication.run(ReactiveRuntimeApplication.class, args);
 	}
 
 }

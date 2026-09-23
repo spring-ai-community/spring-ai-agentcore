@@ -2,7 +2,7 @@ FROM --platform=linux/arm64 amazoncorretto:24-alpine
 
 RUN addgroup -S appuser && adduser -S appuser -G appuser
 WORKDIR /app
-COPY target/spring-ai-override-invocations.jar app.jar
+COPY target/spring-ai-reactive-runtime.jar app.jar
 RUN chown appuser:appuser /app/app.jar
 USER appuser
 EXPOSE 8080
