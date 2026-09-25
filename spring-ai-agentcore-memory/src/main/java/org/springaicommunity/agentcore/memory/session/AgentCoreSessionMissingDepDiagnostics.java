@@ -27,8 +27,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 /**
  * Startup diagnostic that emits a WARN when the operator has opted into the Session API
  * stack ({@code agentcore.memory.session.enabled=true}) but the
- * {@code org.springaicommunity:spring-ai-session-management} artifact is not on the
- * classpath. Prevents the silent no-op that would otherwise result from
+ * {@code org.springaicommunity:spring-ai-session} artifact (0.8.x; renamed from
+ * {@code spring-ai-session-management} in 0.6.0) is not on the classpath. Prevents the
+ * silent no-op that would otherwise result from
  * {@code @ConditionalOnClass(SessionRepository.class)} on the main session auto-config.
  * See issue #152 (finding I6).
  *
@@ -44,9 +45,10 @@ public class AgentCoreSessionMissingDepDiagnostics implements InitializingBean {
 	@Override
 	public void afterPropertiesSet() {
 		logger.warn("Property 'agentcore.memory.session.enabled=true' is set but "
-				+ "'org.springaicommunity:spring-ai-session-management' is not on the classpath. "
+				+ "'org.springaicommunity:spring-ai-session' is not on the classpath. "
 				+ "No session beans (AgentCoreSessionRepository, DefaultSessionService, SessionMemoryAdvisor) "
-				+ "will be created. Add the dependency to your pom.xml. See "
+				+ "will be created. Add org.springaicommunity:spring-ai-session 0.8.x to your pom.xml; "
+				+ "the artifact was renamed from spring-ai-session-management, so replace any old declaration. See "
 				+ "https://github.com/spring-ai-community/spring-ai-agentcore/issues/152");
 	}
 

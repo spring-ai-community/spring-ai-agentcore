@@ -20,8 +20,8 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -59,7 +59,10 @@ import org.springframework.ai.session.DefaultSessionService;
 import org.springframework.ai.session.EventFilter;
 import org.springframework.ai.session.Session;
 import org.springframework.ai.session.SessionEvent;
+import org.springframework.ai.session.advisor.IdempotentSessionEventIdGenerator;
 import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
+import org.springframework.ai.session.compaction.CompactionStrategy;
+import org.springframework.ai.session.compaction.CompactionTrigger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -75,10 +78,11 @@ import static org.mockito.Mockito.times;
  * {@link SessionMemoryAdvisor#before}.
  *
  * <p>
- * The repository is append-only: {@code replaceEvents} always throws
- * {@link UnsupportedOperationException}, synthetic events are never persisted, and reads
- * are bounded via read-windowing ({@code totalEventsLimit}, {@code EventFilter.lastN})
- * with an early pagination stop for plain {@code lastN} queries.
+ * The repository is append-only: {@code compactEvents} and {@code getEventVersion} always
+ * throw {@link UnsupportedOperationException}, synthetic events are never persisted, and
+ * reads are bounded via read-windowing ({@code totalEventsLimit},
+ * {@code EventFilter.lastN}) with an early pagination stop for plain {@code lastN}
+ * queries.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -152,10 +156,9 @@ class AgentCoreSessionRepositoryTests {
 		Event tail = Event.builder().eventId("evt-1").eventTimestamp(eventTs).build();
 		this.givenDataEvents(tail);
 
-		Optional<Session> result = this.repository.findById(SESSION_ID);
+		Session synthesized = this.repository.findById(SESSION_ID);
 
-		assertThat(result).isPresent();
-		Session synthesized = result.get();
+		assertThat(synthesized).isNotNull();
 		assertThat(synthesized.id()).isEqualTo(SESSION_ID);
 		assertThat(synthesized.userId()).isEqualTo(ACTOR);
 		// I4: createdAt is the tail event timestamp (already fetched), not a ListSessions
@@ -184,7 +187,8 @@ class AgentCoreSessionRepositoryTests {
 		Event tail = Event.builder().eventId("evt-2").eventTimestamp(eventTs).build();
 		this.givenDataEvents(tail);
 
-		Session synthesized = this.repository.findById(SESSION_ID).orElseThrow();
+		Session synthesized = this.repository.findById(SESSION_ID);
+		assertThat(synthesized).isNotNull();
 		assertThat(synthesized.createdAt()).isEqualTo(eventTs);
 		assertThat(synthesized.createdAt()).isNotEqualTo(Instant.EPOCH);
 		assertThat(synthesized.metadata().get(AgentCoreSessionRepository.LAST_EVENT_AT_METADATA_KEY))
@@ -193,9 +197,11 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void findByIdUnknownSessionIdReturnsEmpty() {
+	void findByIdUnknownSessionIdReturnsNull() {
+		// 0.8.0 SPI: findById returns null (not Optional.empty()) for an unknown
+		// session, matching InMemorySessionRepository.
 		this.givenDataEvents();
-		assertThat(this.repository.findById(SESSION_ID)).isEmpty();
+		assertThat(this.repository.findById(SESSION_ID)).isNull();
 	}
 
 	@Test
@@ -332,7 +338,7 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(req.payload().get(0).conversational().content().text()).isEqualTo("hi");
 		// No branch is set when the event carries none.
 		assertThat(req.branch()).isNull();
-		assertThat(req.clientToken()).isNotBlank();
+		assertThat(req.clientToken()).matches("[0-9a-f]{64}");
 	}
 
 	@Test
@@ -468,29 +474,108 @@ class AgentCoreSessionRepositoryTests {
 			.hasCauseInstanceOf(SdkException.class);
 	}
 
-	// ==================== replaceEvents (always unsupported) ====================
+	// ==================== appendEvent idempotency (clientToken) ====================
 
 	@Test
-	void replaceEventsThrowsUnsupportedOperationAndNeverTouchesClient() {
-		SessionEvent newEvent = SessionEvent.builder()
-			.sessionId(SESSION_ID)
-			.message(UserMessage.builder().text("new").build())
-			.build();
-		assertThatThrownBy(() -> this.repository.replaceEvents(SESSION_ID, List.of(newEvent)))
-			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("replaceEvents is unsupported");
-		then(this.client).shouldHaveNoInteractions();
+	void clientTokenMatchesTheGoldenVector() {
+		// Pins the token scheme: lowercase hex SHA-256 over the UTF-8 bytes of
+		// "agentcore-session-v1" NUL memoryId NUL actor NUL session NUL eventId. The
+		// non-ASCII event id catches a platform-default-charset regression (Java 17 does
+		// not default to UTF-8 on every host). Changing the value breaks dedup of retries
+		// that span a deployment, so change it only together with a new scheme prefix.
+		assertThat(AgentCoreSessionRepository.clientToken(MEMORY_ID, ACTOR, SESSION_SUFFIX, "evt-caf\u00e9-1"))
+			.isEqualTo("0f13443b0b5d6b259487b6319942abbd32708ca863e653832c855910dfd9d9d8");
 	}
 
 	@Test
-	void replaceEventsCasOverloadThrowsUnsupportedOperationAndNeverTouchesClient() {
-		SessionEvent newEvent = SessionEvent.builder()
+	void appendEventClientTokenIgnoresTimestampPayloadAndBranch() {
+		// A retry rebuilds the event (fresh Message, fresh timestamp), so the token must
+		// depend only on the scope and the event id; otherwise AgentCore cannot dedup it.
+		given(this.client.createEvent(any(CreateEventRequest.class)))
+			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
+
+		this.repository.appendEvent(SessionEvent.builder()
+			.id("evt-1")
 			.sessionId(SESSION_ID)
-			.message(UserMessage.builder().text("replacement").build())
+			.timestamp(Instant.parse("2026-03-01T10:00:00Z"))
+			.message(UserMessage.builder().text("hi").build())
+			.build());
+		this.repository.appendEvent(SessionEvent.builder()
+			.id("evt-1")
+			.sessionId(SESSION_ID)
+			.timestamp(Instant.parse("2026-03-01T10:00:05Z"))
+			.branch("b1")
+			.message(UserMessage.builder().text("hi, retried").build())
+			.build());
+
+		ArgumentCaptor<CreateEventRequest> captor = ArgumentCaptor.forClass(CreateEventRequest.class);
+		then(this.client).should(times(2)).createEvent(captor.capture());
+		assertThat(captor.getAllValues()).extracting(CreateEventRequest::clientToken)
+			.containsExactly("dae93cee46f256c7d081e4d94d1ffefe1c9e059e095a60d529e14855f7c16ebd",
+					"dae93cee46f256c7d081e4d94d1ffefe1c9e059e095a60d529e14855f7c16ebd");
+	}
+
+	@Test
+	void clientTokenIsScopedToMemoryActorSessionAndEventId() {
+		String base = AgentCoreSessionRepository.clientToken(MEMORY_ID, ACTOR, SESSION_SUFFIX, "evt-1");
+		assertThat(base).matches("[0-9a-f]{64}");
+		assertThat(Set.of(base, AgentCoreSessionRepository.clientToken("otherMemoryId", ACTOR, SESSION_SUFFIX, "evt-1"),
+				AgentCoreSessionRepository.clientToken(MEMORY_ID, "bob", SESSION_SUFFIX, "evt-1"),
+				AgentCoreSessionRepository.clientToken(MEMORY_ID, ACTOR, "conv-2", "evt-1"),
+				AgentCoreSessionRepository.clientToken(MEMORY_ID, ACTOR, SESSION_SUFFIX, "evt-2")))
+			.hasSize(5);
+		// The separators keep shifted field boundaries apart.
+		assertThat(AgentCoreSessionRepository.clientToken(MEMORY_ID, "ab", "c", "evt-1"))
+			.isNotEqualTo(AgentCoreSessionRepository.clientToken(MEMORY_ID, "a", "bc", "evt-1"));
+	}
+
+	@Test
+	void idempotentIdGeneratorRetrySendsTheSameClientToken() {
+		// A retried SessionMemoryAdvisor call (fresh request, fresh UserMessage, fresh
+		// timestamp) re-derives the same event id with IdempotentSessionEventIdGenerator,
+		// so both CreateEvent calls carry one token and AgentCore keeps a single event.
+		// The default random generator keeps distinct tokens, as before 0.8.0.
+		this.givenDataEvents();
+		given(this.client.createEvent(any(CreateEventRequest.class)))
+			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
+		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
+		IdempotentSessionEventIdGenerator ids = new IdempotentSessionEventIdGenerator();
+		SessionMemoryAdvisor idempotent = SessionMemoryAdvisor.builder(service)
+			.requestEventIdGenerator(ids)
+			.responseEventIdGenerator(ids)
 			.build();
-		assertThatThrownBy(() -> this.repository.replaceEvents(SESSION_ID, List.of(newEvent), 1L))
+		SessionMemoryAdvisor random = SessionMemoryAdvisor.builder(service).build();
+
+		idempotent.before(userTurn("book a table"), null);
+		idempotent.before(userTurn("book a table"), null);
+		random.before(userTurn("book a table"), null);
+		random.before(userTurn("book a table"), null);
+
+		ArgumentCaptor<CreateEventRequest> captor = ArgumentCaptor.forClass(CreateEventRequest.class);
+		then(this.client).should(times(4)).createEvent(captor.capture());
+		List<String> tokens = captor.getAllValues().stream().map(CreateEventRequest::clientToken).toList();
+		assertThat(tokens.get(1)).isEqualTo(tokens.get(0));
+		assertThat(tokens.get(2)).isNotEqualTo(tokens.get(0));
+		assertThat(tokens.get(3)).isNotEqualTo(tokens.get(2)).isNotEqualTo(tokens.get(0));
+	}
+
+	// ==================== compactEvents (always unsupported) ====================
+
+	@Test
+	void compactEventsThrowsUnsupportedOperationAndNeverTouchesClient() {
+		SessionEvent archived = SessionEvent.builder()
+			.sessionId(SESSION_ID)
+			.message(UserMessage.builder().text("old").build())
+			.build();
+		SessionEvent retained = SessionEvent.builder()
+			.sessionId(SESSION_ID)
+			.message(UserMessage.builder().text("summary").build())
+			.build();
+		assertThatThrownBy(() -> this.repository.compactEvents(SESSION_ID, List.of(archived), List.of(retained), 1L))
 			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("replaceEvents is unsupported");
+			.hasMessageContaining("compactEvents is unsupported")
+			.hasMessageContaining("compactionTrigger")
+			.hasMessageContaining("EventFilter.lastN");
 		then(this.client).shouldHaveNoInteractions();
 	}
 
@@ -500,7 +585,10 @@ class AgentCoreSessionRepositoryTests {
 	void getEventVersionThrowsUnsupportedOperation() {
 		assertThatThrownBy(() -> this.repository.getEventVersion(SESSION_ID))
 			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("getEventVersion is unsupported");
+			.hasMessageContaining("getEventVersion is unsupported")
+			.hasMessageContaining("compactEvents")
+			.hasMessageNotContaining("replaceEvents")
+			.hasMessageContaining("compactionTrigger");
 		then(this.client).shouldHaveNoInteractions();
 	}
 
@@ -647,6 +735,27 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
+	void totalEventsLimitHidesOlderMatchesFromKeywordSearches() {
+		// Documented divergence: reads without lastN, including keyword searches and
+		// CrossSessionRecallTools, see only the newest totalEventsLimit events, so an
+		// older match is silently missed. Pinned so that any change is deliberate.
+		AgentCoreSessionRepository limited = AgentCoreSessionRepository.builder()
+			.memoryId(MEMORY_ID)
+			.client(this.client)
+			.totalEventsLimit(2)
+			.build();
+		Event e3 = payloadEvent("e-3", "third", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
+		Event e2 = payloadEvent("e-2", "second", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
+		Event e1 = payloadEvent("e-1", "the needle", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		this.givenDataEvents(e3, e2, e1);
+		EventFilter needle = EventFilter.builder().keyword("needle").build();
+
+		assertThat(limited.findEvents(SESSION_ID, needle)).isEmpty();
+		assertThat(this.repository.findEvents(SESSION_ID, needle)).extracting(SessionEvent::getId)
+			.containsExactly("e-1");
+	}
+
+	@Test
 	void findEventsPageAndPageSizeSliceChronologically() {
 		Event e5 = payloadEvent("e-5", "fifth", Role.USER, Instant.parse("2026-01-05T00:00:00Z"));
 		Event e4 = payloadEvent("e-4", "fourth", Role.USER, Instant.parse("2026-01-04T00:00:00Z"));
@@ -696,6 +805,63 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
+	void findEventsHonorsKeywordsAnyAndAllMatchModes() {
+		// spring-ai-session 0.8.0 EventFilter.keywords/matchMode are applied client-side
+		// through EventFilter.matches; keywords are case-insensitive.
+		Event e1 = payloadEvent("e-1", "Deploy the Lambda", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		Event e2 = payloadEvent("e-2", "lambda cold start", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
+		Event e3 = payloadEvent("e-3", "unrelated", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
+		this.givenDataEvents(e3, e2, e1);
+
+		EventFilter any = EventFilter.builder()
+			.keywords(List.of("DEPLOY", "cold"))
+			.matchMode(EventFilter.MatchMode.ANY)
+			.build();
+		assertThat(this.repository.findEvents(SESSION_ID, any)).extracting(SessionEvent::getId)
+			.containsExactly("e-1", "e-2");
+
+		EventFilter all = EventFilter.builder()
+			.keywords(List.of("lambda", "deploy"))
+			.matchMode(EventFilter.MatchMode.ALL)
+			.build();
+		assertThat(this.repository.findEvents(SESSION_ID, all)).extracting(SessionEvent::getId).containsExactly("e-1");
+
+		// keywordsSearch pages by default (page 0, DEFAULT_PAGE_SIZE); it still matches.
+		assertThat(this.repository.findEvents(SESSION_ID,
+				EventFilter.keywordsSearch(List.of("lambda"), EventFilter.MatchMode.ANY)))
+			.extracting(SessionEvent::getId)
+			.containsExactly("e-1", "e-2");
+	}
+
+	@Test
+	void findEventsHonorsPatternFilter() {
+		Event e1 = payloadEvent("e-1", "order #1234 shipped", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		Event e2 = payloadEvent("e-2", "no order number", Role.USER, Instant.parse("2026-01-02T00:00:00Z"));
+		this.givenDataEvents(e2, e1);
+
+		List<SessionEvent> events = this.repository.findEvents(SESSION_ID,
+				EventFilter.patternSearch(Pattern.compile("#\\d{4}")));
+		assertThat(events).extracting(SessionEvent::getId).containsExactly("e-1");
+	}
+
+	@Test
+	void findEventsActiveFilterReturnsEveryEventBecauseNothingIsArchived() {
+		// AgentCore events are never archived (compactEvents is unsupported), so the
+		// EventFilter.active() narrowing that SessionMemoryAdvisor and
+		// DefaultSessionService.compact always apply must not drop anything.
+		Event e1 = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		Event e2 = payloadEvent("e-2", "second", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
+		this.givenDataEvents(e2, e1);
+
+		List<SessionEvent> active = this.repository.findEvents(SESSION_ID, EventFilter.active());
+		assertThat(active).extracting(SessionEvent::getId).containsExactly("e-1", "e-2");
+		assertThat(active).noneMatch(SessionEvent::isArchived);
+		assertThat(this.repository.findEvents(SESSION_ID, EventFilter.active().merge(EventFilter.lastN(1))))
+			.extracting(SessionEvent::getId)
+			.containsExactly("e-2");
+	}
+
+	@Test
 	void findEventsNonExistentSessionReturnsEmptyList() {
 		this.givenDataEvents();
 		assertThat(this.repository.findEvents(SESSION_ID, EventFilter.all())).isEmpty();
@@ -709,6 +875,52 @@ class AgentCoreSessionRepositoryTests {
 		assertThatThrownBy(() -> this.repository.findEvents(SESSION_ID, EventFilter.all()))
 			.isInstanceOf(AgentCoreMemoryException.RetrievalException.class)
 			.hasCauseInstanceOf(SdkException.class);
+	}
+
+	// ==================== compaction through DefaultSessionService ====================
+
+	@Test
+	void defaultSessionServiceCompactFailsWithGuidanceAndNeverWrites() {
+		// DefaultSessionService.compact (what SessionMemoryAdvisor runs when a
+		// compactionTrigger is configured) reads findById (a ListEvents call), then
+		// getEventVersion, before the trigger or strategy run. It therefore fails there
+		// with the configuration guidance, never pays for a strategy (for example an LLM
+		// summary) and never reaches a write.
+		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		this.givenDataEvents(tail);
+		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
+		CompactionTrigger trigger = Mockito.mock(CompactionTrigger.class);
+		CompactionStrategy strategy = Mockito.mock(CompactionStrategy.class);
+
+		assertThatThrownBy(() -> service.compact(SESSION_ID, trigger, strategy))
+			.isInstanceOf(UnsupportedOperationException.class)
+			.hasMessageContaining("getEventVersion is unsupported")
+			.hasMessageContaining("compactionTrigger");
+		then(trigger).shouldHaveNoInteractions();
+		then(strategy).shouldHaveNoInteractions();
+		then(this.client).should(never()).createEvent(any(CreateEventRequest.class));
+		then(this.client).should(never()).deleteEvent(any(DeleteEventRequest.class));
+	}
+
+	@Test
+	void defaultSessionServiceCompactOnEmptySessionFailsWithSessionNotFound() {
+		// A session whose turn persisted nothing (blank, tool-only or unknown-role
+		// messages) has no events, so findById returns null and compact fails with the
+		// upstream "Session not found" before reaching the guidance (README note).
+		this.givenDataEvents();
+		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
+
+		assertThatThrownBy(() -> service.compact(SESSION_ID, Mockito.mock(CompactionTrigger.class),
+				Mockito.mock(CompactionStrategy.class)))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("Session not found");
+	}
+
+	@Test
+	void defaultSessionServiceFindByIdPassesNullThroughForUnknownSession() {
+		this.givenDataEvents();
+		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
+		assertThat(service.findById(SESSION_ID)).isNull();
 	}
 
 	// ==================== C1 advisor-integration tests ====================
@@ -769,6 +981,13 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	// ==================== Helpers ====================
+
+	private static ChatClientRequest userTurn(String text) {
+		return ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage(text))))
+			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, SESSION_ID)
+			.build();
+	}
 
 	private void givenDataEvents(Event... events) {
 		given(this.client.listEvents(any(ListEventsRequest.class)))

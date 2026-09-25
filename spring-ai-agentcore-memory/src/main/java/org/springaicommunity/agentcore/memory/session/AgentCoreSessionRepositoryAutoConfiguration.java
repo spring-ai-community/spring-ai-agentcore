@@ -39,6 +39,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.Ordered;
 
 /**
  * Auto-configuration for the Spring AI Session API bean stack backed by AgentCore. Only
@@ -60,6 +61,18 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties({ AgentCoreMemoryProperties.class, AgentCoreShortTermMemoryProperties.class,
 		AgentCoreSessionProperties.class })
 public class AgentCoreSessionRepositoryAutoConfiguration {
+
+	/**
+	 * Order of the auto-configured {@link SessionMemoryAdvisor}: ahead of the
+	 * {@code ToolCallingAdvisor} that the {@code ChatClient} registers at
+	 * {@code HIGHEST_PRECEDENCE + 300}, so session memory wraps the whole tool loop and
+	 * runs once per call. At the upstream default ({@code HIGHEST_PRECEDENCE + 1000}) it
+	 * sits inside the loop, the {@code ChatClient} then switches off the tool advisor's
+	 * own history, and every tool round is rebuilt from AgentCore, which stores neither
+	 * tool calls nor tool results; the model then receives a tool result without the call
+	 * that produced it.
+	 */
+	public static final int SESSION_MEMORY_ADVISOR_ORDER = Ordered.HIGHEST_PRECEDENCE + 200;
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreSessionRepositoryAutoConfiguration.class);
 
@@ -120,7 +133,8 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean(SessionMemoryAdvisor.class)
 	SessionMemoryAdvisor sessionMemoryAdvisor(SessionService sessionService, AgentCoreSessionProperties props) {
-		SessionMemoryAdvisor.Builder builder = SessionMemoryAdvisor.builder(sessionService);
+		SessionMemoryAdvisor.Builder builder = SessionMemoryAdvisor.builder(sessionService)
+			.order(SESSION_MEMORY_ADVISOR_ORDER);
 		if (props.defaultUserId() != null && !props.defaultUserId().isBlank()) {
 			builder.defaultUserId(props.defaultUserId());
 		}

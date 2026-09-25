@@ -16,16 +16,20 @@
 
 package org.springaicommunity.agentcore.memory.session;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser;
@@ -107,19 +111,40 @@ import org.springframework.ai.session.SessionRepository;
  * appendEvent implicitly creates the session server-side. This deviates from the SPI
  * Javadoc. Synthetic events (framework generated, for example compaction summaries) are
  * never persisted; they are skipped with a DEBUG log.</li>
- * <li>{@link #replaceEvents(String, List)} and {@link #replaceEvents(String, List, long)}
- * throw {@link UnsupportedOperationException}. AgentCore has no transactional replace and
- * no compare-and-set on the event log, so any client-side rewrite (delete-then-recreate,
- * or a branch-plus-pointer swap) is inherently racy: a concurrent {@code appendEvent} can
- * be silently lost and a mid-flight failure can leave a partial log. The AgentCore-native
- * way to bound context is read-windowing ({@code totalEventsLimit},
- * {@code EventFilter.lastN(int)}) plus long-term memory extraction, not in-place log
- * rewriting. The event log is append-only here: {@link #appendEvent(SessionEvent)} and
- * {@link #delete(String)} are the only write paths, and neither needs locking.</li>
+ * <li>{@link #appendEvent(SessionEvent)} is idempotent by {@code SessionEvent.getId()} on
+ * a best-effort basis only: the id feeds a deterministic CreateEvent {@code clientToken},
+ * and AgentCore deduplicates tokens within an undocumented window rather than against the
+ * whole log. See the method Javadoc for the exact differences.</li>
+ * <li>{@link #compactEvents(String, List, List, long)} throws
+ * {@link UnsupportedOperationException}. AgentCore events are immutable (there is no
+ * update API, so an event cannot be marked archived in place) and the event log has no
+ * compare-and-set, so any client-side compaction (delete-then-recreate, or a
+ * branch-plus-pointer swap) is inherently racy: a concurrent {@code appendEvent} can be
+ * silently lost and a mid-flight failure can leave a partial log. Do not configure a
+ * {@code compactionTrigger} or {@code compactionStrategy} on {@code SessionMemoryAdvisor}
+ * with this repository. The AgentCore-native way to bound context is read-windowing
+ * ({@code EventFilter.lastN(int)} on the advisor, or {@code totalEventsLimit}) plus
+ * long-term memory extraction, not in-place log rewriting. The event log is append-only
+ * here: {@link #appendEvent(SessionEvent)} and {@link #delete(String)} are the only write
+ * paths, and neither needs locking. Because nothing is ever archived, every event read
+ * back reports {@code isArchived() == false}, so {@code EventFilter.active()} and
+ * {@code excludeArchived} are always satisfied.</li>
  * <li>{@link #getEventVersion(String)} throws {@link UnsupportedOperationException} for
- * the same reason: its only SPI purpose is supplying the {@code expectedVersion} for the
- * versioned {@code replaceEvents}, so a count here would suggest an optimistic-lock
- * capability the backend does not have.</li>
+ * the same reason: its only SPI purpose is supplying the {@code expectedVersion} for
+ * {@code compactEvents}, so a count here would suggest an optimistic-lock capability the
+ * backend does not have.</li>
+ * <li>{@link #findById(String)} returns {@code null} when the session has no events,
+ * because AgentCore has no notion of an empty session.</li>
+ * <li>Events read back by {@link #findEvents(String, EventFilter)} are rebuilt from the
+ * stored text: their id is the AgentCore eventId (not the id they were written with),
+ * their branch is {@code null}, and tool calls, tool responses, media and message
+ * metadata are not persisted. Branch reads therefore rely on AgentCore's server-side
+ * branch filter, not on {@code EventFilter.matches}.</li>
+ * <li>With {@code totalEventsLimit} set, every read without {@code lastN} sees only the
+ * newest {@code totalEventsLimit} events of the session. That includes keyword and
+ * pattern searches and {@code CrossSessionRecallTools}, which then silently miss older
+ * matches; prefer {@code EventFilter.lastN(int)} on the advisor to bound context when
+ * recall tools are in use.</li>
  * </ul>
  *
  * <h3>Synthesized {@link Session} fields</h3> On {@link #findById(String)} we synthesize
@@ -163,11 +188,23 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 
 	private static final int SERVICE_MAX_RESULTS = 100;
 
-	private static final String REPLACE_EVENTS_UNSUPPORTED = "replaceEvents is unsupported: AgentCore has no"
-			+ " transactional replace and no compare-and-set on the event log, so any client-side rewrite risks"
-			+ " losing a concurrent appendEvent or leaving a partial log on mid-flight failure. Bound context via"
-			+ " read-windowing (totalEventsLimit, EventFilter.lastN) plus AgentCore long-term memory extraction"
+	private static final String COMPACTION_GUIDANCE = " Do not configure compactionTrigger or compactionStrategy on"
+			+ " SessionMemoryAdvisor with AgentCoreSessionRepository; bound context via read-windowing"
+			+ " (EventFilter.lastN on the advisor, or totalEventsLimit) plus AgentCore long-term memory extraction"
 			+ " instead of rewriting the log.";
+
+	// Versioned domain prefix of the CreateEvent clientToken; bump it only together with
+	// a deliberate change of the token scheme (the golden-vector test pins it).
+	private static final String CLIENT_TOKEN_SCHEME = "agentcore-session-v1";
+
+	private static final String COMPACT_EVENTS_UNSUPPORTED = "compactEvents is unsupported: AgentCore events are"
+			+ " immutable (an event cannot be marked archived in place) and the event log has no compare-and-set,"
+			+ " so any client-side compaction risks losing a concurrent appendEvent or leaving a partial log on"
+			+ " mid-flight failure." + COMPACTION_GUIDANCE;
+
+	private static final String GET_EVENT_VERSION_UNSUPPORTED = "getEventVersion is unsupported: its only SPI"
+			+ " purpose is supplying the expectedVersion for compactEvents, which this repository does not support"
+			+ " (AgentCore has no compare-and-set). Use findEvents to read the log." + COMPACTION_GUIDANCE;
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreSessionRepository.class);
 
@@ -184,6 +221,7 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	private final boolean ignoreUnknownRoles;
 
 	private AgentCoreSessionRepository(Builder builder) {
+		SessionApiCompatibility.verifyOnce();
 		this.memoryId = validateMemoryId(builder.memoryId);
 		if (builder.client == null) {
 			throw new IllegalArgumentException("client must not be null");
@@ -238,8 +276,14 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		return session;
 	}
 
+	/**
+	 * Synthesizes a {@link Session} from the most recent AgentCore event of the session
+	 * (see the class Javadoc for the synthesized fields).
+	 * @param sessionId the session id ({@code "actorId"} or {@code "actorId:sessionId"})
+	 * @return the synthesized session, or {@code null} when the session has no events
+	 */
 	@Override
-	public Optional<Session> findById(String sessionId) {
+	public @Nullable Session findById(String sessionId) {
 		validateSessionId(sessionId);
 		logger.debug("Finding AgentCore session tail for sessionId: {}", sessionId);
 
@@ -254,7 +298,7 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 				.build());
 			var events = response.events();
 			if (events == null || events.isEmpty()) {
-				return Optional.empty();
+				return null;
 			}
 			Event tail = events.get(0);
 			Map<String, Object> metadata = new HashMap<>();
@@ -277,7 +321,7 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 				.expiresAt(null)
 				.metadata(metadata)
 				.build();
-			return Optional.of(synthesized);
+			return synthesized;
 		}
 		catch (SdkException ex) {
 			logger.error("Failed to load session tail for sessionId: {}", sessionId, ex);
@@ -385,6 +429,36 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * event stream without producing duplicates. When the event carries a branch
 	 * ({@code SessionEvent.getBranch()}), it is written to that AgentCore branch so a
 	 * later {@code findEvents} with {@code EventFilter.forBranch(...)} round-trips.
+	 *
+	 * <p>
+	 * <strong>Idempotency (best effort, expected rather than verified).</strong> The
+	 * CreateEvent {@code clientToken} is derived from (memoryId, actor, session segment,
+	 * {@code SessionEvent.getId()}), so re-appending an event with the same id, for
+	 * example an application retry after a lost response or {@code SessionMemoryAdvisor}
+	 * with {@code IdempotentSessionEventIdGenerator}, sends the same token. The
+	 * CreateEvent API reference states that AgentCore ignores a repeated request without
+	 * an error, but not what it does when the same token arrives with different
+	 * parameters (a rebuilt retry carries a fresh timestamp); the AgentCore behaviors
+	 * below are inferred from the reference and checked only by
+	 * {@code AgentCoreSessionRepositoryIT}, which needs a live memory resource. If
+	 * AgentCore rejects such a reuse instead, a retry fails with a
+	 * {@link AgentCoreMemoryException.StorageException} and
+	 * {@code IdempotentSessionEventIdGenerator} is unsafe with this repository. Branch,
+	 * payload and timestamp are deliberately not part of the token, because a retry
+	 * rebuilds the event with a fresh timestamp. With the advisor's default random ids
+	 * every append gets a distinct token, as before. The SPI reference implementation
+	 * deduplicates against the whole log; this one is expected to differ in three ways:
+	 * <ul>
+	 * <li>AgentCore remembers tokens for an undocumented window, so a replay outside it
+	 * is stored again. With {@code IdempotentSessionEventIdGenerator}, which hashes the
+	 * text per session, a user who repeats the same text in one session would be dropped
+	 * inside the window and stored outside it.</li>
+	 * <li>After {@link #delete(String)}, re-sending an id whose token AgentCore still
+	 * remembers would be ignored, so a reused sessionId can lose messages.</li>
+	 * <li>Events read back carry the AgentCore eventId as their id, so re-appending a
+	 * loaded event with a rebuilt {@link Message} (which drops the
+	 * {@value #EVENT_ID_METADATA_KEY} stamp) is not deduplicated.</li>
+	 * </ul>
 	 * @param event the event to append
 	 */
 	@Override
@@ -414,13 +488,15 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
+			String token = clientToken(this.memoryId, actorAndSession.actor(), actorAndSession.session(),
+					event.getId());
 			CreateEventRequest.Builder request = CreateEventRequest.builder()
 				.memoryId(this.memoryId)
 				.actorId(actorAndSession.actor())
 				.sessionId(actorAndSession.session())
 				.payload(List.of(payload))
 				.eventTimestamp((event.getTimestamp() != null) ? event.getTimestamp() : Instant.now())
-				.clientToken(UUID.randomUUID().toString());
+				.clientToken(token);
 			if (event.getBranch() != null && !event.getBranch().isBlank()) {
 				request.branch(Branch.builder().name(event.getBranch()).build());
 			}
@@ -439,51 +515,69 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	}
 
 	/**
-	 * Unsupported. AgentCore has no transactional replace and no compare-and-set on the
-	 * event log, so a faithful {@code replaceEvents} cannot be implemented without silent
-	 * data-loss races (a concurrent {@link #appendEvent(SessionEvent)} vanishing, or a
-	 * mid-flight failure leaving a partial log). Bound context with read-windowing
-	 * ({@code totalEventsLimit}, {@code EventFilter.lastN(int)}) and AgentCore long-term
-	 * memory extraction instead of rewriting the log.
-	 * @param sessionId the session whose event log would be replaced
-	 * @param events the replacement events
-	 * @throws UnsupportedOperationException always
+	 * Derives the CreateEvent {@code clientToken} for an event: lowercase hex SHA-256
+	 * over the UTF-8 bytes of
+	 * {@code scheme NUL memoryId NUL actor NUL session NUL eventId}. UTF-8 is explicit
+	 * because Java 17's platform default charset varies by host, and a retry on another
+	 * host must produce the same token. The NUL separators keep the tuple unambiguous:
+	 * sessionIds reject control characters, and the only unconstrained field, the event
+	 * id, comes last.
+	 * @param memoryId the AgentCore memory id
+	 * @param actor the actor segment of the sessionId
+	 * @param session the session segment of the sessionId
+	 * @param eventId the {@code SessionEvent} id
+	 * @return the 64-character lowercase hex token
 	 */
-	@Override
-	public void replaceEvents(String sessionId, List<SessionEvent> events) {
-		throw new UnsupportedOperationException(REPLACE_EVENTS_UNSUPPORTED);
+	static String clientToken(String memoryId, String actor, String session, String eventId) {
+		String scoped = CLIENT_TOKEN_SCHEME + '\0' + memoryId + '\0' + actor + '\0' + session + '\0' + eventId;
+		try {
+			byte[] digest = MessageDigest.getInstance("SHA-256").digest(scoped.getBytes(StandardCharsets.UTF_8));
+			return HexFormat.of().formatHex(digest);
+		}
+		catch (NoSuchAlgorithmException ex) {
+			// Every Java platform is required to provide SHA-256.
+			throw new IllegalStateException("SHA-256 is not available", ex);
+		}
 	}
 
 	/**
-	 * Unsupported, for the same reasons as {@link #replaceEvents(String, List)}; the
-	 * {@code expectedVersion} check cannot be honored either, because AgentCore offers no
-	 * server-side compare-and-set to make check-then-act atomic.
-	 * @param sessionId the session whose event log would be replaced
-	 * @param events the replacement events
+	 * Unsupported. AgentCore events are immutable, so an event cannot be marked archived
+	 * in place, and the event log has no compare-and-set, so neither the archive-and-swap
+	 * nor the {@code expectedVersion} check can be made atomic. A client-side emulation
+	 * (delete-then-recreate) would silently lose a concurrent
+	 * {@link #appendEvent(SessionEvent)} or leave a partial log on mid-flight failure.
+	 * Throws before any AgentCore call, whatever the arguments. Do not configure a
+	 * {@code compactionTrigger} or {@code compactionStrategy} on
+	 * {@code SessionMemoryAdvisor} with this repository; bound context with
+	 * read-windowing ({@code EventFilter.lastN(int)} on the advisor, or
+	 * {@code totalEventsLimit}) and AgentCore long-term memory extraction instead.
+	 * @param sessionId the session whose event log would be compacted
+	 * @param archivedEvents the events that would be marked archived
+	 * @param retainedEvents the new active event set
 	 * @param expectedVersion the version the caller expects
 	 * @return never returns
 	 * @throws UnsupportedOperationException always
 	 */
 	@Override
-	public boolean replaceEvents(String sessionId, List<SessionEvent> events, long expectedVersion) {
-		throw new UnsupportedOperationException(REPLACE_EVENTS_UNSUPPORTED);
+	public boolean compactEvents(String sessionId, List<SessionEvent> archivedEvents, List<SessionEvent> retainedEvents,
+			long expectedVersion) {
+		throw new UnsupportedOperationException(COMPACT_EVENTS_UNSUPPORTED);
 	}
 
 	/**
 	 * Unsupported. The version's only SPI purpose is supplying the
-	 * {@code expectedVersion} for {@link #replaceEvents(String, List, long)}, which this
-	 * repository does not support, so an event count here would suggest an
-	 * optimistic-lock capability that does not exist. Use
-	 * {@link #findEvents(String, EventFilter)} to read the log.
+	 * {@code expectedVersion} for {@link #compactEvents(String, List, List, long)}, which
+	 * this repository does not support, so an event count here would suggest an
+	 * optimistic-lock capability that does not exist.
+	 * {@code DefaultSessionService.compact} calls this first, so a configured compaction
+	 * fails here. Use {@link #findEvents(String, EventFilter)} to read the log.
 	 * @param sessionId the session whose version would be computed
 	 * @return never returns
 	 * @throws UnsupportedOperationException always
 	 */
 	@Override
 	public long getEventVersion(String sessionId) {
-		throw new UnsupportedOperationException("getEventVersion is unsupported: its only SPI purpose is supplying"
-				+ " the expectedVersion for the versioned replaceEvents, which this repository does not support"
-				+ " (AgentCore has no compare-and-set). Use findEvents to read the log.");
+		throw new UnsupportedOperationException(GET_EVENT_VERSION_UNSUPPORTED);
 	}
 
 	/**
@@ -494,12 +588,14 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * with {@code includeParentBranches=true}, matching the SPI reference semantics (a
 	 * branch read returns the pre-fork history too). AgentCore's ListEvents offers no
 	 * server-side time or content filtering, so the remaining predicates
-	 * ({@code from}/{@code to}, message types, keyword) are applied client-side. Because
-	 * the service returns events newest-first, a {@code lastN} query stops paginating as
-	 * soon as {@code lastN} matches are collected instead of fetching the whole log,
-	 * which keeps the common per-turn advisor read O(lastN), not O(session). Paged
-	 * queries and unbounded queries fetch up to {@code totalEventsLimit} (when
-	 * configured).
+	 * ({@code from}/{@code to}, message types, keywords, pattern, archived) are applied
+	 * client-side through {@link EventFilter#matches(SessionEvent)}. Because the service
+	 * returns events newest-first, a {@code lastN} query stops paginating as soon as
+	 * {@code lastN} matches are collected instead of fetching the whole log, which keeps
+	 * the common per-turn advisor read O(lastN), not O(session). Paged queries and
+	 * unbounded queries (including keyword and pattern searches) fetch only the newest
+	 * {@code totalEventsLimit} events when it is configured, so older matches are not
+	 * returned.
 	 * @param sessionId the session to read
 	 * @param filter the filter to apply (must not be null)
 	 * @return the matching events in chronological order

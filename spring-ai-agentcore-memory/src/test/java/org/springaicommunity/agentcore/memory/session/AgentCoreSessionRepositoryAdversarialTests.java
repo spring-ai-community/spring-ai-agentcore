@@ -236,12 +236,17 @@ class AgentCoreSessionRepositoryAdversarialTests {
 	}
 
 	@Test
-	void replaceEventsAlwaysThrowsUnsupportedOperation() {
-		// AgentCore has no transactional replace / CAS; both overloads always throw,
-		// regardless of arguments, and never touch the client.
-		assertThatThrownBy(() -> this.repository.replaceEvents("alice:conv", List.of()))
+	void compactEventsAlwaysThrowsUnsupportedOperation() {
+		// AgentCore events are immutable and the log has no CAS; compactEvents always
+		// throws, regardless of arguments (including nulls, empty lists, a negative
+		// or stale version, and an invalid sessionId), and never touches the client.
+		assertThatThrownBy(() -> this.repository.compactEvents("alice:conv", List.of(), List.of(), 0L))
 			.isInstanceOf(UnsupportedOperationException.class);
-		assertThatThrownBy(() -> this.repository.replaceEvents("alice:conv", List.of(), 0L))
+		assertThatThrownBy(() -> this.repository.compactEvents("alice:conv", null, null, -1L))
+			.isInstanceOf(UnsupportedOperationException.class);
+		assertThatThrownBy(() -> this.repository.compactEvents(null, List.of(), List.of(), Long.MAX_VALUE))
+			.isInstanceOf(UnsupportedOperationException.class);
+		assertThatThrownBy(() -> this.repository.compactEvents("", List.of(), List.of(), 0L))
 			.isInstanceOf(UnsupportedOperationException.class);
 		then(this.client).shouldHaveNoInteractions();
 	}

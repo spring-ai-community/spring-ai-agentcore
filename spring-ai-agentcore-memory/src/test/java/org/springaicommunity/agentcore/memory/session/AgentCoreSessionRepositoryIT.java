@@ -26,6 +26,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CreateMemoryRequest;
@@ -33,10 +35,15 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.DeleteMemor
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStatus;
 
+import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.session.DefaultSessionService;
 import org.springframework.ai.session.EventFilter;
 import org.springframework.ai.session.SessionEvent;
+import org.springframework.ai.session.advisor.IdempotentSessionEventIdGenerator;
+import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,6 +56,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Tag("integration")
 @EnabledIfEnvironmentVariable(named = "AGENTCORE_IT", matches = "true")
 class AgentCoreSessionRepositoryIT {
+
+	private static final Logger logger = LoggerFactory.getLogger(AgentCoreSessionRepositoryIT.class);
 
 	private static BedrockAgentCoreClient dataClient;
 
@@ -127,28 +136,127 @@ class AgentCoreSessionRepositoryIT {
 
 		// createdAt must be a real instant taken from the tail event timestamp, never
 		// the EPOCH synthetic sentinel, once events exist.
-		var session = repository.findById(sessionId).orElseThrow();
+		var session = repository.findById(sessionId);
+		assertThat(session).isNotNull();
 		assertThat(session.createdAt()).isNotNull().isAfter(Instant.EPOCH);
 
 		repository.delete(sessionId);
 	}
 
 	@Test
-	void replaceEventsIsUnsupported() {
-		// replaceEvents throws before any AWS call: AgentCore has no transactional
-		// replace and no compare-and-set, so the repository refuses to rewrite the log.
-		String sessionId = "alice-it:replace-" + System.nanoTime();
-		List<SessionEvent> replacement = List.of(SessionEvent.builder()
+	void findByIdUnknownSessionReturnsNull() {
+		assertThat(repository.findById("alice-it:missing-" + System.nanoTime())).isNull();
+	}
+
+	@Test
+	void compactEventsIsUnsupported() {
+		// compactEvents throws before any AWS call: AgentCore events are immutable and
+		// the log has no compare-and-set, so the repository refuses to rewrite the log.
+		String sessionId = "alice-it:compact-" + System.nanoTime();
+		List<SessionEvent> retained = List.of(SessionEvent.builder()
 			.sessionId(sessionId)
-			.message(UserMessage.builder().text("replacement-1").build())
+			.message(UserMessage.builder().text("summary-1").build())
 			.build());
 
-		assertThatThrownBy(() -> repository.replaceEvents(sessionId, replacement))
+		assertThatThrownBy(() -> repository.compactEvents(sessionId, List.of(), retained, 1L))
 			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("replaceEvents is unsupported");
-		assertThatThrownBy(() -> repository.replaceEvents(sessionId, replacement, 1L))
-			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("replaceEvents is unsupported");
+			.hasMessageContaining("compactEvents is unsupported");
+		assertThat(repository.findEvents(sessionId, EventFilter.all())).isEmpty();
+	}
+
+	// ==================== appendEvent idempotency (clientToken) ====================
+	// These pin the AgentCore behavior that the appendEvent Javadoc and the README
+	// divergence table describe. A failure here means the documentation is wrong, not
+	// only the code: update both together.
+
+	@Test
+	void retriedAppendWithTheSameIdStoresOneEvent() {
+		// A retry rebuilds the event: fresh Message, later timestamp, same id.
+		String sessionId = "alice-it:retry-" + System.nanoTime();
+		Instant first = Instant.now().minusSeconds(10);
+		UserMessage original = UserMessage.builder().text("hello").build();
+		UserMessage retried = UserMessage.builder().text("hello").build();
+
+		repository.appendEvent(event("evt-retry", sessionId, first, original));
+		repository.appendEvent(event("evt-retry", sessionId, first.plusSeconds(5), retried));
+
+		List<SessionEvent> events = repository.findEvents(sessionId, EventFilter.all());
+		logger.info("Retried append: stored {} event(s); original eventId {}, retried eventId {}", events.size(),
+				original.getMetadata().get(AgentCoreSessionRepository.EVENT_ID_METADATA_KEY),
+				retried.getMetadata().get(AgentCoreSessionRepository.EVENT_ID_METADATA_KEY));
+		assertThat(events).hasSize(1);
+		assertThat(events.get(0).getMessage().getText()).isEqualTo("hello");
+
+		repository.delete(sessionId);
+	}
+
+	@Test
+	void sameIdWithDifferentTextIsIgnoredWithoutAnError() {
+		// The token deliberately excludes the payload, and the CreateEvent reference says
+		// a repeated token is ignored without an error. If AgentCore instead rejects a
+		// mismatched payload, appendEvent throws a StorageException here and the
+		// "Idempotency (best effort)" Javadoc must say so.
+		String sessionId = "alice-it:mismatch-" + System.nanoTime();
+		Instant first = Instant.now().minusSeconds(10);
+		repository.appendEvent(event("evt-mismatch", sessionId, first, UserMessage.builder().text("hello").build()));
+
+		repository.appendEvent(
+				event("evt-mismatch", sessionId, first.plusSeconds(5), UserMessage.builder().text("goodbye").build()));
+
+		assertThat(repository.findEvents(sessionId, EventFilter.all())).extracting((e) -> e.getMessage().getText())
+			.containsExactly("hello");
+
+		repository.delete(sessionId);
+	}
+
+	@Test
+	void reappendAfterDeleteWithTheSameIdIsIgnored() {
+		// Documented divergence: AgentCore still remembers the token after the event is
+		// deleted, so reusing a sessionId with the same event ids loses those messages.
+		String sessionId = "alice-it:reuse-" + System.nanoTime();
+		repository.appendEvent(event("evt-reuse", sessionId, null, UserMessage.builder().text("hello").build()));
+		repository.delete(sessionId);
+		assertThat(repository.findEvents(sessionId, EventFilter.all())).isEmpty();
+
+		repository.appendEvent(event("evt-reuse", sessionId, null, UserMessage.builder().text("hello").build()));
+
+		List<SessionEvent> events = repository.findEvents(sessionId, EventFilter.all());
+		logger.info("Re-append after delete: stored {} event(s)", events.size());
+		assertThat(events).isEmpty();
+	}
+
+	@Test
+	void idempotentAdvisorRetryStoresOneUserEvent() {
+		String sessionId = "alice-it:advisor-" + System.nanoTime();
+		IdempotentSessionEventIdGenerator ids = new IdempotentSessionEventIdGenerator();
+		SessionMemoryAdvisor advisor = SessionMemoryAdvisor
+			.builder(DefaultSessionService.builder().sessionRepository(repository).build())
+			.requestEventIdGenerator(ids)
+			.responseEventIdGenerator(ids)
+			.build();
+
+		advisor.before(userTurn(sessionId, "book a table"), null);
+		advisor.before(userTurn(sessionId, "book a table"), null);
+
+		assertThat(repository.findEvents(sessionId, EventFilter.all())).extracting((e) -> e.getMessage().getText())
+			.containsExactly("book a table");
+
+		repository.delete(sessionId);
+	}
+
+	private static SessionEvent event(String id, String sessionId, Instant timestamp, UserMessage message) {
+		SessionEvent.Builder builder = SessionEvent.builder().id(id).sessionId(sessionId).message(message);
+		if (timestamp != null) {
+			builder.timestamp(timestamp);
+		}
+		return builder.build();
+	}
+
+	private static ChatClientRequest userTurn(String sessionId, String text) {
+		return ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage(text))))
+			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId)
+			.build();
 	}
 
 }

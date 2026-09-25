@@ -15,7 +15,7 @@ For quick start and usage examples, see the [main README](../README.md#agentcore
 ## Session API (spring-ai-session, incubating)
 
 Since 2.2.0 the module ships an opt-in bean stack backed by the community
-`org.springaicommunity:spring-ai-session-management` artifact. When enabled, four beans
+`org.springaicommunity:spring-ai-session` artifact (0.8.x). When enabled, four beans
 are added to the context: `AgentCoreSessionRepository` (implements
 `org.springframework.ai.session.SessionRepository`), `DefaultSessionService`,
 `SessionMemoryAdvisor`, and `AgentCoreSessionMemory` (bundles the session advisor with
@@ -37,7 +37,7 @@ The remaining `agentcore.memory.session.*` properties (`total-events-limit`, `pa
 `ignore-unknown-roles`, `default-session`) are optional session-scoped overrides; when
 unset they fall back to the `agentcore.memory.short-term.*` (then legacy) values.
 
-**Required dependency.** The memory module declares `spring-ai-session-management` as an
+**Required dependency.** The memory module declares `spring-ai-session` as an
 `optional` dependency, so consumers on the Session API path add it to their own
 `pom.xml`. If the artifact is missing while `agentcore.memory.session.enabled=true` is
 set, the module logs a startup WARN and creates no session beans.
@@ -45,7 +45,7 @@ set, the module logs a startup WARN and creates no session beans.
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-session-management</artifactId>
+    <artifactId>spring-ai-session</artifactId>
 </dependency>
 ```
 
@@ -68,6 +68,39 @@ than pinning it inline:
     </dependencies>
 </dependencyManagement>
 ```
+
+**Upgrading from spring-ai-session-management.** This release moves from
+`org.springaicommunity:spring-ai-session-management` 0.5.0 to
+`org.springaicommunity:spring-ai-session` 0.8.0. The artifact was renamed upstream in
+0.6.0 but still ships the `org.springframework.ai.session` packages, so the two jars
+cannot be mixed. To upgrade:
+
+1. Import `spring-ai-session-bom` 0.8.0, replace the `spring-ai-session-management`
+   dependency with `spring-ai-session`, and remove every old declaration, including
+   transitive ones (check with `mvn dependency:tree`).
+2. Update code that calls `AgentCoreSessionRepository` directly. `findById` returns
+   `null` instead of `Optional.empty()` for a session without events, and
+   `replaceEvents` is gone (0.8.0 replaces it with `compactEvents`, which this repository
+   rejects).
+3. Keep compaction off, as before. On a session whose turns persisted nothing (blank,
+   tool-only or unknown-role messages), a configured compaction now fails with
+   `IllegalArgumentException("Session not found: ...")` before it reaches the
+   configuration guidance.
+4. Note the new advisor order. The auto-configured `SessionMemoryAdvisor` now runs at
+   `Ordered.HIGHEST_PRECEDENCE + 200` instead of the upstream default
+   `HIGHEST_PRECEDENCE + 1000`, so it wraps the tool loop (see **Tool calling** below).
+   Without tools the prompt only changes if you have advisors ordered between those two
+   values. With tools, each call now stores only the user message and the final answer;
+   before, it also stored any text the model sent with a tool call.
+   A `SessionMemoryAdvisor` you build yourself keeps the upstream default unless you set
+   `.order(...)`.
+
+The `AgentCoreSessionRepository` constructor checks the classpath once. It fails with an
+`IllegalStateException` that names the fix when `spring-ai-session-management`, two
+different `spring-ai-session` versions, or a Session API that does not match 0.8.x is
+present, instead of failing on the first request with `NoSuchMethodError` or
+`AbstractMethodError`. A `spring-ai-session` version outside 0.8.x whose API still matches
+only logs a WARN, because pre-1.0 minor releases have changed the SPI every time so far.
 
 **Usage.** `SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY` equals `ChatMemory.CONVERSATION_ID`,
 so the same conversation-id constant works for both stacks:
@@ -105,10 +138,51 @@ context key.
 
 **Reads and writes.** The event log is append-only: `appendEvent` and `delete` are the
 only write paths, synthetic events (framework generated, for example compaction summaries)
-are never persisted, and both `replaceEvents` variants and `getEventVersion` throw
-`UnsupportedOperationException` (see the table below). `findEvents` pushes
-`EventFilter.branch()` down to AgentCore and stops paginating early for plain `lastN`
-queries.
+are never persisted, and `compactEvents` and `getEventVersion` throw
+`UnsupportedOperationException` (see the table below). To bound the context sent to
+the model, give the advisor a read window instead of compaction and let AgentCore
+long-term memory extraction carry older facts. Define your own `SessionMemoryAdvisor`
+bean, which replaces the auto-configured one, and keep the module's order on it:
+
+```java
+@Bean
+SessionMemoryAdvisor sessionMemoryAdvisor(SessionService sessionService) {
+    return SessionMemoryAdvisor.builder(sessionService)
+        .eventFilter(EventFilter.lastN(20))
+        .order(AgentCoreSessionRepositoryAutoConfiguration.SESSION_MEMORY_ADVISOR_ORDER)
+        .build();
+}
+```
+
+`total-events-limit` is a coarser cap. It applies to every read without `lastN`,
+including keyword and pattern searches and `CrossSessionRecallTools`, which then see only
+the newest events of each session and silently miss older matches. Do not configure a
+`compactionTrigger` or `compactionStrategy` on `SessionMemoryAdvisor` with this
+repository: the compaction runs after the turn has been persisted and the model has
+answered, and then fails. `findEvents` pushes `EventFilter.branch()` down to AgentCore,
+applies every other `EventFilter` predicate (time range, message types, `keyword`,
+`keywords`/`matchMode`, `pattern`, `excludeArchived`) client-side, and stops paginating
+early for plain `lastN` queries. Keyword and pattern searches without `lastN` read the
+whole session log (up to `total-events-limit`), and `CrossSessionRecallTools` repeats
+that for every session of the user after a `ListSessions` scan, which also needs the
+`bedrock-agentcore:ListSessions` IAM permission.
+
+**Tool calling.** This repository stores message text only, so tool calls and tool
+results are never persisted or read back, and `SessionMemoryAdvisor` has to wrap the tool
+loop instead of running inside it. When a request has tools, the `ChatClient` registers a
+`ToolCallingAdvisor` at `Ordered.HIGHEST_PRECEDENCE + 300`. If a memory advisor is ordered
+after it, the `ChatClient` switches off the tool advisor's own conversation history and
+leaves each tool round to the memory advisor. At the upstream default order
+(`HIGHEST_PRECEDENCE + 1000`) every tool round would then be rebuilt from AgentCore, and
+the model would receive a tool result without the tool call that produced it, which chat
+APIs such as Bedrock Converse reject. Any text the model sent along with the tool call
+would also be stored as an extra assistant turn. The auto-configured advisor therefore
+uses `AgentCoreSessionRepositoryAutoConfiguration.SESSION_MEMORY_ADVISOR_ORDER`
+(`HIGHEST_PRECEDENCE + 200`). It loads the history and stores the user message and the
+final answer once per call, while the tool exchange stays in the prompt for the rounds of
+that call only. Any `SessionMemoryAdvisor` you build yourself, as a bean or inline, needs
+the same `.order(...)`, and so does a `ToolCallingAdvisor` you register explicitly: keep
+the session advisor's order below it.
 
 **Known limitations.** AgentCore imposes several behaviors that differ from the
 `SessionRepository` SPI. All are documented in Javadoc on `AgentCoreSessionRepository`:
@@ -118,10 +192,13 @@ queries.
 | `save(Session)` | no-op (no session-metadata store) | Metadata mutated on the `Session` (e.g. `session.withMetadata(...)`) is not persisted and will not reappear on `findById`. Do not use `save` for metadata persistence. |
 | `findByUserId(String)` | maps `userId` to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`, falling back to the `Instant.EPOCH` sentinel when the summary has none (the same fallback documented on the `Session.createdAt` row); unknown user yields an empty list. |
 | `findExpiredSessionIds(Instant)` | throws `UnsupportedOperationException` | Expiry is memory-level retention (`eventExpiryDuration`), not re-derivable per session; use `findByUserId(userId)` to enumerate a user's sessions. |
-| `replaceEvents(String, List)` | throws `UnsupportedOperationException` | AgentCore has no transactional replace or CAS; bound context via read-windowing (`totalEventsLimit`, `EventFilter.lastN`) and long-term memory extraction instead. |
-| `replaceEvents(String, List, long)` | throws `UnsupportedOperationException` | Same as above; the `expectedVersion` check cannot be made atomic without a server-side CAS. |
-| `getEventVersion(String)` | throws `UnsupportedOperationException` | Its only SPI purpose is supplying the `expectedVersion` for the versioned `replaceEvents`; a count would suggest an optimistic-lock capability the backend does not have. |
+| `findById(String)` | returns `null` when the session has no events | AgentCore has no notion of an empty session; the first `appendEvent` creates it. |
+| `compactEvents(String, List, List, long)` | throws `UnsupportedOperationException` | AgentCore events are immutable (nothing can be marked archived in place) and the log has no CAS, so the `expectedVersion` check cannot be made atomic; bound context via read-windowing (`EventFilter.lastN` on the advisor, or `totalEventsLimit`) and long-term memory extraction instead. Every event read back reports `isArchived() == false`. |
+| `getEventVersion(String)` | throws `UnsupportedOperationException` | Its only SPI purpose is supplying the `expectedVersion` for `compactEvents`; a count would suggest an optimistic-lock capability the backend does not have. `DefaultSessionService.compact` calls it first, so a configured compaction fails here. |
 | `appendEvent(SessionEvent)` | does not throw when session is unknown | First append implicitly creates the session server-side. |
+| `appendEvent(SessionEvent)` | idempotent by `SessionEvent.getId()`, best effort, expected rather than verified | The id feeds a deterministic CreateEvent `clientToken`. Per the CreateEvent API reference, AgentCore should then ignore a retry with the same id (for example with `IdempotentSessionEventIdGenerator`); the reference does not say what happens when the retry carries a different timestamp, and only the live `AgentCoreSessionRepositoryIT` checks it. If AgentCore rejects such a retry, it fails with `StorageException` and `IdempotentSessionEventIdGenerator` is unsafe with this repository. Unlike the SPI reference, AgentCore remembers tokens only for an undocumented window: a replay after it would be stored again, a re-append after `delete` inside it would be dropped, and with `IdempotentSessionEventIdGenerator` a user who repeats the same text in one session would be dropped inside it. The advisor's default random ids never collide. |
+| events read back (`findEvents`, advisor history) | ids derived from the AgentCore `eventId`, `null` branch, text only | No tool calls, media or custom metadata come back (only `agentcore.eventId`). Re-appending a loaded event with a rebuilt `Message` is not deduplicated. Branch reads rely on the server-side `EventFilter.forBranch` filter. |
+| `total-events-limit` | caps every read without `EventFilter.lastN` to the newest N events | Keyword and pattern searches and `CrossSessionRecallTools` silently miss older matches; bound the advisor's context with `EventFilter.lastN` instead. |
 | `Session.createdAt` | `findByUserId`: real instant from each `SessionSummary`; `findById`: the tail (most recent) event timestamp, without calling `ListSessions` | Either path falls back to the `Instant.EPOCH` sentinel when its source carries no timestamp; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
 | `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
 
@@ -147,17 +224,34 @@ See [issue #152](https://github.com/spring-ai-community/spring-ai-agentcore/issu
 
 ### Advisor Execution Order
 
-LTM advisors run **before** STM advisor (lower order = earlier execution):
+A lower order runs earlier and wraps every advisor after it. The STM advisors sit near
+`Ordered.HIGHEST_PRECEDENCE`, so they run **before** the LTM advisors:
 
 | Order | Advisor | Target | Purpose |
 |-------|---------|--------|---------|
+| `HIGHEST_PRECEDENCE + 200` | STM (`SessionMemoryAdvisor` on the Session API stack, `MessageChatMemoryAdvisor` on the ChatMemory stack) | Messages | Add conversation history, store the turn |
+| `HIGHEST_PRECEDENCE + 300` | `ToolCallingAdvisor` (added by the `ChatClient` when tools are configured) | Messages | Run the tool loop |
 | 100 | Semantic | System prompt | Add relevant facts |
-| 101 | User Preference | System prompt | Add preferences |
-| 102 | Summary | User prompt | Augment query with context |
-| 103 | Episodic | System prompt | Add past interactions |
-| 1000+ | STM (MessageChatMemoryAdvisor) | Messages | Add conversation history |
+| 200 | User Preference | System prompt | Add preferences |
+| 300 | Summary | User prompt | Augment query with context |
+| 400 | Episodic | System prompt | Add past interactions |
 
-**Why LTM before STM?** LTM enriches the prompt with persistent knowledge (facts, preferences) before STM adds recent conversation history. This ensures the model has full context: who the user is (LTM) + what was just discussed (STM).
+Both STM advisors wrap the tool loop, for the reason given under **Tool calling** above:
+AgentCore stores message text only, so an STM advisor ordered after the
+`ToolCallingAdvisor` would rebuild every tool round from storage and send the model a
+tool result without its tool call. Spring AI 2.0 already defaults `MessageChatMemoryAdvisor`
+to `HIGHEST_PRECEDENCE + 200`, so the auto-configured ChatMemory advisor needs no override;
+only `SessionMemoryAdvisor` (upstream default `HIGHEST_PRECEDENCE + 1000`) gets one. If
+you build either advisor yourself with `.order(...)`, keep it below
+`HIGHEST_PRECEDENCE + 300`. A `MessageChatMemoryAdvisor` ordered after it also stores any
+text sent with a tool call as an extra assistant turn, and with
+`ignore-unknown-roles=false` it fails the call with `IllegalStateException` on the tool
+result.
+
+STM stores the user message before any LTM advisor edits the prompt, so the long-term
+context reaches the model without being written to short-term memory. The LTM advisors
+sit inside the tool loop and fetch again on every tool round; each round starts from the
+prompt as it was before they ran, so the injected context is not duplicated.
 
 ### System Prompt vs User Prompt
 
@@ -391,7 +485,7 @@ void deleteByConversationId(String conversationId);
    - `bedrock-agentcore:ListEvents`
    - `bedrock-agentcore:CreateEvent`
    - `bedrock-agentcore:DeleteEvent`
-   - `bedrock-agentcore:ListSessions` (for `findByUserId` only; `findById` derives `createdAt` from the event tail and does not call `ListSessions`)
+   - `bedrock-agentcore:ListSessions` (for `findByUserId` and `CrossSessionRecallTools`; `findById` derives `createdAt` from the event tail and does not call `ListSessions`)
    - `bedrock-agentcore:RetrieveMemoryRecords` (for LTM)
 
 3. **Debug logging**:
