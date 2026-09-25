@@ -47,6 +47,7 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -465,6 +466,17 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
 				assertThat(advisors).hasSize(3);
 			});
+	}
+
+	@Test
+	@DisplayName("Short-term memory advisor is ordered outside the tool loop")
+	void shortTermMemoryAdvisorIsOrderedOutsideTheToolLoop() {
+		// The ChatClient registers its ToolCallingAdvisor at HIGHEST_PRECEDENCE + 300;
+		// MessageChatMemoryAdvisorToolLoopTests shows why the STM advisor must run first.
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP)
+			.run((context) -> assertThat(context.getBean(AgentCoreMemory.class).shortTermMemoryAdvisor.getOrder())
+				.isLessThan(Ordered.HIGHEST_PRECEDENCE + 300));
 	}
 
 	// ==================== Coexistence with Session API auto-config ====================
