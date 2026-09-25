@@ -36,14 +36,14 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
         <!--
-            The spring-ai-agentcore-memory module declares spring-ai-session-management
+            The spring-ai-agentcore-memory module declares spring-ai-session
             as an optional dependency, so consumers on the Session API path must add it
             explicitly. Version is managed by spring-ai-session-bom (imported by the
             examples parent pom).
         -->
         <dependency>
             <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-session-management</artifactId>
+            <artifactId>spring-ai-session</artifactId>
         </dependency>
         <dependency>
             <groupId>org.awaitility</groupId>

@@ -14,6 +14,14 @@ updates:
     labels:
       - "dependencies"
     groups:
+      # spring-ai-session is pre-1.0: every minor so far changed the
+      # SessionRepository SPI (0.5.0 to 0.8.0 also renamed the artifact), so its
+      # bumps get their own PR instead of riding along with safe updates. The
+      # group is listed first because a dependency joins the first group whose
+      # patterns match.
+      spring-ai-session:
+        patterns:
+          - "org.springaicommunity:spring-ai-session*"
       # Group patch/minor bumps into a single PR per ecosystem to reduce noise.
       spring:
         patterns:
@@ -56,7 +64,14 @@ updates:
       - "dependencies"
       - "examples"
     groups:
+      # Keep breaking pre-1.0 spring-ai-session bumps out of the catch-all
+      # examples group (see the root entry above).
+      spring-ai-session:
+        patterns:
+          - "org.springaicommunity:spring-ai-session*"
       examples:
+        exclude-patterns:
+          - "org.springaicommunity:spring-ai-session*"
         update-types:
           - "minor"
           - "patch"

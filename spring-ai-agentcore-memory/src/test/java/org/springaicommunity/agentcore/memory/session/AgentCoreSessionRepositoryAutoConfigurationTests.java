@@ -33,6 +33,7 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -80,6 +81,17 @@ class AgentCoreSessionRepositoryAutoConfigurationTests {
 				assertThat(context).hasSingleBean(SessionMemoryAdvisor.class);
 				assertThat(context).hasSingleBean(AgentCoreSessionMemory.class);
 			});
+	}
+
+	@Test
+	void sessionMemoryAdvisorIsOrderedOutsideTheToolLoop() {
+		// The ChatClient registers its ToolCallingAdvisor at HIGHEST_PRECEDENCE + 300;
+		// SessionMemoryAdvisorToolLoopTests shows why the session advisor must run first.
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true")
+			.run((context) -> assertThat(context.getBean(SessionMemoryAdvisor.class).getOrder())
+				.isEqualTo(AgentCoreSessionRepositoryAutoConfiguration.SESSION_MEMORY_ADVISOR_ORDER)
+				.isLessThan(Ordered.HIGHEST_PRECEDENCE + 300));
 	}
 
 	@Test
@@ -200,7 +212,8 @@ class AgentCoreSessionRepositoryAutoConfigurationTests {
 			.run((context) -> {
 				assertThat(context).hasNotFailed();
 				assertThat(output.getOut())
-					.contains("'org.springaicommunity:spring-ai-session-management' is not on the classpath");
+					.contains("'org.springaicommunity:spring-ai-session' is not on the classpath")
+					.contains("renamed from spring-ai-session-management");
 			});
 	}
 
