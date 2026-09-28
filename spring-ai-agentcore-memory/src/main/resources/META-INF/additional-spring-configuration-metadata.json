@@ -52,7 +52,7 @@
     {
       "name": "agentcore.memory.session.enabled",
       "type": "java.lang.Boolean",
-      "description": "Enable the Spring AI Session API bean stack (AgentCoreSessionRepository, DefaultSessionService, SessionMemoryAdvisor). When false (default) only the legacy ChatMemory stack is auto-configured. REQUIRES the optional dependency 'org.springaicommunity:spring-ai-session-management' on the classpath; without it, no session beans are created and a startup WARN is logged. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/152.",
+      "description": "Enable the Spring AI Session API bean stack (AgentCoreSessionRepository, DefaultSessionService, SessionMemoryAdvisor). When false (default) only the legacy ChatMemory stack is auto-configured. REQUIRES the optional dependency 'org.springaicommunity:spring-ai-session' (0.8.x; formerly 'spring-ai-session-management') on the classpath; without it, no session beans are created and a startup WARN is logged. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/152.",
       "defaultValue": false
     },
     {

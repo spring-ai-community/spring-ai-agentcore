@@ -8,7 +8,7 @@ A runnable Spring Boot example demonstrating the Spring AI **Session API** bean 
 ## What this example shows
 
 When `agentcore.memory.session.enabled=true` is set and the
-`spring-ai-session-management` artifact is on the classpath, the
+`spring-ai-session` artifact (0.8.x) is on the classpath, the
 `spring-ai-agentcore-memory` module auto-configures four beans:
 
 - `AgentCoreSessionRepository` (implements `org.springframework.ai.session.SessionRepository`)
@@ -24,14 +24,14 @@ Each request sets the session id via
 
 ## Required user-side dependency
 
-`spring-ai-agentcore-memory` declares `spring-ai-session-management` as an `optional`
+`spring-ai-agentcore-memory` declares `spring-ai-session` as an `optional`
 dependency, so consumers on the Session API path add it explicitly. This example does so
 in its `pom.xml`:
 
 ```xml
 <dependency>
     <groupId>org.springaicommunity</groupId>
-    <artifactId>spring-ai-session-management</artifactId>
+    <artifactId>spring-ai-session</artifactId>
 </dependency>
 ```
 
