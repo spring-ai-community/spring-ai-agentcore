@@ -1,4 +1,4 @@
-FROM --platform=linux/arm64 amazoncorretto:24-alpine
+FROM --platform=linux/arm64 amazoncorretto:27-alpine
 
 RUN addgroup -S appuser && adduser -S appuser -G appuser
 WORKDIR /app
