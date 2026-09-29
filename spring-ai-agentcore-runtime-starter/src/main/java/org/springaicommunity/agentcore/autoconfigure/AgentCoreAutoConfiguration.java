@@ -48,7 +48,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @Configuration
 @ConditionalOnClass({ AgentCoreInvocation.class, RestController.class })
-@Import({ AgentCorePingAutoConfiguration.class, AgentCoreActuatorAutoConfiguration.class, ThrottleConfiguration.class })
+@Import(ThrottleConfiguration.class)
 public class AgentCoreAutoConfiguration {
 
 	@Bean
