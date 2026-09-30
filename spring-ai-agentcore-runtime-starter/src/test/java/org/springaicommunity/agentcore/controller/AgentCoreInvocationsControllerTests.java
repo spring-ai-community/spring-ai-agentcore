@@ -21,6 +21,7 @@ import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.autoconfigure.AgentCoreAutoConfiguration;
+import org.springaicommunity.agentcore.autoconfigure.AgentCorePingAutoConfiguration;
 import org.springaicommunity.agentcore.exception.AgentCoreInvocationException;
 import org.springaicommunity.agentcore.ping.AgentCoreTaskTracker;
 import org.springaicommunity.agentcore.service.AgentCoreMethodInvoker;
@@ -44,7 +45,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = { AgentCoreInvocationsController.class })
-@Import({ AgentCoreAutoConfiguration.class, AgentCoreInvocationsControllerTests.TestConfig.class })
+@Import({ AgentCoreAutoConfiguration.class, AgentCorePingAutoConfiguration.class,
+		AgentCoreInvocationsControllerTests.TestConfig.class })
 class AgentCoreInvocationsControllerTests {
 
 	@Autowired

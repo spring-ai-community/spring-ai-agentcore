@@ -33,8 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AgentCoreAutoConfigurationTests {
 
-	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
-		.withConfiguration(AutoConfigurations.of(AgentCoreAutoConfiguration.class));
+	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner().withConfiguration(
+			AutoConfigurations.of(AgentCoreAutoConfiguration.class, AgentCorePingAutoConfiguration.class));
 
 	@Test
 	void shouldCreateAllBeansWhenAgentCoreInvocationIsPresent() {

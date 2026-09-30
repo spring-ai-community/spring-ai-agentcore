@@ -29,11 +29,15 @@ import org.springframework.context.annotation.Bean;
 
 /**
  * Auto-configuration for AgentCore Actuator integration. Only loaded when Spring Boot
- * Actuator is on the classpath.
+ * Actuator is on the classpath. Ordered after Spring Boot's health endpoint
+ * auto-configuration so that the {@link HealthEndpoint} bean is visible, and before
+ * {@link AgentCorePingAutoConfiguration} so that the static fallback does not win.
  *
  * @author Andrei Shakirin
  */
-@AutoConfiguration
+@AutoConfiguration(
+		afterName = "org.springframework.boot.health.autoconfigure.actuate.endpoint.HealthEndpointAutoConfiguration",
+		before = AgentCorePingAutoConfiguration.class)
 @ConditionalOnClass(HealthEndpoint.class)
 public class AgentCoreActuatorAutoConfiguration {
 
