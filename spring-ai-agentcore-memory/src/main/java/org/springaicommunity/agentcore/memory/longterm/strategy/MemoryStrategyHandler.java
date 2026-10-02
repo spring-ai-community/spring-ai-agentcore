@@ -25,7 +25,6 @@ import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRe
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 
 /**
@@ -83,7 +82,7 @@ public interface MemoryStrategyHandler {
 
 	/**
 	 * Default injection helper. Attaches {@code context} to the system message (creating
-	 * one if missing) or replaces the user message, per {@link #target()}.
+	 * one if missing) or replaces the current (last) user message, per {@link #target()}.
 	 * Implementations normally don't need to override this.
 	 * @param request the chat client request being processed
 	 * @param context the rendered memory context
@@ -144,17 +143,19 @@ public interface MemoryStrategyHandler {
 		return request.mutate().prompt(new Prompt(messages, request.prompt().getOptions())).build();
 	}
 
+	/**
+	 * Replaces the text of the current (last) user message only. Earlier user messages
+	 * belong to the conversation history and must stay unchanged; media and metadata of
+	 * the current message are kept.
+	 * @param request the chat client request being processed
+	 * @param newUserText the new text of the current user message
+	 * @return the request with the current user message replaced
+	 */
 	private static ChatClientRequest replaceUserMessage(ChatClientRequest request, String newUserText) {
-		List<Message> messages = new ArrayList<>();
-		for (Message msg : request.prompt().getInstructions()) {
-			if (msg instanceof UserMessage) {
-				messages.add(new UserMessage(newUserText));
-			}
-			else {
-				messages.add(msg);
-			}
-		}
-		return request.mutate().prompt(new Prompt(messages, request.prompt().getOptions())).build();
+		return request.mutate()
+			.prompt(request.prompt()
+				.augmentUserMessage((userMessage) -> userMessage.mutate().text(newUserText).build()))
+			.build();
 	}
 
 	/** Where the formatted memory context is attached to the outgoing prompt. */

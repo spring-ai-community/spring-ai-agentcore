@@ -34,6 +34,8 @@ import org.springaicommunity.agentcore.memory.longterm.strategy.UserPreferenceMe
 import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -197,6 +199,28 @@ class AgentCoreLongTermMemoryAdvisorTests {
 		assertThat(messages).hasSize(1);
 		assertThat(messages.get(0)).isInstanceOf(UserMessage.class);
 		assertThat(((UserMessage) messages.get(0)).getText()).contains("We discussed quantum physics.", "Continue");
+	}
+
+	@Test
+	void summaryReplacesOnlyTheCurrentUserMessageAndKeepsHistory() {
+		AgentCoreLongTermMemoryAdvisor advisor = this.summaryAdvisor("sum-1", SESSION_NS, "Prior session summary");
+		given(this.retriever.searchMemories(eq("sum-1"), eq("user-1"), eq("session-1"), eq("Continue"), anyInt(),
+				eq(SESSION_NS)))
+			.willReturn(List.of(new MemoryRecord("1", "We discussed quantum physics.", 0.9)));
+		ChatClientRequest request = ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage("Tell me about quantum physics"),
+					new AssistantMessage("Quantum physics studies matter at small scales."),
+					new UserMessage("Continue"))))
+			.context(Map.of(ChatMemory.CONVERSATION_ID, "user-1:session-1"))
+			.build();
+
+		advisor.adviseCall(request, this.chain);
+
+		List<Message> messages = this.captureEnrichedPrompt().getInstructions();
+		assertThat(messages).hasSize(3);
+		assertThat(messages.get(0).getText()).isEqualTo("Tell me about quantum physics");
+		assertThat(messages.get(1).getText()).isEqualTo("Quantum physics studies matter at small scales.");
+		assertThat(messages.get(2).getText()).contains("We discussed quantum physics.", "Continue");
 	}
 
 	// ------------------------------------------------------------------
