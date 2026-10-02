@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.memory;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,20 +26,31 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryAdvisor;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryNamespace;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryRetriever.MemoryRecord;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyType;
+import org.springaicommunity.agentcore.memory.longterm.strategy.SummaryMemoryStrategyHandler;
 import org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepository;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.ChatClientRequest;
+import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.api.CallAdvisor;
+import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.Ordered;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -232,6 +244,80 @@ public abstract class AgentCoreMemoryIT {
 		}
 
 		System.out.println(BOLD + "===================" + RESET + "\n");
+	}
+
+	@Test
+	@Order(3)
+	@DisplayName("Should keep STM history when the summary advisor augments the current question")
+	void shouldKeepHistoryWithSummaryAdvisor() {
+		var stmRepository = new AgentCoreShortTermMemoryRepository(memoryId, this.agentCoreClient, null, sessionId, 100,
+				true);
+		var chatMemory = MessageWindowChatMemory.builder()
+			.chatMemoryRepository(stmRepository)
+			.maxMessages(Integer.MAX_VALUE)
+			.build();
+		var ltmRetriever = new AgentCoreLongTermMemoryRetriever(this.agentCoreClient, memoryId);
+		String question = "What is my name?";
+
+		// The summary advisor must find a summary, otherwise there is nothing to inject.
+		// Records can be briefly unavailable while AgentCore consolidates, so wait.
+		await().atMost(Duration.ofMinutes(3))
+			.pollInterval(Duration.ofSeconds(15))
+			.until(() -> !ltmRetriever
+				.searchMemories(summaryStrategyId, actorId, sessionId, question, 3,
+						AgentCoreLongTermMemoryNamespace.SESSION.getPattern())
+				.isEmpty());
+
+		var summaryAdvisor = AgentCoreLongTermMemoryAdvisor.builder(ltmRetriever)
+			.memoryStrategy(AgentCoreLongTermMemoryStrategyType.SUMMARY)
+			.handler(SummaryMemoryStrategyHandler.builder()
+				.strategyId(summaryStrategyId)
+				.namespacePattern(AgentCoreLongTermMemoryNamespace.SESSION.getPattern())
+				.contextLabel(AgentCoreLongTermMemoryStrategyType.SUMMARY.contextLabel())
+				.build())
+			.build();
+		List<Prompt> prompts = new ArrayList<>();
+		var chatClient = ChatClient.builder(this.chatModel)
+			.defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build(), summaryAdvisor,
+					new PromptRecorder(prompts))
+			.build();
+
+		// Continues the session from shouldHaveConversationWithMemory, whose summary
+		// shouldConsolidateToLTM waited for.
+		this.sendMessage(chatClient, actorId + ":" + sessionId, question);
+
+		List<String> userTexts = prompts.get(0)
+			.getInstructions()
+			.stream()
+			.filter(UserMessage.class::isInstance)
+			.map(Message::getText)
+			.toList();
+		System.out.println(BOLD + "User messages sent to the model:" + RESET);
+		userTexts.forEach((text) -> System.out.println("  - " + text.replace("\n", " | ")));
+		assertThat(userTexts).hasSize(4);
+		assertThat(userTexts.subList(0, 3)).containsExactly(USER_MSG_1, USER_MSG_2, USER_MSG_3);
+		assertThat(userTexts.get(3)).contains(AgentCoreLongTermMemoryStrategyType.SUMMARY.contextLabel(), question);
+	}
+
+	/** Records the prompt that reaches the model, after all other advisors ran. */
+	private record PromptRecorder(List<Prompt> prompts) implements CallAdvisor {
+
+		@Override
+		public ChatClientResponse adviseCall(ChatClientRequest request, CallAdvisorChain chain) {
+			this.prompts.add(request.prompt());
+			return chain.nextCall(request);
+		}
+
+		@Override
+		public String getName() {
+			return "PromptRecorder";
+		}
+
+		@Override
+		public int getOrder() {
+			return Ordered.LOWEST_PRECEDENCE;
+		}
+
 	}
 
 	@SpringBootApplication(scanBasePackages = "org.springaicommunity.agentcore.memory")

@@ -233,7 +233,7 @@ A lower order runs earlier and wraps every advisor after it. The STM advisors si
 | `HIGHEST_PRECEDENCE + 300` | `ToolCallingAdvisor` (added by the `ChatClient` when tools are configured) | Messages | Run the tool loop |
 | 100 | Semantic | System prompt | Add relevant facts |
 | 200 | User Preference | System prompt | Add preferences |
-| 300 | Summary | User prompt | Augment query with context |
+| 300 | Summary | Current user message | Augment the current question with session summaries |
 | 400 | Episodic | System prompt | Add past interactions |
 
 Both STM advisors wrap the tool loop, for the reason given under **Tool calling** above:
@@ -249,7 +249,9 @@ text sent with a tool call as an extra assistant turn, and with
 result.
 
 STM stores the user message before any LTM advisor edits the prompt, so the long-term
-context reaches the model without being written to short-term memory. The LTM advisors
+context reaches the model without being written to short-term memory. The Summary advisor
+changes only the current (last) user message; the user messages of the history that STM
+added stay unchanged. The LTM advisors
 sit inside the tool loop and fetch again on every tool round; each round starts from the
 prompt as it was before they ran, so the injected context is not duplicated.
 
@@ -260,7 +262,7 @@ prompt as it was before they ran, so the injected context is not duplicated.
 | Semantic | System | Stable context about user, cacheable |
 | User Preference | System | Stable settings, cacheable |
 | Episodic | System | Background context, cacheable |
-| Summary | User | Query-specific augmentation, varies per request |
+| Summary | Current user message | Query-specific augmentation, varies per request |
 
 **Prompt Caching Benefits**: Facts, preferences, and episodic memories go to the system prompt because they're relatively stable across requests. With Bedrock's prompt caching (`cache-options.strategy: SYSTEM_AND_TOOLS`), the system prompt is cached and reused, reducing latency and cost. Only summaries augment the user prompt since they're query-specific.
 
