@@ -1,0 +1,4 @@
+# Optional: copy to terraform.tfvars (git-ignored) to change region or name prefix.
+# Privy credentials are passed as environment variables (TF_VAR_privy_*), see README.md step 1.
+region      = "us-east-1"
+name_prefix = "SpringAiPaymentsExample"

@@ -12,6 +12,7 @@ An open-source library that brings Amazon Bedrock AgentCore capabilities into Sp
 |--------|-------------|
 | [Runtime Starter](spring-ai-agentcore-runtime-starter/) | Auto-configures `/invocations` and `/ping` endpoints, SSE streaming, health checks, rate limiting |
 | [Identity](spring-ai-agentcore-identity/) | Workload tokens, API keys, OAuth 2.0 credentials, Runtime header integration, reactive propagation |
+| [Payments](spring-ai-agentcore-payments/) | x402 payments for paid APIs and content: paying tool wrapper, paid HTTP tool, payment session budgets |
 | [Memory](spring-ai-agentcore-memory/) | Short-term (conversation history) and long-term memory (semantic, preferences, summaries, episodic) |
 | [Browser](spring-ai-agentcore-browser/) | Web navigation, content extraction, screenshots, form interaction via Playwright |
 | [Code Interpreter](spring-ai-agentcore-code-interpreter/) | Secure Python/JavaScript/TypeScript execution with file retrieval |
@@ -124,6 +125,7 @@ See [examples/terraform/](examples/terraform/) for infrastructure-as-code with I
 | [spring-ai-identity-agentcore](examples/spring-ai-identity-agentcore/) | Ambient Runtime workload-token and API-key retrieval |
 | [spring-ai-extended-chat-client](examples/spring-ai-extended-chat-client/) | OAuth auth with per-user memory isolation |
 | [spring-ai-browser](examples/spring-ai-browser/) | Web browsing and screenshots |
+| [spring-ai-payments](examples/spring-ai-payments/) | Paying for x402 APIs: interceptor, `paidHttpRequest` tool and own integration |
 | [spring-ai-simple-chat-client](examples/spring-ai-simple-chat-client/) | Traditional Spring AI (without runtime starter) |
 | [spring-ai-reactive-runtime](examples/spring-ai-reactive-runtime/) | AgentCore runtime on a reactive (Netty) server with reactive throttling |
 
