@@ -28,9 +28,9 @@ The module is enabled by setting the payment manager ARN.
 | Property | Default | Description |
 |---|---|---|
 | `agentcore.payments.payment-manager-arn` | — | Payment manager ARN; enables the module |
-| `agentcore.payments.user-id` | — | Default user |
+| `agentcore.payments.user-id` | — | Fallback user for calls without one in the tool context or request attribute. Local runs and tests only: in production, every such call would pay from this user's wallet (logged as WARN at startup) |
 | `agentcore.payments.payment-instrument-id` | — | Default payment instrument (wallet) |
-| `agentcore.payments.payment-session-id` | — | Fixed payment session, for tests only; applications create sessions per conversation (see [Payment sessions](#payment-sessions-budgets)) |
+| `agentcore.payments.payment-session-id` | — | Fallback payment session, local runs and tests only (logged as WARN at startup); applications create sessions per conversation (see [Payment sessions](#payment-sessions-budgets)) |
 | `agentcore.payments.session.max-spend` | `1.00` | Budget in USD of sessions created by `PaymentSessionRegistry` |
 | `agentcore.payments.session.expiry` | `60m` | Lifetime of those sessions, 15 to 480 minutes |
 | `agentcore.payments.session.max-entries` | `10000` | Maximum number of sessions the registry remembers |
@@ -292,6 +292,15 @@ Test merchants on Base Sepolia: `https://sandbox.node4all.com/v1/x402-test` (AWS
 curl -u "$PRIVY_APP_ID:$PRIVY_APP_SECRET" -H "privy-app-id: $PRIVY_APP_ID" \
   "https://api.privy.io/v1/wallets/<privy wallet id>/transactions?chain=base_sepolia&asset=usdc"
 ```
+
+## Changes
+
+Changes against earlier snapshots of this preview module:
+
+- `paymentsToolCallbackProvider` (a `ToolCallbackProvider` bean) is replaced by the `AgentCorePaymentsTools` bean: use `chatClient.prompt().toolCallbacks(paymentsTools.toolCallbacks())`. It is not a `ToolCallbackProvider` bean, so the MCP server starter does not publish the paying tools.
+- `paidHttpRequest` is off by default; enable it with `agentcore.payments.paid-http-tool.enabled=true` and `agentcore.payments.paid-http-tool.allowed-hosts`.
+- `getPaymentInstrument`, `getPaymentInstrumentBalance` and `getPaymentSession` no longer accept instrument or session ids; they use the current `PaymentContext`.
+- `agentcore.payments.user-id` and `payment-session-id` are fallbacks for local runs and tests; a WARN is logged when they are set.
 
 ## Next steps
 

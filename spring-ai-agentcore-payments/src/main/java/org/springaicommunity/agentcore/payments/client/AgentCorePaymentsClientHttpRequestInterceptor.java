@@ -73,7 +73,9 @@ public class AgentCorePaymentsClientHttpRequestInterceptor implements ClientHttp
 	 * @param defaultContext supplies the payment context of requests without
 	 * {@link #PAYMENT_CONTEXT_ATTRIBUTE}
 	 * @param postPaymentDelay wait before sending the paid request, so that the signed
-	 * authorization is valid on chain
+	 * authorization is valid on chain. If the thread is interrupted during the wait, the
+	 * payment is already signed and counted against the session budget, but the paid
+	 * request is not sent
 	 */
 	public AgentCorePaymentsClientHttpRequestInterceptor(AgentCorePaymentsTemplate payments,
 			Supplier<PaymentContext> defaultContext, Duration postPaymentDelay) {

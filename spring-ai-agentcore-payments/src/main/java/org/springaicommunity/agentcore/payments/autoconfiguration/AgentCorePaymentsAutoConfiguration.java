@@ -88,6 +88,11 @@ public class AgentCorePaymentsAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	PaymentContextResolver paymentContextResolver(AgentCorePaymentsProperties properties) {
+		if (properties.userId() != null || properties.paymentSessionId() != null) {
+			logger.warn("agentcore.payments.user-id / payment-session-id are set: every payment without a user "
+					+ "or session in the tool context or request attribute uses them. "
+					+ "Intended for local runs and tests only.");
+		}
 		return new DefaultPaymentContextResolver(new PaymentContext(properties.userId(),
 				properties.paymentInstrumentId(), properties.paymentSessionId()));
 	}

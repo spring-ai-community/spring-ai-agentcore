@@ -49,8 +49,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class PaymentsAgent {
 
-	private static final String LOCAL_SESSION_ID = "local-session";
-
 	private final ChatClient chatClient;
 
 	private final PaymentSessionRegistry paymentSessions;
@@ -63,22 +61,26 @@ public class PaymentsAgent {
 
 	private final @Nullable String defaultUserId;
 
+	private final @Nullable String defaultSessionId;
+
 	PaymentsAgent(ChatClient.Builder chatClient, PaymentSessionRegistry paymentSessions,
 			MarketRecapTools marketRecapTools, FortuneTools fortuneTools,
 			AgentCorePaymentsTools paymentsTools,
-			@Value("${app.payments.default-user-id:#{null}}") @Nullable String defaultUserId) {
+			@Value("${app.payments.default-user-id:#{null}}") @Nullable String defaultUserId,
+			@Value("${app.payments.default-session-id:#{null}}") @Nullable String defaultSessionId) {
 		this.chatClient = chatClient.build();
 		this.paymentSessions = paymentSessions;
 		this.marketRecapTools = marketRecapTools;
 		this.fortuneTools = fortuneTools;
 		this.paymentsTools = paymentsTools;
 		this.defaultUserId = defaultUserId;
+		this.defaultSessionId = defaultSessionId;
 	}
 
 	@AgentCoreInvocation
 	public String invoke(PromptRequest request, AgentCoreContext context) {
-		String userId = this.userId(context);
-		String runtimeSessionId = valueOrDefault(context.getHeader(AgentCoreHeaders.SESSION_ID), LOCAL_SESSION_ID);
+		String userId = this.required(context, AgentCoreHeaders.USER_ID, this.defaultUserId);
+		String runtimeSessionId = this.required(context, AgentCoreHeaders.SESSION_ID, this.defaultSessionId);
 
 		// one budget per conversation: created on the first invocation, reused afterwards
 		String paymentSessionId = this.paymentSessions.getOrCreate(userId, runtimeSessionId);
@@ -92,13 +94,14 @@ public class PaymentsAgent {
 			.content();
 	}
 
-	private String userId(AgentCoreContext context) {
-		String userId = valueOrDefault(context.getHeader(AgentCoreHeaders.USER_ID), this.defaultUserId);
-		if (userId == null) {
-			throw new IllegalStateException("No AgentCore Runtime user header (" + AgentCoreHeaders.USER_ID
-					+ "); for local runs start with the 'local' profile and PAYMENT_USER_ID");
+	// header value, or the local-profile default; never a shared fallback in a deployment
+	private String required(AgentCoreContext context, String header, @Nullable String localDefault) {
+		String value = valueOrDefault(context.getHeader(header), localDefault);
+		if (value == null) {
+			throw new IllegalStateException(
+					"No AgentCore Runtime header " + header + "; for local runs start with the 'local' profile");
 		}
-		return userId;
+		return value;
 	}
 
 	// The request chooses the approach to compare them; a production agent uses a fixed set of tools.

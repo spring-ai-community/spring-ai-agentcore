@@ -78,7 +78,9 @@ public class PaymentToolCallback implements ToolCallback {
 	 * @param payments the payments template used to sign payments
 	 * @param contextResolver resolves user, instrument and session per call
 	 * @param postPaymentDelay wait before calling the tool with the payment, so that the
-	 * signed authorization is valid on chain
+	 * signed authorization is valid on chain. If the thread is interrupted during the
+	 * wait, the payment is already signed and counted against the session budget, but the
+	 * paid request is not sent
 	 */
 	public PaymentToolCallback(ToolCallback delegate, AgentCorePaymentsTemplate payments,
 			PaymentContextResolver contextResolver, Duration postPaymentDelay) {

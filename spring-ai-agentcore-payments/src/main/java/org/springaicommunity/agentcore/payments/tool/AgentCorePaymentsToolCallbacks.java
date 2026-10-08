@@ -76,6 +76,11 @@ public class AgentCorePaymentsToolCallbacks {
 
 	/**
 	 * Wraps all tools of a provider so that they pay for {@code 402} responses.
+	 * <p>
+	 * Do not register the result as a bean: Spring AI publishes
+	 * {@code ToolCallbackProvider} beans, for example through the MCP server starter,
+	 * which would offer the paying tools to outside clients. Pass it to the chat client
+	 * directly.
 	 * @param provider the tools to wrap
 	 * @return a provider of the paying tools
 	 */

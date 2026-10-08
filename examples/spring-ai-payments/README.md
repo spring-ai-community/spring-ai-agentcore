@@ -36,7 +36,7 @@ export PAYMENT_REGION=us-east-1                          # region of the payment
 mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-The `local` profile lets the agent pay as `PAYMENT_USER_ID` when the AgentCore Runtime user header is absent. Without it, requests without `X-Amzn-Bedrock-AgentCore-Runtime-User-Id` fail, so that a deployed agent never falls back to a shared wallet.
+The `local` profile lets the agent pay as `PAYMENT_USER_ID`, in one local conversation, when the AgentCore Runtime user and session headers are absent. Without it, such requests fail, so that a deployed agent never falls back to a shared wallet or budget.
 
 Send the requests in [`test_request.http`](test_request.http), or:
 

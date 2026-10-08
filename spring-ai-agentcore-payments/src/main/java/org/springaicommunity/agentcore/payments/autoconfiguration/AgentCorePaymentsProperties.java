@@ -28,10 +28,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Configuration properties for AgentCore Payments.
  *
  * @param paymentManagerArn the payment manager ARN; setting it enables the module
- * @param userId default user id
- * @param paymentInstrumentId default payment instrument id
- * @param paymentSessionId fixed payment session id, intended for tests; applications
- * create sessions per conversation, see {@code PaymentSessionRegistry}
+ * @param userId fallback user for calls without one in the tool context or request
+ * attribute, intended for local runs and tests: in production every such call would pay
+ * from this user's wallet
+ * @param paymentInstrumentId default payment instrument (wallet)
+ * @param paymentSessionId fallback payment session, intended for local runs and tests;
+ * applications create sessions per conversation, see {@code PaymentSessionRegistry}
  * @param agentName agent name sent with data plane calls
  * @param networkPreferences network identifiers used to choose between payment options,
  * most preferred first

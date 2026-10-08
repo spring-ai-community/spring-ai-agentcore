@@ -18,6 +18,7 @@ package org.springaicommunity.agentcore.payments.core;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -68,6 +69,11 @@ public class AgentCorePaymentsTemplate {
 	private static final Logger logger = LoggerFactory.getLogger(AgentCorePaymentsTemplate.class);
 
 	private static final Pattern PERMIT2_ALLOWANCE_LIMIT = Pattern.compile("[0-9]{1,78}");
+
+	/** Chains on which a wallet of a payment instrument network holds balances. */
+	private static final Map<String, List<BlockchainChainId>> CHAINS_BY_NETWORK = Map.of("ETHEREUM",
+			List.of(BlockchainChainId.BASE, BlockchainChainId.BASE_SEPOLIA, BlockchainChainId.ETHEREUM), "SOLANA",
+			List.of(BlockchainChainId.SOLANA, BlockchainChainId.SOLANA_DEVNET));
 
 	/** Start of the ProcessPayment error message when the session budget is exhausted. */
 	static final String INSUFFICIENT_BUDGET_MESSAGE = "insufficient budget for session";
@@ -182,7 +188,13 @@ public class AgentCorePaymentsTemplate {
 			BlockchainChainId chain, InstrumentBalanceToken token) {
 		Assert.notNull(chain, "chain must not be null");
 		Assert.notNull(token, "token must not be null");
-		String paymentConnectorId = this.getPaymentInstrument(userId, paymentInstrumentId).paymentConnectorId();
+		PaymentInstrument instrument = this.getPaymentInstrument(userId, paymentInstrumentId);
+		List<BlockchainChainId> chains = CHAINS_BY_NETWORK.get(instrumentNetwork(instrument));
+		if (chains != null && !chains.contains(chain)) {
+			throw new PaymentException("Chain " + chain + " does not match the network of payment instrument "
+					+ paymentInstrumentId + "; use one of " + chains);
+		}
+		String paymentConnectorId = instrument.paymentConnectorId();
 		return this.client.getPaymentInstrumentBalance((builder) -> builder.paymentManagerArn(this.paymentManagerArn)
 			.agentName(this.agentName)
 			.userId(userId)

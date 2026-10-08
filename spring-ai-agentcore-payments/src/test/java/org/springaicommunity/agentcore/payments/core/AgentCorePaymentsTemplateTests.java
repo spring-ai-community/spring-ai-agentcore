@@ -28,10 +28,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+import software.amazon.awssdk.services.bedrockagentcore.model.BlockchainChainId;
 import software.amazon.awssdk.services.bedrockagentcore.model.CryptoWalletNetwork;
 import software.amazon.awssdk.services.bedrockagentcore.model.CryptoX402PaymentOutput;
 import software.amazon.awssdk.services.bedrockagentcore.model.EmbeddedCryptoWallet;
 import software.amazon.awssdk.services.bedrockagentcore.model.GetPaymentInstrumentResponse;
+import software.amazon.awssdk.services.bedrockagentcore.model.InstrumentBalanceToken;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInstrument;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInstrumentDetails;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentOutput;
@@ -48,6 +50,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 /**
  * Tests for {@link AgentCorePaymentsTemplate}.
@@ -143,6 +147,66 @@ class AgentCorePaymentsTemplateTests {
 		assertThat(this.capturedProcessPayments()).extracting(ProcessPaymentRequest::clientToken)
 			.first()
 			.isEqualTo("purchase-1");
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void mapsExpiredSessionToPaymentSessionExpiredException() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class)))
+			.willThrow(ValidationException.builder().message("Payment session session-1 has expired").build());
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+
+		assertThatExceptionOfType(PaymentSessionExpiredException.class).isThrownBy(() -> template
+			.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void looksUpInstrumentNetworkAgainAfterAFailedPayment() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(ProcessPaymentResponse.builder().build())
+			.willReturn(paymentWithProof());
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		PaymentRequired paymentRequired = X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY);
+
+		assertThatExceptionOfType(PaymentException.class)
+			.isThrownBy(() -> template.generatePaymentHeader(CONTEXT, paymentRequired));
+		template.generatePaymentHeader(CONTEXT, paymentRequired);
+
+		then(this.client).should(times(2)).getPaymentInstrument(any(Consumer.class));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void grantsPermit2AllowanceOnlyForUptoScheme() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(paymentWithProof());
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN, null,
+				NetworkPreferences.DEFAULT, "1000000");
+
+		template.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
+				{"x402Version":1,"accepts":[
+				  {"scheme":"upto","network":"base-sepolia","maxAmountRequired":"5000"}
+				]}"""));
+		template.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY));
+
+		assertThat(this.capturedProcessPayments())
+			.extracting((request) -> request.paymentInput().cryptoX402().permit2AllowanceLimit())
+			.containsExactly("1000000", null);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void rejectsBalanceQueryOnChainOfAnotherNetwork() {
+		this.givenEthereumInstrument();
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+
+		assertThatExceptionOfType(PaymentException.class)
+			.isThrownBy(() -> template.getPaymentInstrumentBalance("user-1", "instrument-1", BlockchainChainId.SOLANA,
+					InstrumentBalanceToken.USDC))
+			.withMessageContaining("BASE_SEPOLIA");
+		then(this.client).should(never()).getPaymentInstrumentBalance(any(Consumer.class));
 	}
 
 	@Test
