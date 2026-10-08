@@ -36,8 +36,9 @@ import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.util.Assert;
 
 /**
- * Tools that let the model inspect its payment instruments and remaining session budget.
- * User, instrument and session default to the resolved {@link PaymentContext}.
+ * Tools that let the model inspect its payment instrument and remaining session budget.
+ * They only read the user, instrument and session of the resolved {@link PaymentContext};
+ * the model cannot name other instruments or sessions.
  *
  * @author Andrei Shakirin
  */
@@ -68,11 +69,10 @@ public class PaymentQueryTools {
 		this.contextResolver = contextResolver;
 	}
 
-	public InstrumentInfo getPaymentInstrument(InstrumentRequest request, @Nullable ToolContext toolContext) {
+	public InstrumentInfo getPaymentInstrument(EmptyRequest request, @Nullable ToolContext toolContext) {
 		PaymentContext context = this.contextResolver.resolve(toolContext);
-		String instrumentId = (request.paymentInstrumentId() != null) ? request.paymentInstrumentId()
-				: context.requirePaymentInstrumentId();
-		return InstrumentInfo.from(this.payments.getPaymentInstrument(context.requireUserId(), instrumentId));
+		return InstrumentInfo
+			.from(this.payments.getPaymentInstrument(context.requireUserId(), context.requirePaymentInstrumentId()));
 	}
 
 	public List<InstrumentInfo> listPaymentInstruments(EmptyRequest request, @Nullable ToolContext toolContext) {
@@ -86,8 +86,7 @@ public class PaymentQueryTools {
 
 	public BalanceInfo getPaymentInstrumentBalance(BalanceRequest request, @Nullable ToolContext toolContext) {
 		PaymentContext context = this.contextResolver.resolve(toolContext);
-		String instrumentId = (request.paymentInstrumentId() != null) ? request.paymentInstrumentId()
-				: context.requirePaymentInstrumentId();
+		String instrumentId = context.requirePaymentInstrumentId();
 		BlockchainChainId chain = BlockchainChainId.fromValue(request.chain().trim().toUpperCase(Locale.ROOT));
 		InstrumentBalanceToken token = InstrumentBalanceToken
 			.fromValue((request.token() != null) ? request.token().trim().toUpperCase(Locale.ROOT) : "USDC");
@@ -103,20 +102,10 @@ public class PaymentQueryTools {
 				tokenBalance.tokenAsString(), tokenBalance.amount(), tokenBalance.decimals());
 	}
 
-	public SessionInfo getPaymentSession(SessionRequest request, @Nullable ToolContext toolContext) {
+	public SessionInfo getPaymentSession(EmptyRequest request, @Nullable ToolContext toolContext) {
 		PaymentContext context = this.contextResolver.resolve(toolContext);
-		String sessionId = (request.paymentSessionId() != null) ? request.paymentSessionId()
-				: context.requirePaymentSessionId();
-		return SessionInfo.from(this.payments.getPaymentSession(context.requireUserId(), sessionId));
-	}
-
-	/**
-	 * Input of the getPaymentInstrument tool.
-	 *
-	 * @param paymentInstrumentId the instrument id, the current one if not set
-	 */
-	public record InstrumentRequest(
-			@JsonPropertyDescription("Instrument id, current one if not set") @Nullable String paymentInstrumentId) {
+		return SessionInfo
+			.from(this.payments.getPaymentSession(context.requireUserId(), context.requirePaymentSessionId()));
 	}
 
 	/**
@@ -128,23 +117,12 @@ public class PaymentQueryTools {
 	/**
 	 * Input of the getPaymentInstrumentBalance tool.
 	 *
-	 * @param paymentInstrumentId the instrument id, the current one if not set
 	 * @param chain the chain, for example BASE_SEPOLIA, BASE, SOLANA, SOLANA_DEVNET
 	 * @param token the token, USDC if not set
 	 */
 	public record BalanceRequest(
-			@JsonPropertyDescription("Instrument id, current one if not set") @Nullable String paymentInstrumentId,
 			@JsonProperty(required = true) @JsonPropertyDescription(CHAIN_DESCRIPTION) String chain,
 			@JsonPropertyDescription("Token, USDC if not set") @Nullable String token) {
-	}
-
-	/**
-	 * Input of the getPaymentSession tool.
-	 *
-	 * @param paymentSessionId the session id, the current one if not set
-	 */
-	public record SessionRequest(
-			@JsonPropertyDescription("Payment session id, the current one if not set") @Nullable String paymentSessionId) {
 	}
 
 	/**

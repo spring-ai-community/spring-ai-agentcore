@@ -16,6 +16,7 @@
 
 package org.springaicommunity.agentcore.payments.core;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -77,7 +78,7 @@ public class PaymentSessionRegistry {
 	PaymentSessionRegistry(AgentCorePaymentsTemplate payments, String defaultMaxSpendUsd, Duration defaultExpiry,
 			long maximumSize, Ticker ticker) {
 		Assert.notNull(payments, "payments must not be null");
-		Assert.hasText(defaultMaxSpendUsd, "defaultMaxSpendUsd must not be empty");
+		validateMaxSpend(defaultMaxSpendUsd);
 		validateExpiry(defaultExpiry);
 		this.payments = payments;
 		this.defaultMaxSpendUsd = defaultMaxSpendUsd;
@@ -125,8 +126,10 @@ public class PaymentSessionRegistry {
 	public String getOrCreate(String userId, String runtimeSessionId, String alias, String maxSpendUsd,
 			Duration expiry) {
 		Key key = Key.of(userId, runtimeSessionId, alias);
+		validateMaxSpend(maxSpendUsd);
 		validateExpiry(expiry);
-		return this.sessions.get(key, (k) -> this.create(k, maxSpendUsd, expiry)).paymentSessionId();
+		Entry entry = this.sessions.get(key, (k) -> this.create(k, maxSpendUsd, expiry));
+		return this.keepIfValid(key, entry);
 	}
 
 	/**
@@ -152,9 +155,10 @@ public class PaymentSessionRegistry {
 	 */
 	public String renew(String userId, String runtimeSessionId, String alias, String maxSpendUsd, Duration expiry) {
 		Key key = Key.of(userId, runtimeSessionId, alias);
+		validateMaxSpend(maxSpendUsd);
 		validateExpiry(expiry);
 		Entry entry = this.sessions.asMap().compute(key, (k, previous) -> this.create(k, maxSpendUsd, expiry));
-		return entry.paymentSessionId();
+		return this.keepIfValid(key, entry);
 	}
 
 	/**
@@ -169,10 +173,22 @@ public class PaymentSessionRegistry {
 			.removeIf((key) -> key.userId().equals(userId) && key.runtimeSessionId().equals(runtimeSessionId));
 	}
 
+	// a session reported as (almost) expired, for example due to clock skew, is returned
+	// once but not remembered, so the next call creates a new one
+	private String keepIfValid(Key key, Entry entry) {
+		if (entry.lifetime().isZero()) {
+			this.sessions.asMap().remove(key, entry);
+		}
+		return entry.paymentSessionId();
+	}
+
 	private Entry create(Key key, String maxSpendUsd, Duration expiry) {
 		PaymentSession session = this.payments.createPaymentSession(key.userId(), maxSpendUsd,
 				(int) expiry.toMinutes());
-		return new Entry(session.paymentSessionId(), lifetime(session, expiry).minus(EXPIRY_MARGIN));
+		Duration lifetime = lifetime(session, expiry).minus(EXPIRY_MARGIN);
+		// a session reported as (almost) expired, for example due to clock skew, is not
+		// kept
+		return new Entry(session.paymentSessionId(), (lifetime.isNegative()) ? Duration.ZERO : lifetime);
 	}
 
 	// Remaining lifetime of a new session: from the service's creation time and expiry
@@ -184,6 +200,19 @@ public class PaymentSessionRegistry {
 		Instant expiresAt = session.createdAt().plus(Duration.ofMinutes(session.expiryTimeInMinutes()));
 		Duration remaining = Duration.between(Instant.now(), expiresAt);
 		return (remaining.compareTo(requestedExpiry) < 0) ? remaining : requestedExpiry;
+	}
+
+	private static void validateMaxSpend(String maxSpendUsd) {
+		Assert.hasText(maxSpendUsd, "maxSpendUsd must not be empty");
+		BigDecimal amount;
+		try {
+			amount = new BigDecimal(maxSpendUsd.trim());
+		}
+		catch (NumberFormatException ex) {
+			throw new IllegalArgumentException(
+					"maxSpendUsd must be a decimal amount in USD, got '" + maxSpendUsd + "'");
+		}
+		Assert.isTrue(amount.signum() > 0, "maxSpendUsd must be greater than 0, got '" + maxSpendUsd + "'");
 	}
 
 	private static void validateExpiry(Duration expiry) {

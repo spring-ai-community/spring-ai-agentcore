@@ -16,10 +16,12 @@
 
 package org.springaicommunity.agentcore.payments.tool;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
@@ -45,8 +47,10 @@ import org.springframework.web.client.RestClient;
  * {@code {"statusCode":...,"headers":{...},"body":...}}. The {@link RestClient} is
  * expected to carry {@link AgentCorePaymentsClientHttpRequestInterceptor}, which pays for
  * {@code 402} responses; the payment context of the tool call is passed to it as a
- * request attribute. HTTP error statuses and connection failures are reported, not
- * thrown; payment failures are thrown.
+ * request attribute. Only hosts on the allowlist are called (and therefore paid), and the
+ * client must not follow redirects, so that the paid URL is always the requested one.
+ * HTTP error statuses, refused hosts and connection failures are reported, not thrown;
+ * payment failures are thrown.
  *
  * @author Andrei Shakirin
  */
@@ -63,24 +67,37 @@ public class PaidHttpRequestTool {
 
 	private static final JsonMapper JSON_MAPPER = JsonMapper.builder().build();
 
+	private static final Set<HttpMethod> ALLOWED_METHODS = Set.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT,
+			HttpMethod.PATCH, HttpMethod.DELETE, HttpMethod.HEAD);
+
+	/** Response headers not returned to the model. */
+	private static final Set<String> HIDDEN_RESPONSE_HEADERS = Set.of("set-cookie", "set-cookie2");
+
 	private final RestClient restClient;
 
 	private final PaymentContextResolver contextResolver;
+
+	private final AllowedHosts allowedHosts;
 
 	private final int maxResponseLength;
 
 	/**
 	 * Creates the tool.
-	 * @param restClient the client used for requests, with the payments interceptor
+	 * @param restClient the client used for requests, with the payments interceptor and
+	 * without following redirects
 	 * @param contextResolver resolves user, instrument and session per tool call
+	 * @param allowedHosts hosts the tool may call and pay
 	 * @param maxResponseLength maximum body length returned to the model; longer bodies
 	 * are truncated
 	 */
-	public PaidHttpRequestTool(RestClient restClient, PaymentContextResolver contextResolver, int maxResponseLength) {
+	public PaidHttpRequestTool(RestClient restClient, PaymentContextResolver contextResolver, AllowedHosts allowedHosts,
+			int maxResponseLength) {
 		Assert.notNull(restClient, "restClient must not be null");
 		Assert.notNull(contextResolver, "contextResolver must not be null");
+		Assert.notNull(allowedHosts, "allowedHosts must not be null");
 		this.restClient = restClient;
 		this.contextResolver = contextResolver;
+		this.allowedHosts = allowedHosts;
 		this.maxResponseLength = maxResponseLength;
 	}
 
@@ -92,10 +109,23 @@ public class PaidHttpRequestTool {
 	 */
 	public String execute(Request request, @Nullable ToolContext toolContext) {
 		Assert.hasText(request.url(), "url must not be empty");
+		URI uri;
+		try {
+			uri = URI.create(request.url());
+		}
+		catch (IllegalArgumentException ex) {
+			return error("Invalid URL: " + request.url());
+		}
+		if (!this.allowedHosts.allows(uri)) {
+			return error("Host not allowed: " + uri.getHost() + ". Allowed hosts: " + this.allowedHosts);
+		}
 		HttpMethod method = HttpMethod
 			.valueOf((request.method() != null) ? request.method().toUpperCase(Locale.ROOT) : "GET");
+		if (!ALLOWED_METHODS.contains(method)) {
+			return error("HTTP method not allowed: " + method);
+		}
 		RestClient.RequestBodySpec spec = this.restClient.method(method)
-			.uri(request.url())
+			.uri(uri)
 			.attribute(AgentCorePaymentsClientHttpRequestInterceptor.PAYMENT_CONTEXT_ATTRIBUTE,
 					this.contextResolver.resolve(toolContext));
 		if (request.headers() != null) {
@@ -111,18 +141,26 @@ public class PaidHttpRequestTool {
 			return this.exchange(spec);
 		}
 		catch (ResourceAccessException | FilteredHostException ex) {
-			ObjectNode error = JSON_MAPPER.createObjectNode();
-			error.put("statusCode", 0);
-			error.put("error", "Request failed: " + ex.getMessage());
-			return JSON_MAPPER.writeValueAsString(error);
+			return error("Request failed: " + ex.getMessage());
 		}
+	}
+
+	private static String error(String message) {
+		ObjectNode error = JSON_MAPPER.createObjectNode();
+		error.put("statusCode", 0);
+		error.put("error", message);
+		return JSON_MAPPER.writeValueAsString(error);
 	}
 
 	private String exchange(RestClient.RequestBodySpec spec) {
 		return spec.exchange((httpRequest, response) -> {
 			int status = response.getStatusCode().value();
 			Map<String, String> headers = new LinkedHashMap<>();
-			response.getHeaders().forEach((name, values) -> headers.put(name, String.join(", ", values)));
+			response.getHeaders().forEach((name, values) -> {
+				if (!HIDDEN_RESPONSE_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
+					headers.put(name, String.join(", ", values));
+				}
+			});
 			String body = StreamUtils.copyToString(response.getBody(), StandardCharsets.UTF_8);
 			if (body.length() > this.maxResponseLength) {
 				body = body.substring(0, this.maxResponseLength) + "... [truncated]";

@@ -18,6 +18,7 @@ package org.springaicommunity.agentcore.payments.autoconfiguration;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.sun.net.httpserver.HttpServer;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
+import org.springaicommunity.agentcore.payments.tool.AllowedHosts;
 import org.springaicommunity.agentcore.payments.tool.PaidHttpRequestTool;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,7 +63,9 @@ class PaidHttpToolAddressFilterTests {
 		PaidHttpRequestTool tool = new PaidHttpRequestTool(
 				AgentCorePaymentsAutoConfiguration
 					.paidHttpToolRestClient((request, body, execution) -> execution.execute(request, body)),
-				(toolContext) -> new PaymentContext(null, null, null), 1000);
+				(toolContext) -> new PaymentContext(null, null, null),
+				// allowed by the allowlist, still blocked by the address filter
+				AllowedHosts.of(List.of("localhost", "127.0.0.1")), 1000);
 		int port = this.server.getAddress().getPort();
 
 		String byName = tool

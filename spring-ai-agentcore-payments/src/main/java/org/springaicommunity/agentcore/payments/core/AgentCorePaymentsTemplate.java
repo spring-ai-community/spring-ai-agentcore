@@ -22,6 +22,8 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,6 +69,9 @@ public class AgentCorePaymentsTemplate {
 
 	private static final Pattern PERMIT2_ALLOWANCE_LIMIT = Pattern.compile("[0-9]{1,78}");
 
+	/** Start of the ProcessPayment error message when the session budget is exhausted. */
+	static final String INSUFFICIENT_BUDGET_MESSAGE = "insufficient budget for session";
+
 	private final BedrockAgentCoreClient client;
 
 	private final String paymentManagerArn;
@@ -78,6 +83,9 @@ public class AgentCorePaymentsTemplate {
 	private final @Nullable String permit2AllowanceLimit;
 
 	private final JsonMapper jsonMapper = JsonMapper.builder().build();
+
+	/** Wallet network per payment instrument; it does not change for an instrument. */
+	private final Cache<String, String> instrumentNetworks = Caffeine.newBuilder().maximumSize(1_000).build();
 
 	/**
 	 * Creates a template with the default network preferences.
@@ -192,6 +200,21 @@ public class AgentCorePaymentsTemplate {
 	 * @return the created session
 	 */
 	public PaymentSession createPaymentSession(String userId, String maxSpendAmountUsd, int expiryTimeInMinutes) {
+		return this.createPaymentSession(userId, maxSpendAmountUsd, expiryTimeInMinutes, UUID.randomUUID().toString());
+	}
+
+	/**
+	 * Creates a payment session with an idempotency token chosen by the caller. Reuse the
+	 * same token only when retrying the creation of this one session.
+	 * @param userId user the session belongs to
+	 * @param maxSpendAmountUsd maximum amount in USD, for example {@code "1.00"}
+	 * @param expiryTimeInMinutes session lifetime, 15 to 480 minutes
+	 * @param clientToken the idempotency token of this session
+	 * @return the created session
+	 */
+	public PaymentSession createPaymentSession(String userId, String maxSpendAmountUsd, int expiryTimeInMinutes,
+			String clientToken) {
+		Assert.hasText(clientToken, "clientToken must not be empty");
 		Assert.hasText(userId, "userId must not be empty");
 		Assert.hasText(maxSpendAmountUsd, "maxSpendAmountUsd must not be empty");
 		return this.client
@@ -202,7 +225,7 @@ public class AgentCorePaymentsTemplate {
 					.maxSpendAmount(Amount.builder().value(maxSpendAmountUsd).currency(Currency.USD).build())
 					.build())
 				.expiryTimeInMinutes(expiryTimeInMinutes)
-				.clientToken(UUID.randomUUID().toString()))
+				.clientToken(clientToken))
 			.paymentSession();
 	}
 
@@ -256,13 +279,16 @@ public class AgentCorePaymentsTemplate {
 			});
 		}
 		catch (ValidationException ex) {
+			// The service reports these cases only in the message (no reason code), for
+			// example "Insufficient budget for session <id>. Pending amount: ...".
 			String message = String.valueOf(ex.getMessage()).toLowerCase(Locale.ROOT);
-			if (message.contains("budget") || message.contains("insufficient")) {
+			if (message.contains(INSUFFICIENT_BUDGET_MESSAGE)) {
 				throw new InsufficientBudgetException("Insufficient payment session budget: " + ex.getMessage(), ex);
 			}
-			if (message.contains("expired")) {
+			if (message.contains("session") && message.contains("expired")) {
 				throw new PaymentSessionExpiredException("Payment session expired: " + ex.getMessage(), ex);
 			}
+			logger.debug("ProcessPayment validation error not mapped to a payment exception: {}", ex.getMessage());
 			throw ex;
 		}
 	}
@@ -279,6 +305,25 @@ public class AgentCorePaymentsTemplate {
 	 * @throws PaymentException if the response cannot be paid
 	 */
 	public PaymentHeader generatePaymentHeader(PaymentContext context, PaymentRequired response) {
+		return this.generatePaymentHeader(context, response, UUID.randomUUID().toString());
+	}
+
+	/**
+	 * Pays for a resource like
+	 * {@link #generatePaymentHeader(PaymentContext, PaymentRequired)} with an idempotency
+	 * token chosen by the caller. Reuse the same token only within your own retry loop
+	 * for one purchase (for example after a timeout); every new purchase needs a new
+	 * token, otherwise AgentCore Payments returns the earlier payment and the merchant
+	 * rejects it as a replay.
+	 * @param context user, payment instrument and payment session to pay with
+	 * @param response the {@code 402} response
+	 * @param clientToken the idempotency token of this purchase
+	 * @return {@code X-PAYMENT} (x402 v1) or {@code PAYMENT-SIGNATURE} (x402 v2) header
+	 * @throws PaymentConfigurationException if user, instrument or session is missing
+	 * @throws PaymentException if the response cannot be paid
+	 */
+	public PaymentHeader generatePaymentHeader(PaymentContext context, PaymentRequired response, String clientToken) {
+		Assert.hasText(clientToken, "clientToken must not be empty");
 		Assert.notNull(context, "context must not be null");
 		Assert.notNull(response, "response must not be null");
 		if (response.statusCode() != PaymentRequired.PAYMENT_REQUIRED_STATUS) {
@@ -289,7 +334,24 @@ public class AgentCorePaymentsTemplate {
 		String paymentSessionId = context.requirePaymentSessionId();
 
 		X402PaymentRequirements requirements = X402PaymentRequirements.parse(response, this.jsonMapper);
-		String instrumentNetwork = instrumentNetwork(this.getPaymentInstrument(userId, paymentInstrumentId));
+		String instrumentNetwork = this.instrumentNetworks.get(paymentInstrumentId,
+				(id) -> instrumentNetwork(this.getPaymentInstrument(userId, id)));
+		try {
+			return this.pay(requirements, instrumentNetwork, userId, paymentInstrumentId, paymentSessionId,
+					clientToken);
+		}
+		catch (InsufficientBudgetException | PaymentSessionExpiredException ex) {
+			throw ex;
+		}
+		catch (RuntimeException ex) {
+			// the instrument may have been recreated with another network
+			this.instrumentNetworks.invalidate(paymentInstrumentId);
+			throw ex;
+		}
+	}
+
+	private PaymentHeader pay(X402PaymentRequirements requirements, String instrumentNetwork, String userId,
+			String paymentInstrumentId, String paymentSessionId, String clientToken) {
 		ObjectNode accept = requirements.selectAccept(instrumentNetwork, this.networkPreferences);
 
 		CryptoX402PaymentInput.Builder input = CryptoX402PaymentInput.builder()
@@ -302,6 +364,7 @@ public class AgentCorePaymentsTemplate {
 		logger.debug("Paying x402 v{} requirement on network {} for user {}", requirements.version(),
 				accept.get("network"), userId);
 		ProcessPaymentResponse payment = this.processPayment((builder) -> builder.userId(userId)
+			.clientToken(clientToken)
 			.paymentSessionId(paymentSessionId)
 			.paymentInstrumentId(paymentInstrumentId)
 			.paymentType(PaymentType.CRYPTO_X402)

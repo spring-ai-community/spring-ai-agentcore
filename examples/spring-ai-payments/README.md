@@ -5,7 +5,7 @@ An AgentCore Runtime agent that pays for x402-protected APIs through [AgentCore 
 | `approach` | Way | Code | Paid endpoint |
 |---|---|---|---|
 | `interceptor` (default) | 1. HTTP client interceptor: domain tool on a `RestClient` with `AgentCorePaymentsClientHttpRequestInterceptor` | [`MarketRecapTools`](src/main/java/com/unicorn/payments/MarketRecapTools.java), [`PaymentsConfiguration`](src/main/java/com/unicorn/payments/PaymentsConfiguration.java) | market recap |
-| `tool` | 2. `paidHttpRequest` tool plus payment query tools; the prompt names the URL | auto-configured `paymentsToolCallbackProvider` | any URL from the prompt |
+| `tool` | 2. `paidHttpRequest` tool plus payment query tools; the prompt names the URL | auto-configured `AgentCorePaymentsTools`, enabled for the two test merchants in `application.properties` | URL from the prompt, allowed hosts only |
 | `custom` | 3. Own integration: domain tool on the JDK `HttpClient` calling `AgentCorePaymentsTemplate.generatePaymentHeader(...)` | [`FortuneTools`](src/main/java/com/unicorn/payments/FortuneTools.java) | fortune reading |
 
 All three pay from the budget of the conversation: [`PaymentsAgent`](src/main/java/com/unicorn/payments/PaymentsAgent.java) calls `PaymentSessionRegistry.getOrCreate(userId, runtimeSessionId)` once per invocation (0.10 USD for 30 minutes, see `application.properties`) and passes user and payment session to the tools through the tool context.
@@ -31,10 +31,12 @@ mvn clean install -DskipTests
 cd examples/spring-ai-payments
 export PAYMENT_MANAGER_ARN=arn:aws:bedrock-agentcore:us-east-1:<account>:payment-manager/<id>
 export PAYMENT_INSTRUMENT_ID=<payment instrument id>
-export PAYMENT_USER_ID=<user id of the instrument>      # used when no Runtime user header is sent
+export PAYMENT_USER_ID=<user id of the instrument>      # local profile: used when no Runtime user header is sent
 export PAYMENT_REGION=us-east-1                          # region of the payment manager
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
+
+The `local` profile lets the agent pay as `PAYMENT_USER_ID` when the AgentCore Runtime user header is absent. Without it, requests without `X-Amzn-Bedrock-AgentCore-Runtime-User-Id` fail, so that a deployed agent never falls back to a shared wallet.
 
 Send the requests in [`test_request.http`](test_request.http), or:
 
@@ -52,6 +54,8 @@ The log shows each payment, for example `GET https://drvd12nxpcyd5.cloudfront.ne
 ```properties
 agentcore.payments.payment-manager-arn=${PAYMENT_MANAGER_ARN}
 agentcore.payments.payment-instrument-id=${PAYMENT_INSTRUMENT_ID}
+agentcore.payments.paid-http-tool.enabled=true
+agentcore.payments.paid-http-tool.allowed-hosts=drvd12nxpcyd5.cloudfront.net,sandbox.node4all.com
 agentcore.payments.session.max-spend=0.10     # budget per conversation (USD)
 agentcore.payments.session.expiry=30m
 app.payments.region=${PAYMENT_REGION:us-east-1}

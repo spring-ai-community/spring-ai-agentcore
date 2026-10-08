@@ -131,6 +131,16 @@ class PaymentToolCallbackTests {
 		assertThat(tool.inputs).hasSize(1);
 	}
 
+	@Test
+	void doesNotPayWhenToolInputCannotCarryThePaymentHeader() {
+		RecordingTool tool = new RecordingTool((input) -> PAYMENT_REQUIRED,
+				"{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"}}}");
+
+		assertThatExceptionOfType(ToolExecutionException.class).isThrownBy(() -> this.paying(tool).call("{}"))
+			.withMessageContaining("no 'headers' object");
+		then(this.payments).shouldHaveNoInteractions();
+	}
+
 	private PaymentToolCallback paying(ToolCallback tool) {
 		return new PaymentToolCallback(tool, this.payments, this.resolver, Duration.ZERO);
 	}
@@ -141,13 +151,25 @@ class PaymentToolCallbackTests {
 
 		private final Function<String, String> behavior;
 
+		private final String inputSchema;
+
 		RecordingTool(Function<String, String> behavior) {
+			this(behavior, "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\"},"
+					+ "\"headers\":{\"type\":\"object\"}}}");
+		}
+
+		RecordingTool(Function<String, String> behavior, String inputSchema) {
 			this.behavior = behavior;
+			this.inputSchema = inputSchema;
 		}
 
 		@Override
 		public ToolDefinition getToolDefinition() {
-			return ToolDefinition.builder().name("paidTool").description("paid tool").inputSchema("{}").build();
+			return ToolDefinition.builder()
+				.name("paidTool")
+				.description("paid tool")
+				.inputSchema(this.inputSchema)
+				.build();
 		}
 
 		@Override

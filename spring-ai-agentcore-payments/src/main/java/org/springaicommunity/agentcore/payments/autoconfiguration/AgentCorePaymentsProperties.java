@@ -62,7 +62,7 @@ public record AgentCorePaymentsProperties(@Nullable String paymentManagerArn, @N
 			postPaymentDelay = DEFAULT_POST_PAYMENT_DELAY;
 		}
 		if (paidHttpTool == null) {
-			paidHttpTool = new PaidHttpTool(null, null);
+			paidHttpTool = new PaidHttpTool(null, null, null);
 		}
 		if (session == null) {
 			session = new Session(null, null, null);
@@ -72,17 +72,23 @@ public record AgentCorePaymentsProperties(@Nullable String paymentManagerArn, @N
 	/**
 	 * Settings of the paid HTTP request tool.
 	 *
-	 * @param enabled whether the tool is registered
+	 * @param enabled whether the tool is registered; off by default because the model
+	 * chooses the URLs it calls and pays
+	 * @param allowedHosts hosts the tool may call and pay, required when enabled:
+	 * hostnames (case-insensitive, port ignored) or {@code *.domain} for subdomains
 	 * @param maxResponseLength maximum response body length returned to the model
 	 */
-	public record PaidHttpTool(Boolean enabled, Integer maxResponseLength) {
+	public record PaidHttpTool(Boolean enabled, List<String> allowedHosts, Integer maxResponseLength) {
 
 		/** Default maximum response body length. */
 		public static final int DEFAULT_MAX_RESPONSE_LENGTH = 10000;
 
 		public PaidHttpTool {
 			if (enabled == null) {
-				enabled = true;
+				enabled = false;
+			}
+			if (allowedHosts == null) {
+				allowedHosts = List.of();
 			}
 			if (maxResponseLength == null || maxResponseLength <= 0) {
 				maxResponseLength = DEFAULT_MAX_RESPONSE_LENGTH;

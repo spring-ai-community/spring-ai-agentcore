@@ -28,6 +28,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import org.springframework.http.HttpHeaders;
+
 /**
  * Payment requirements of an x402 {@code 402} response
  * (<a href= "https://www.x402.org/">x402.org</a>). Version 2 sends them base64-encoded in
@@ -68,6 +70,11 @@ final class X402PaymentRequirements {
 		}
 		else {
 			json = response.body();
+		}
+		if (header == null && isMpp(response)) {
+			throw new PaymentException(
+					"The 402 response uses the Machine Payments Protocol (WWW-Authenticate: Payment), "
+							+ "which is not supported yet; only x402 is supported");
 		}
 		if (json == null || json.isBlank()) {
 			throw new PaymentException("x402: 402 response carries no payment requirements");
@@ -157,6 +164,12 @@ final class X402PaymentRequirements {
 		header.set("payload", proof);
 		byte[] json = this.jsonMapper.writeValueAsBytes(header);
 		return new PaymentHeader(name, Base64.getEncoder().encodeToString(json));
+	}
+
+	private static boolean isMpp(PaymentRequired response) {
+		List<String> challenges = response.headers().get(HttpHeaders.WWW_AUTHENTICATE);
+		return challenges != null && challenges.stream()
+			.anyMatch((challenge) -> challenge.trim().regionMatches(true, 0, "Payment ", 0, "Payment ".length()));
 	}
 
 	static boolean isUptoScheme(ObjectNode accept) {

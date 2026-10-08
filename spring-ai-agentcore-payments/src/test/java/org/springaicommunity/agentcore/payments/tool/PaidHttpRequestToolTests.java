@@ -16,6 +16,7 @@
 
 package org.springaicommunity.agentcore.payments.tool;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -24,15 +25,19 @@ import org.springaicommunity.agentcore.payments.client.AgentCorePaymentsClientHt
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.client.ExpectedCount.never;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 /**
@@ -71,6 +76,40 @@ class PaidHttpRequestToolTests {
 	}
 
 	@Test
+	void refusesHostsOutsideTheAllowlistWithoutSendingARequest() {
+		this.server.expect(never(), requestTo("https://evil.example.org/pay"));
+
+		String result = this.tool(100)
+			.execute(new PaidHttpRequestTool.Request("https://evil.example.org/pay", null, null, null), null);
+
+		assertThat(result).contains("\"statusCode\":0").contains("Host not allowed: evil.example.org");
+		this.server.verify();
+	}
+
+	@Test
+	void refusesMethodsOtherThanStandardHttpMethods() {
+		String result = this.tool(100).execute(new PaidHttpRequestTool.Request(URL, "TRACE", null, null), null);
+
+		assertThat(result).contains("HTTP method not allowed: TRACE");
+	}
+
+	@Test
+	void returnsRedirectWithoutFollowingItAndHidesCookies() {
+		this.server.expect(requestTo(URL))
+			.andRespond(withStatus(HttpStatus.FOUND).header(HttpHeaders.LOCATION, "https://evil.example.org/pay")
+				.header(HttpHeaders.SET_COOKIE, "session=secret")
+				.header("PAYMENT-RESPONSE", "settled"));
+
+		String result = this.tool(100).execute(new PaidHttpRequestTool.Request(URL, null, null, null), null);
+
+		assertThat(result).startsWith("{\"statusCode\":302")
+			.contains("https://evil.example.org/pay")
+			.contains("PAYMENT-RESPONSE")
+			.doesNotContain("session=secret");
+		this.server.verify();
+	}
+
+	@Test
 	void sendsMethodHeadersAndBodyAndTruncatesLongResponses() {
 		this.server.expect(requestTo(URL))
 			.andExpect(method(HttpMethod.POST))
@@ -86,7 +125,8 @@ class PaidHttpRequestToolTests {
 	}
 
 	private PaidHttpRequestTool tool(int maxResponseLength) {
-		return new PaidHttpRequestTool(this.builder.build(), this.resolver, maxResponseLength);
+		return new PaidHttpRequestTool(this.builder.build(), this.resolver, AllowedHosts.of(List.of("api.example.com")),
+				maxResponseLength);
 	}
 
 }

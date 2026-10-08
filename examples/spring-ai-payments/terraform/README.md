@@ -9,7 +9,7 @@ Creates the AgentCore Payments resources the example needs, with Stripe Privy as
 | 3 | `./create-instrument.sh <email>` | Wallet (payment instrument) of a user |
 | 4 | manual | Fund the wallet and connect the agent |
 | 5 | `./check-wallet.sh <instrument-id>` | Check status and balance |
-| 6 | `mvn spring-boot:run` | Run the example |
+| 6 | `mvn spring-boot:run -Dspring-boot.run.profiles=local` | Run the example |
 | 7 | `./cleanup.sh <instrument-id>` | Delete the wallet and all Terraform resources |
 
 Requirements: Terraform ≥ 1.5, AWS CLI v2 with credentials for the target account, Node.js 20+ and `pnpm` for step 4.

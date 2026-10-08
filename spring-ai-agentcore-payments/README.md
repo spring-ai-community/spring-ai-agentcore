@@ -37,8 +37,9 @@ The module is enabled by setting the payment manager ARN.
 | `agentcore.payments.agent-name` | — | Agent name sent with data plane calls |
 | `agentcore.payments.network-preferences` | Solana / Base mainnets first, then testnets | Order used to choose between the networks a merchant accepts |
 | `agentcore.payments.permit2-allowance-limit` | — | Permit2 allowance for the x402 `upto` scheme, in the asset's smallest unit |
-| `agentcore.payments.post-payment-delay` | `3s` | Wait before retrying a paid request, so the signed authorization is valid on chain |
-| `agentcore.payments.paid-http-tool.enabled` | `true` | Register the `paidHttpRequest` tool |
+| `agentcore.payments.post-payment-delay` | `3s` | Blocking wait before the paid request is sent again. x402 authorizations carry a `validAfter` time; merchants that settle on chain right away can reject an authorization that is not valid yet. `0` disables the wait |
+| `agentcore.payments.paid-http-tool.enabled` | `false` | Register the `paidHttpRequest` tool; requires `allowed-hosts` |
+| `agentcore.payments.paid-http-tool.allowed-hosts` | — | Hosts the tool may call and pay: exact hostnames (case-insensitive, port ignored) or `*.example.com` for subdomains. Startup fails if the tool is enabled without it |
 | `agentcore.payments.paid-http-tool.max-response-length` | `10000` | Maximum response body returned to the model |
 
 The auto-configured `BedrockAgentCoreClient` uses the standard AWS SDK region and credentials provider chains. A custom `BedrockAgentCoreClient` bean overrides it.
@@ -94,24 +95,33 @@ The same interceptor works with `RestTemplate` and with HTTP interface clients (
 
 ### 2. `paidHttpRequest` tool
 
-The `paymentsToolCallbackProvider` bean provides a generic fetch tool built on the interceptor, plus tools to inspect wallets and budget:
+The `AgentCorePaymentsTools` bean provides tools to inspect the current wallet and budget and, when enabled, a generic fetch tool built on the interceptor:
 
 | Tool | Description |
 |---|---|
-| `paidHttpRequest` | Calls an HTTP endpoint and returns status code, headers and body; `402` responses are paid automatically. Only external addresses are reachable (Spring Boot `InetAddressFilter.externalAddresses()`: no loopback, link-local or private networks) and redirects are not followed |
-| `getPaymentInstrument` | Wallet network, address and status |
+| `paidHttpRequest` | Off by default. Calls an HTTP endpoint and returns status code, headers and body; `402` responses are paid automatically. Only hosts in `allowed-hosts` are called; external addresses only (Spring Boot `InetAddressFilter.externalAddresses()`); redirects are not followed, so a merchant cannot redirect a payment to another host; methods GET, POST, PUT, PATCH, DELETE, HEAD; `Set-Cookie` headers are not returned to the model |
+| `getPaymentInstrument` | Network, address and status of the current wallet |
 | `listPaymentInstruments` | Wallets of the current user |
-| `getPaymentInstrumentBalance` | Token balance of a wallet on a chain |
-| `getPaymentSession` | Spending limit, remaining budget and expiry |
+| `getPaymentInstrumentBalance` | Token balance of the current wallet on a chain |
+| `getPaymentSession` | Spending limit, remaining budget and expiry of the current session |
+
+The query tools only read the instrument and session of the current `PaymentContext`; the model cannot name other ones.
+
+```properties
+agentcore.payments.paid-http-tool.enabled=true
+agentcore.payments.paid-http-tool.allowed-hosts=api.example.com,*.merchant.io
+```
 
 ```java
 @Bean
-ChatClient chatClient(ChatClient.Builder builder, ToolCallbackProvider paymentsToolCallbackProvider) {
-    return builder.defaultToolCallbacks(paymentsToolCallbackProvider).build();
+ChatClient chatClient(ChatClient.Builder builder, AgentCorePaymentsTools paymentsTools) {
+    return builder.defaultToolCallbacks(paymentsTools.toolCallbacks()).build();
 }
 ```
 
-Use it with care: the model chooses the URLs, so it must know them (from the user or a page), builds requests without an API schema, and a prompt-injected page can make it call an attacker's endpoint that asks for payment. The session budget limits, but does not prevent, such payments. Prefer way 1 for known APIs; disable the tool with `agentcore.payments.paid-http-tool.enabled=false`.
+`AgentCorePaymentsTools` is deliberately not a `ToolCallbackProvider` bean: Spring AI publishes such beans, for example through the MCP server starter, which would offer paying tools to outside MCP clients.
+
+Use the tool with care: the model chooses the URLs, builds requests without an API schema, and a prompt-injected page can make it call an endpoint that asks for payment. The allowlist limits payments to known merchants and the session budget limits the amount. Prefer way 1 for known APIs.
 
 ### 3. Other HTTP clients
 
@@ -122,13 +132,12 @@ PaymentHeader header = payments.generatePaymentHeader(
         new PaymentContext(userId, instrumentId, sessionId),
         new PaymentRequired(402, responseHeaders, responseBody));
 // send the request again with header.name(): header.value()
+// if the server answers 402 again, it rejected the payment: do not pay a second time
 ```
 
-**Or wrap the tool**: on `402` the tool returns `PAYMENT_REQUIRED: ` followed by JSON `{"statusCode":402,"headers":{...},"body":...}` and accepts a `headers` object in its input. `PaymentToolCallback` then pays, adds the payment header to the tool input and calls the tool once more:
+Every call is a new purchase with a random idempotency token. If your own code retries one purchase, for example after a timeout, pass the same token in each attempt: `generatePaymentHeader(context, response, clientToken)`. Never reuse a token for a second purchase.
 
-```java
-ToolCallback[] paidTools = paymentsToolCallbacks.wrap(ToolCallbacks.from(myPaidApiTools));
-```
+`PaymentToolCallback` (`AgentCorePaymentsToolCallbacks.wrap(...)`) is a fallback for tools that cannot use the interceptor: the tool returns `PAYMENT_REQUIRED: {"statusCode":402,"headers":{...},"body":...}` on `402` and must declare a `headers` object in its input, which receives the payment header; tools without it are not paid.
 
 ### Who pays: user, instrument and session
 
@@ -176,7 +185,24 @@ The registry knows when a session expires because it sets the expiry itself; it 
 
 ### Errors
 
-Payment failures are `PaymentException`s: `InsufficientBudgetException`, `PaymentSessionExpiredException`, `PaymentConfigurationException` (missing user, instrument or session) or `PaymentException`. Raised inside a tool, they reach Spring AI as `ToolExecutionException`; by default Spring AI returns the message to the model. Set `spring.ai.tools.throw-exception-on-error=true` to handle them in the application, for example to create a new session and retry.
+Payment failures are `PaymentException`s: `InsufficientBudgetException` (the session budget is used up), `PaymentSessionExpiredException`, `PaymentConfigurationException` (missing user, instrument or session) or `PaymentException`, for example for a `402` that uses the Machine Payments Protocol, which is not supported yet. Raised inside a tool, they reach Spring AI as `ToolExecutionException`; by default Spring AI returns the message to the model. Set `spring.ai.tools.throw-exception-on-error=true` to handle them in the application.
+
+When the budget is used up, every further payment of the conversation fails until the application grants a new one. Recommended pattern:
+
+```java
+try {
+    return chatClient.prompt(question).toolContext(context).call().content();
+}
+catch (ToolExecutionException ex) {
+    if (ex.getCause() instanceof InsufficientBudgetException) {
+        // ask the user to approve more spending, then:
+        paymentSessions.renew(userId, runtimeSessionId, PaymentSessionRegistry.DEFAULT_ALIAS);
+    }
+    throw ex;
+}
+```
+
+AgentCore Payments reports a used-up budget only in the error message ("Insufficient budget for session ..."). Other validation errors, for example a wallet without enough funds, propagate unchanged as AWS SDK `ValidationException` and are logged at DEBUG.
 
 `AgentCorePaymentsTemplate` is thread-safe and uses the synchronous AWS client. AWS SDK exceptions propagate unchanged, except budget and expiry rejections of `ProcessPayment`.
 

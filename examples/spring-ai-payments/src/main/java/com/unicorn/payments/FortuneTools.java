@@ -24,7 +24,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
+import org.jspecify.annotations.Nullable;
 import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.PaymentException;
 import org.springaicommunity.agentcore.payments.core.PaymentHeader;
 import org.springaicommunity.agentcore.payments.core.PaymentRequired;
 import org.springaicommunity.agentcore.payments.tool.PaymentContextResolver;
@@ -46,7 +48,9 @@ class FortuneTools {
 	/** Lets the signed authorization become valid on chain before it is used. */
 	private static final Duration POST_PAYMENT_DELAY = Duration.ofSeconds(3);
 
-	private final HttpClient httpClient = HttpClient.newHttpClient();
+	private static final Duration TIMEOUT = Duration.ofSeconds(30);
+
+	private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
 	private final AgentCorePaymentsTemplate payments;
 
@@ -72,12 +76,16 @@ class FortuneTools {
 					new PaymentRequired(response.statusCode(), headers, response.body()));
 			Thread.sleep(POST_PAYMENT_DELAY.toMillis());
 			response = this.send(paymentHeader);
+			if (response.statusCode() == PaymentRequired.PAYMENT_REQUIRED_STATUS) {
+				// paid once already: the merchant rejected the payment, do not pay again
+				throw new PaymentException("The merchant rejected the payment: " + response.body());
+			}
 		}
 		return response.body();
 	}
 
-	private HttpResponse<String> send(PaymentHeader paymentHeader) throws IOException, InterruptedException {
-		HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(this.fortuneUrl)).GET();
+	private HttpResponse<String> send(@Nullable PaymentHeader paymentHeader) throws IOException, InterruptedException {
+		HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(this.fortuneUrl)).timeout(TIMEOUT).GET();
 		if (paymentHeader != null) {
 			request.header(paymentHeader.name(), paymentHeader.value());
 		}

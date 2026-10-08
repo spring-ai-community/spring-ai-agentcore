@@ -115,6 +115,10 @@ public class PaymentToolCallback implements ToolCallback {
 			return result;
 		}
 		String toolName = this.getToolDefinition().name();
+		if (!acceptsHeaders(this.getToolDefinition().inputSchema())) {
+			throw new ToolExecutionException(this.getToolDefinition(), new PaymentException("Tool '" + toolName
+					+ "' requires payment but its input has no 'headers' object for the payment header; not paying"));
+		}
 		logger.info("Tool '{}' requires payment, paying through AgentCore Payments", toolName);
 
 		String paidInput;
@@ -193,6 +197,17 @@ public class PaymentToolCallback implements ToolCallback {
 			}
 		}
 		return result;
+	}
+
+	private static boolean acceptsHeaders(String inputSchema) {
+		try {
+			// the input declares a "headers" property; its exact schema (object, nullable
+			// object, map) varies by how the tool was defined
+			return JSON_MAPPER.readTree(inputSchema).path("properties").path("headers").isObject();
+		}
+		catch (JacksonException ex) {
+			return false;
+		}
 	}
 
 	private static String withHeader(String toolInput, PaymentHeader header) {

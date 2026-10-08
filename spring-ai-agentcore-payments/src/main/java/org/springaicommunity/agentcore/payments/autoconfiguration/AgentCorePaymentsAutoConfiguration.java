@@ -17,8 +17,6 @@
 package org.springaicommunity.agentcore.payments.autoconfiguration;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,15 +25,14 @@ import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import org.springaicommunity.agentcore.payments.core.PaymentSessionRegistry;
 import org.springaicommunity.agentcore.payments.tool.AgentCorePaymentsToolCallbacks;
+import org.springaicommunity.agentcore.payments.tool.AgentCorePaymentsTools;
+import org.springaicommunity.agentcore.payments.tool.AllowedHosts;
 import org.springaicommunity.agentcore.payments.tool.DefaultPaymentContextResolver;
 import org.springaicommunity.agentcore.payments.tool.PaidHttpRequestTool;
 import org.springaicommunity.agentcore.payments.tool.PaymentContextResolver;
 import org.springaicommunity.agentcore.payments.tool.PaymentQueryTools;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 
-import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.ToolCallbackProvider;
-import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -112,48 +109,31 @@ public class AgentCorePaymentsAutoConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnMissingBean(name = "paymentsToolCallbackProvider")
-	ToolCallbackProvider paymentsToolCallbackProvider(AgentCorePaymentsTemplate payments,
+	@ConditionalOnMissingBean
+	AgentCorePaymentsTools agentCorePaymentsTools(AgentCorePaymentsTemplate payments,
 			PaymentContextResolver contextResolver, AgentCorePaymentsClientHttpRequestInterceptor paymentsInterceptor,
 			AgentCorePaymentsProperties properties) {
-		PaymentQueryTools queryTools = new PaymentQueryTools(payments, contextResolver);
-		List<ToolCallback> callbacks = new ArrayList<>();
-		callbacks.add(FunctionToolCallback.builder("getPaymentInstrument", queryTools::getPaymentInstrument)
-			.description(PaymentQueryTools.GET_PAYMENT_INSTRUMENT_DESCRIPTION)
-			.inputType(PaymentQueryTools.InstrumentRequest.class)
-			.build());
-		callbacks.add(FunctionToolCallback.builder("listPaymentInstruments", queryTools::listPaymentInstruments)
-			.description(PaymentQueryTools.LIST_PAYMENT_INSTRUMENTS_DESCRIPTION)
-			.inputType(PaymentQueryTools.EmptyRequest.class)
-			.build());
-		callbacks
-			.add(FunctionToolCallback.builder("getPaymentInstrumentBalance", queryTools::getPaymentInstrumentBalance)
-				.description(PaymentQueryTools.GET_PAYMENT_INSTRUMENT_BALANCE_DESCRIPTION)
-				.inputType(PaymentQueryTools.BalanceRequest.class)
-				.build());
-		callbacks.add(FunctionToolCallback.builder("getPaymentSession", queryTools::getPaymentSession)
-			.description(PaymentQueryTools.GET_PAYMENT_SESSION_DESCRIPTION)
-			.inputType(PaymentQueryTools.SessionRequest.class)
-			.build());
-		if (properties.paidHttpTool().enabled()) {
-			PaidHttpRequestTool httpTool = new PaidHttpRequestTool(paidHttpToolRestClient(paymentsInterceptor),
-					contextResolver, properties.paidHttpTool().maxResponseLength());
-			callbacks.add(FunctionToolCallback.builder(PaidHttpRequestTool.NAME, httpTool::execute)
-				.description(PaidHttpRequestTool.DESCRIPTION)
-				.inputType(PaidHttpRequestTool.Request.class)
-				.toolCallResultConverter((result, returnType) -> String.valueOf(result))
-				.build());
+		PaidHttpRequestTool paidHttpRequestTool = null;
+		AgentCorePaymentsProperties.PaidHttpTool paidHttpTool = properties.paidHttpTool();
+		if (paidHttpTool.enabled()) {
+			if (paidHttpTool.allowedHosts().isEmpty()) {
+				throw new IllegalStateException("agentcore.payments.paid-http-tool.enabled=true requires "
+						+ "agentcore.payments.paid-http-tool.allowed-hosts: the hosts the model may call and pay");
+			}
+			paidHttpRequestTool = new PaidHttpRequestTool(paidHttpToolRestClient(paymentsInterceptor), contextResolver,
+					AllowedHosts.of(paidHttpTool.allowedHosts()), paidHttpTool.maxResponseLength());
+			logger.info("paidHttpRequest tool enabled for hosts {}", paidHttpTool.allowedHosts());
 		}
-		logger.debug("Creating payments ToolCallbackProvider with {} tools", callbacks.size());
-		return ToolCallbackProvider.from(callbacks);
+		return new AgentCorePaymentsTools(new PaymentQueryTools(payments, contextResolver), paidHttpRequestTool);
 	}
 
 	/**
 	 * Client of the {@code paidHttpRequest} tool. The model chooses the URLs, so only
 	 * external addresses may be reached (no loopback, link-local such as the container
-	 * credentials endpoint, or private networks). Redirects are not followed because the
-	 * JDK client does not apply the address filter to redirect targets; the model sees
-	 * the {@code 3xx} response and its {@code Location} header instead.
+	 * credentials endpoint, or private networks). Redirects are not followed: the JDK
+	 * client does not apply the address filter to redirect targets, and a redirect must
+	 * not lead to paying a host outside the allowlist. The model sees the {@code 3xx}
+	 * response and its {@code Location} header instead.
 	 * @param paymentsInterceptor pays for {@code 402} responses
 	 * @return the filtered client
 	 */

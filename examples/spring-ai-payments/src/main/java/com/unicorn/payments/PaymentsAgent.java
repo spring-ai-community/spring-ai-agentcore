@@ -24,11 +24,12 @@ import org.springaicommunity.agentcore.context.AgentCoreContext;
 import org.springaicommunity.agentcore.context.AgentCoreHeaders;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import org.springaicommunity.agentcore.payments.core.PaymentSessionRegistry;
+import org.springaicommunity.agentcore.payments.tool.AgentCorePaymentsTools;
+import org.jspecify.annotations.Nullable;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
-import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -58,25 +59,25 @@ public class PaymentsAgent {
 
 	private final FortuneTools fortuneTools;
 
-	private final ToolCallbackProvider paymentsToolCallbackProvider;
+	private final AgentCorePaymentsTools paymentsTools;
 
-	private final String defaultUserId;
+	private final @Nullable String defaultUserId;
 
 	PaymentsAgent(ChatClient.Builder chatClient, PaymentSessionRegistry paymentSessions,
 			MarketRecapTools marketRecapTools, FortuneTools fortuneTools,
-			ToolCallbackProvider paymentsToolCallbackProvider,
-			@Value("${app.payments.default-user-id}") String defaultUserId) {
+			AgentCorePaymentsTools paymentsTools,
+			@Value("${app.payments.default-user-id:#{null}}") @Nullable String defaultUserId) {
 		this.chatClient = chatClient.build();
 		this.paymentSessions = paymentSessions;
 		this.marketRecapTools = marketRecapTools;
 		this.fortuneTools = fortuneTools;
-		this.paymentsToolCallbackProvider = paymentsToolCallbackProvider;
+		this.paymentsTools = paymentsTools;
 		this.defaultUserId = defaultUserId;
 	}
 
 	@AgentCoreInvocation
 	public String invoke(PromptRequest request, AgentCoreContext context) {
-		String userId = valueOrDefault(context.getHeader(AgentCoreHeaders.USER_ID), this.defaultUserId);
+		String userId = this.userId(context);
 		String runtimeSessionId = valueOrDefault(context.getHeader(AgentCoreHeaders.SESSION_ID), LOCAL_SESSION_ID);
 
 		// one budget per conversation: created on the first invocation, reused afterwards
@@ -91,17 +92,27 @@ public class PaymentsAgent {
 			.content();
 	}
 
-	private ToolCallback[] tools(String approach) {
+	private String userId(AgentCoreContext context) {
+		String userId = valueOrDefault(context.getHeader(AgentCoreHeaders.USER_ID), this.defaultUserId);
+		if (userId == null) {
+			throw new IllegalStateException("No AgentCore Runtime user header (" + AgentCoreHeaders.USER_ID
+					+ "); for local runs start with the 'local' profile and PAYMENT_USER_ID");
+		}
+		return userId;
+	}
+
+	// The request chooses the approach to compare them; a production agent uses a fixed set of tools.
+	private ToolCallback[] tools(@Nullable String approach) {
 		return switch (valueOrDefault(approach, "interceptor")) {
 			case "interceptor" -> ToolCallbacks.from(this.marketRecapTools);
-			case "tool" -> this.paymentsToolCallbackProvider.getToolCallbacks();
+			case "tool" -> this.paymentsTools.toolCallbacks();
 			case "custom" -> ToolCallbacks.from(this.fortuneTools);
 			default -> throw new IllegalArgumentException(
 					"Unknown approach '" + approach + "', use interceptor, tool or custom");
 		};
 	}
 
-	private static String valueOrDefault(String value, String defaultValue) {
+	private static @Nullable String valueOrDefault(@Nullable String value, @Nullable String defaultValue) {
 		return (value != null && !value.isBlank()) ? value : defaultValue;
 	}
 

@@ -113,6 +113,17 @@ class X402PaymentRequirementsTests {
 			.withMessageContaining("x402Version");
 	}
 
+	@Test
+	void explainsThatMppIsNotSupported() {
+		HttpHeaders headers = new HttpHeaders();
+		headers.add(HttpHeaders.WWW_AUTHENTICATE, "Payment id=\"abc\", method=\"evm\", intent=\"charge\"");
+
+		assertThatExceptionOfType(PaymentException.class)
+			.isThrownBy(() -> X402PaymentRequirements.parse(new PaymentRequired(402, headers, "{}"), this.jsonMapper))
+			.withMessageContaining("Machine Payments Protocol")
+			.withMessageContaining("only x402 is supported");
+	}
+
 	static PaymentRequired v1(String body) {
 		return new PaymentRequired(402, new HttpHeaders(), body);
 	}

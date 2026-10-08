@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.payments.core;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -30,6 +31,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
@@ -98,6 +100,26 @@ class PaymentSessionRegistryTests {
 
 		this.registry.remove("alice", "rt-1");
 		assertThat(this.registry.getOrCreate("alice", "rt-1", "booking")).isEqualTo("ps-4");
+	}
+
+	@Test
+	void doesNotKeepSessionThatServiceReportsAsAlreadyExpired() {
+		willAnswer((invocation) -> PaymentSession.builder()
+			.paymentSessionId("ps-" + this.created.incrementAndGet())
+			.createdAt(Instant.now().minus(Duration.ofHours(2)))
+			.expiryTimeInMinutes(60)
+			.build()).given(this.payments).createPaymentSession(anyString(), anyString(), anyInt());
+
+		assertThat(this.registry.getOrCreate("alice", "rt-1")).isEqualTo("ps-1");
+		assertThat(this.registry.getOrCreate("alice", "rt-1")).isEqualTo("ps-2");
+	}
+
+	@Test
+	void rejectsInvalidBudget() {
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> new PaymentSessionRegistry(this.payments, "one dollar", Duration.ofMinutes(60), 10));
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> new PaymentSessionRegistry(this.payments, "0.00", Duration.ofMinutes(60), 10));
 	}
 
 	@Test

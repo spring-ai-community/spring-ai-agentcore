@@ -17,6 +17,9 @@
 
 package com.unicorn.payments;
 
+import java.net.http.HttpClient;
+import java.time.Duration;
+
 import org.springaicommunity.agentcore.payments.client.AgentCorePaymentsClientHttpRequestInterceptor;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
@@ -24,10 +27,13 @@ import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 @Configuration
 class PaymentsConfiguration {
+
+	private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
 	/**
 	 * AgentCore client in the region of the payment manager; replaces the auto-configured
@@ -44,7 +50,10 @@ class PaymentsConfiguration {
 	 */
 	@Bean
 	RestClient paidRestClient(AgentCorePaymentsClientHttpRequestInterceptor paymentsInterceptor) {
-		return RestClient.builder().requestInterceptor(paymentsInterceptor).build();
+		JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
+				HttpClient.newBuilder().connectTimeout(TIMEOUT).build());
+		requestFactory.setReadTimeout(TIMEOUT);
+		return RestClient.builder().requestFactory(requestFactory).requestInterceptor(paymentsInterceptor).build();
 	}
 
 }

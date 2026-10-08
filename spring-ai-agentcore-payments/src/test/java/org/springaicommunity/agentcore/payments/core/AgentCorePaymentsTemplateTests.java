@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.payments.core;
 
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -46,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.atLeastOnce;
 
 /**
  * Tests for {@link AgentCorePaymentsTemplate}.
@@ -99,12 +101,48 @@ class AgentCorePaymentsTemplateTests {
 	@SuppressWarnings("unchecked")
 	void mapsBudgetRejectionToInsufficientBudgetException() {
 		this.givenEthereumInstrument();
-		given(this.client.processPayment(any(Consumer.class)))
-			.willThrow(ValidationException.builder().message("Insufficient budget in payment session").build());
+		// message as returned by AgentCore Payments (observed 2026-10-08); no reason code
+		given(this.client.processPayment(any(Consumer.class))).willThrow(ValidationException.builder()
+			.message("Insufficient budget for session payment-session-mAB6PzTFxEcvL4B. "
+					+ "Pending amount: 0.001 USD, Transaction amount: 0.002000 USD")
+			.build());
 		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
 
 		assertThatExceptionOfType(InsufficientBudgetException.class).isThrownBy(() -> template
 			.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void doesNotReportOtherValidationErrorsAsBudgetErrors() {
+		this.givenEthereumInstrument();
+		ValidationException walletError = ValidationException.builder()
+			.message("Insufficient funds in wallet for transaction")
+			.build();
+		given(this.client.processPayment(any(Consumer.class))).willThrow(walletError);
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+
+		assertThatExceptionOfType(ValidationException.class)
+			.isThrownBy(() -> template.generatePaymentHeader(CONTEXT,
+					X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)))
+			.isSameAs(walletError);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void usesCallerTokenAndLooksUpInstrumentNetworkOnce() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(paymentWithProof());
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		PaymentRequired paymentRequired = X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY);
+
+		template.generatePaymentHeader(CONTEXT, paymentRequired, "purchase-1");
+		template.generatePaymentHeader(CONTEXT, paymentRequired);
+
+		then(this.client).should().getPaymentInstrument(any(Consumer.class));
+		assertThat(this.capturedProcessPayments()).extracting(ProcessPaymentRequest::clientToken)
+			.first()
+			.isEqualTo("purchase-1");
 	}
 
 	@Test
@@ -128,6 +166,26 @@ class AgentCorePaymentsTemplateTests {
 					.build())
 				.build())
 			.build());
+	}
+
+	private static ProcessPaymentResponse paymentWithProof() {
+		return ProcessPaymentResponse.builder()
+			.paymentOutput(PaymentOutput.fromCryptoX402(CryptoX402PaymentOutput.builder()
+				.version("1")
+				.payload(Document.fromMap(Map.of("signature", Document.fromString("0xsig"))))
+				.build()))
+			.build();
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<ProcessPaymentRequest> capturedProcessPayments() {
+		ArgumentCaptor<Consumer<ProcessPaymentRequest.Builder>> captor = ArgumentCaptor.forClass(Consumer.class);
+		then(this.client).should(atLeastOnce()).processPayment(captor.capture());
+		return captor.getAllValues().stream().map((consumer) -> {
+			ProcessPaymentRequest.Builder builder = ProcessPaymentRequest.builder();
+			consumer.accept(builder);
+			return builder.build();
+		}).toList();
 	}
 
 	@SuppressWarnings("unchecked")
