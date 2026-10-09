@@ -54,6 +54,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ExtendWith(OutputCaptureExtension.class)
 class SessionApiCompatibilityTests {
 
+	private static final String CURRENT_VERSION = SessionApiCompatibility.SUPPORTED_VERSION_LINE + "0";
+
+	private static final String OLDER_VERSION = "0.8.0";
+
+	private static final String LEGACY_VERSION = "0.5.0";
+
+	// Outside the supported line no matter which line the module is built for.
+	private static final String UNSUPPORTED_VERSION = "0.99.0";
+
 	@TempDir
 	Path tmp;
 
@@ -116,13 +125,16 @@ class SessionApiCompatibilityTests {
 		assertThatThrownBy(() -> SessionApiCompatibility.checkSignatures(LegacyRepository.class,
 				AgentCoreSessionRepository.class, LegacyEvent.class, LegacyFilter.class))
 			.isInstanceOf(IllegalStateException.class)
-			.hasMessageContaining("requires org.springaicommunity:spring-ai-session 0.8.x")
+			.hasMessageContaining(
+					"requires org.springaicommunity:spring-ai-session " + SessionApiCompatibility.SUPPORTED_VERSIONS)
 			.hasMessageContaining("findById(String) returns java.util.Optional")
-			.hasMessageContaining("compactEvents(String, List, List, long) is missing")
+			.hasMessageContaining("applyCompaction(String, CompactionPlan, long) is missing")
 			.hasMessageContaining("does not implement LegacyRepository.replaceEvents(String, List)")
 			.hasMessageContaining("isArchived() is missing")
 			.hasMessageContaining("active() is missing")
-			.hasMessageContaining("import org.springaicommunity:spring-ai-session-bom 0.8.0")
+			.hasMessageContaining("isTurnStart() is missing")
+			.hasMessageContaining("applyTurnAwareWindow(List) is missing")
+			.hasMessageContaining("import org.springaicommunity:spring-ai-session-bom " + CURRENT_VERSION)
 			.hasMessageContaining("If org.springaicommunity:spring-ai-session-management is also on the classpath");
 	}
 
@@ -146,15 +158,15 @@ class SessionApiCompatibilityTests {
 				AgentCoreSessionRepository.class, LegacyEvent.class, EventFilter.class))
 			.isInstanceOf(IllegalStateException.class)
 			.hasMessageContaining("isArchived() is missing")
-			.hasMessageNotContaining("compactEvents")
+			.hasMessageNotContaining("applyCompaction")
 			.hasMessageNotContaining("does not implement");
 	}
 
 	@Test
 	void legacyArtifactMarkerFailsFast() throws IOException {
-		Path legacy = this.marker("legacy", SessionApiCompatibility.LEGACY_MARKER, "0.5.0");
+		Path legacy = this.marker("legacy", SessionApiCompatibility.LEGACY_MARKER, LEGACY_VERSION);
 		this.resource(legacy, SessionApiCompatibility.SPI_CLASS_RESOURCE);
-		Path current = this.marker("current", SessionApiCompatibility.CURRENT_MARKER, "0.8.0");
+		Path current = this.marker("current", SessionApiCompatibility.CURRENT_MARKER, CURRENT_VERSION);
 		try (URLClassLoader loader = isolatedLoader(legacy, current)) {
 			assertThatThrownBy(() -> SessionApiCompatibility.checkArtifactMarkers(loader))
 				.isInstanceOf(IllegalStateException.class)
@@ -169,9 +181,9 @@ class SessionApiCompatibilityTests {
 		// A jar that shaded and relocated 0.5.0 keeps its META-INF/maven entry by
 		// default,
 		// but its classes live under another package, so nothing conflicts.
-		Path shaded = this.marker("shaded", SessionApiCompatibility.LEGACY_MARKER, "0.5.0");
+		Path shaded = this.marker("shaded", SessionApiCompatibility.LEGACY_MARKER, LEGACY_VERSION);
 		this.resource(shaded, "com/example/shaded/org/springframework/ai/session/SessionRepository.class");
-		Path current = this.marker("current", SessionApiCompatibility.CURRENT_MARKER, "0.8.0");
+		Path current = this.marker("current", SessionApiCompatibility.CURRENT_MARKER, CURRENT_VERSION);
 		this.resource(current, SessionApiCompatibility.SPI_CLASS_RESOURCE);
 		try (URLClassLoader loader = isolatedLoader(shaded, current)) {
 			assertThatNoException().isThrownBy(() -> SessionApiCompatibility.checkArtifactMarkers(loader));
@@ -182,36 +194,38 @@ class SessionApiCompatibilityTests {
 
 	@Test
 	void differentSpringAiSessionVersionsFailFast() throws IOException {
-		Path v8 = this.marker("v8", SessionApiCompatibility.CURRENT_MARKER, "0.8.0");
-		Path v7 = this.marker("v7", SessionApiCompatibility.CURRENT_MARKER, "0.7.0");
-		try (URLClassLoader loader = isolatedLoader(v8, v7)) {
+		Path current = this.marker("current", SessionApiCompatibility.CURRENT_MARKER, CURRENT_VERSION);
+		Path older = this.marker("older", SessionApiCompatibility.CURRENT_MARKER, OLDER_VERSION);
+		try (URLClassLoader loader = isolatedLoader(current, older)) {
 			assertThatThrownBy(() -> SessionApiCompatibility.checkArtifactMarkers(loader))
 				.isInstanceOf(IllegalStateException.class)
 				.hasMessageContaining("Several versions of org.springaicommunity:spring-ai-session")
-				.hasMessageContaining("0.7.0")
-				.hasMessageContaining("0.8.0");
+				.hasMessageContaining(OLDER_VERSION)
+				.hasMessageContaining(CURRENT_VERSION);
 		}
 	}
 
 	@Test
 	void sameVersionDuplicateOnlyWarns(CapturedOutput output) throws IOException {
 		// For example the same jar seen through a parent and a child class loader.
-		Path first = this.marker("first", SessionApiCompatibility.CURRENT_MARKER, "0.8.0");
-		Path second = this.marker("second", SessionApiCompatibility.CURRENT_MARKER, "0.8.0");
+		Path first = this.marker("first", SessionApiCompatibility.CURRENT_MARKER, CURRENT_VERSION);
+		Path second = this.marker("second", SessionApiCompatibility.CURRENT_MARKER, CURRENT_VERSION);
 		try (URLClassLoader loader = isolatedLoader(first, second)) {
 			assertThatNoException().isThrownBy(() -> SessionApiCompatibility.checkArtifactMarkers(loader));
 		}
-		assertThat(output).contains("spring-ai-session 0.8.0 is on the classpath 2 times");
+		assertThat(output).contains("spring-ai-session " + CURRENT_VERSION + " is on the classpath 2 times");
 	}
 
 	@Test
 	void unsupportedVersionLineOnlyWarns(CapturedOutput output) throws IOException {
-		Path next = this.marker("next", SessionApiCompatibility.CURRENT_MARKER, "0.9.0");
+		Path next = this.marker("next", SessionApiCompatibility.CURRENT_MARKER, UNSUPPORTED_VERSION);
 		try (URLClassLoader loader = isolatedLoader(next)) {
 			assertThatNoException().isThrownBy(() -> SessionApiCompatibility.checkArtifactMarkers(loader));
 		}
-		assertThat(output).contains("built and tested against org.springaicommunity:spring-ai-session 0.8.x")
-			.contains("found spring-ai-session 0.9.0");
+		assertThat(output)
+			.contains("built and tested against org.springaicommunity:spring-ai-session "
+					+ SessionApiCompatibility.SUPPORTED_VERSIONS)
+			.contains("found spring-ai-session " + UNSUPPORTED_VERSION);
 	}
 
 	@Test
@@ -254,7 +268,7 @@ class SessionApiCompatibilityTests {
 		return new URLClassLoader(urls, null);
 	}
 
-	// Shape of the 0.5.0 SPI: findById returns Optional and compactEvents is absent.
+	// Shape of the 0.5.0 SPI: findById returns Optional and applyCompaction is absent.
 	interface LegacyRepository {
 
 		Optional<Session> findById(String sessionId);
@@ -270,7 +284,7 @@ class SessionApiCompatibilityTests {
 
 	}
 
-	// Shape of the 0.5.0 SessionEvent and EventFilter: no archive support.
+	// Shape of the 0.5.0 SessionEvent and EventFilter: no archive or turn support.
 	static final class LegacyEvent {
 
 	}

@@ -26,17 +26,19 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.ai.session.Session;
 import org.springframework.ai.session.SessionRepository;
+import org.springframework.ai.session.compaction.CompactionPlan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Guards against silent drift of the pre-1.0 {@link SessionRepository} SPI. Every minor
  * release of spring-ai-session so far has changed the SPI (0.5.0 to 0.8.0 replaced
- * {@code replaceEvents} with {@code compactEvents} and changed {@code findById}). An
- * abstract addition fails compilation on its own, but a new {@code default} method would
- * compile and be silently inherited, even when its behavior is wrong for an append-only
- * AgentCore log. This test fails a dependency bump with the exact method name so the new
- * method gets an explicit AgentCore decision.
+ * {@code replaceEvents} with {@code compactEvents} and changed {@code findById}; 0.10.0
+ * replaced {@code compactEvents} with {@code applyCompaction} and added
+ * {@code saveIfAbsent}). An abstract addition fails compilation on its own, but a new
+ * {@code default} method would compile and be silently inherited, even when its behavior
+ * is wrong for an append-only AgentCore log. This test fails a dependency bump with the
+ * exact method name so the new method gets an explicit AgentCore decision.
  *
  * @author Spring AI Community
  */
@@ -66,14 +68,14 @@ class SessionRepositorySpiConformanceTests {
 
 	@Test
 	void spiShapeMatchesTheVersionThisModuleIsBuiltFor() throws Exception {
-		// Pins the 0.8.0 shape that AgentCoreSessionRepository and the startup
+		// Pins the 0.10.0 shape that AgentCoreSessionRepository and the startup
 		// compatibility check rely on.
 		assertThat(SessionRepository.class.getMethod("findById", String.class).getReturnType())
 			.isEqualTo(Session.class);
-		assertThat(SessionRepository.class.getMethod("compactEvents", String.class, List.class, List.class, long.class)
+		assertThat(SessionRepository.class.getMethod("applyCompaction", String.class, CompactionPlan.class, long.class)
 			.getReturnType()).isEqualTo(boolean.class);
 		assertThat(Arrays.stream(SessionRepository.class.getMethods()).map(Method::getName))
-			.doesNotContain("replaceEvents");
+			.doesNotContain("replaceEvents", "compactEvents", "findExpiredSessionIds");
 	}
 
 }

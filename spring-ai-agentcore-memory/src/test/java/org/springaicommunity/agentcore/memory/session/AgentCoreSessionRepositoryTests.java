@@ -61,6 +61,7 @@ import org.springframework.ai.session.Session;
 import org.springframework.ai.session.SessionEvent;
 import org.springframework.ai.session.advisor.IdempotentSessionEventIdGenerator;
 import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
+import org.springframework.ai.session.compaction.CompactionPlan;
 import org.springframework.ai.session.compaction.CompactionStrategy;
 import org.springframework.ai.session.compaction.CompactionTrigger;
 
@@ -78,9 +79,9 @@ import static org.mockito.Mockito.times;
  * {@link SessionMemoryAdvisor#before}.
  *
  * <p>
- * The repository is append-only: {@code compactEvents} and {@code getEventVersion} always
- * throw {@link UnsupportedOperationException}, synthetic events are never persisted, and
- * reads are bounded via read-windowing ({@code totalEventsLimit},
+ * The repository is append-only: {@code applyCompaction} and {@code getEventVersion}
+ * always throw {@link UnsupportedOperationException}, synthetic events are never
+ * persisted, and reads are bounded via read-windowing ({@code totalEventsLimit},
  * {@code EventFilter.lastN}) with an early pagination stop for plain {@code lastN}
  * queries.
  */
@@ -140,7 +141,7 @@ class AgentCoreSessionRepositoryTests {
 			.build()).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("defaultSession");
 	}
 
-	// ==================== save / findById / findByUserId / findExpiredSessionIds ==
+	// ==================== save / findById / findByUserId / deleteExpiredSessions ==
 
 	@Test
 	void saveReturnsSameSessionAndDoesNotCallClient() {
@@ -175,7 +176,7 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(tailReq.memoryId()).isEqualTo(MEMORY_ID);
 		assertThat(tailReq.maxResults()).isEqualTo(1);
 		assertThat(tailReq.includePayloads()).isFalse();
-		// findById applies no branch filter: it is a plain tail read.
+		// findById applies no filter: it is a plain tail read.
 		assertThat(tailReq.filter()).isNull();
 	}
 
@@ -198,7 +199,8 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findByIdUnknownSessionIdReturnsNull() {
-		// 0.8.0 SPI: findById returns null (not Optional.empty()) for an unknown
+		// Since the 0.8.0 SPI, findById returns null (not Optional.empty()) for an
+		// unknown
 		// session, matching InMemorySessionRepository.
 		this.givenDataEvents();
 		assertThat(this.repository.findById(SESSION_ID)).isNull();
@@ -249,11 +251,29 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void findExpiredSessionIdsThrowsUnsupportedWithHelpfulMessage() {
-		assertThatThrownBy(() -> this.repository.findExpiredSessionIds(Instant.now()))
-			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("eventExpiryDuration")
-			.hasMessageContaining("findByUserId");
+	void deleteExpiredSessionsDeletesNothingAndNeverTouchesClient() {
+		// AgentCore sessions have no TTL; events expire through the memory's
+		// eventExpiryDuration. Returning 0 keeps scheduled SessionService cleanups
+		// working.
+		assertThat(this.repository.deleteExpiredSessions(Instant.now())).isZero();
+		then(this.client).shouldHaveNoInteractions();
+	}
+
+	// ==================== saveIfAbsent ====================
+
+	@Test
+	void saveIfAbsentReturnsTrueWhenSessionHasNoEvents() {
+		this.givenDataEvents();
+
+		assertThat(this.repository.saveIfAbsent(Session.builder().id(SESSION_ID).userId(ACTOR).build())).isTrue();
+		then(this.client).should(never()).createEvent(any(CreateEventRequest.class));
+	}
+
+	@Test
+	void saveIfAbsentReturnsFalseWhenSessionAlreadyHasEvents() {
+		this.givenDataEvents(payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z")));
+
+		assertThat(this.repository.saveIfAbsent(Session.builder().id(SESSION_ID).userId(ACTOR).build())).isFalse();
 	}
 
 	// ==================== sessionId seam validation ====================
@@ -336,7 +356,6 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(req.payload()).hasSize(1);
 		assertThat(req.payload().get(0).conversational().role()).isEqualTo(Role.USER);
 		assertThat(req.payload().get(0).conversational().content().text()).isEqualTo("hi");
-		// No branch is set when the event carries none.
 		assertThat(req.branch()).isNull();
 		assertThat(req.clientToken()).matches("[0-9a-f]{64}");
 	}
@@ -443,24 +462,6 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void appendEventMapsSessionEventBranchToCreateEventBranch() {
-		given(this.client.createEvent(any(CreateEventRequest.class)))
-			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
-
-		SessionEvent event = SessionEvent.builder()
-			.sessionId(SESSION_ID)
-			.branch("b7")
-			.message(UserMessage.builder().text("hi").build())
-			.build();
-		this.repository.appendEvent(event);
-
-		ArgumentCaptor<CreateEventRequest> captor = ArgumentCaptor.forClass(CreateEventRequest.class);
-		then(this.client).should().createEvent(captor.capture());
-		assertThat(captor.getValue().branch()).isNotNull();
-		assertThat(captor.getValue().branch().name()).isEqualTo("b7");
-	}
-
-	@Test
 	void appendEventWrapsSdkExceptionInStorageException() {
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willThrow(SdkException.builder().message("boom").build());
@@ -488,7 +489,7 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void appendEventClientTokenIgnoresTimestampPayloadAndBranch() {
+	void appendEventClientTokenIgnoresTimestampAndPayload() {
 		// A retry rebuilds the event (fresh Message, fresh timestamp), so the token must
 		// depend only on the scope and the event id; otherwise AgentCore cannot dedup it.
 		given(this.client.createEvent(any(CreateEventRequest.class)))
@@ -504,7 +505,6 @@ class AgentCoreSessionRepositoryTests {
 			.id("evt-1")
 			.sessionId(SESSION_ID)
 			.timestamp(Instant.parse("2026-03-01T10:00:05Z"))
-			.branch("b1")
 			.message(UserMessage.builder().text("hi, retried").build())
 			.build());
 
@@ -559,21 +559,19 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(tokens.get(3)).isNotEqualTo(tokens.get(2)).isNotEqualTo(tokens.get(0));
 	}
 
-	// ==================== compactEvents (always unsupported) ====================
+	// ==================== applyCompaction (always unsupported) ====================
 
 	@Test
-	void compactEventsThrowsUnsupportedOperationAndNeverTouchesClient() {
-		SessionEvent archived = SessionEvent.builder()
-			.sessionId(SESSION_ID)
-			.message(UserMessage.builder().text("old").build())
-			.build();
-		SessionEvent retained = SessionEvent.builder()
+	void applyCompactionThrowsUnsupportedOperationAndNeverTouchesClient() {
+		SessionEvent summary = SessionEvent.builder()
 			.sessionId(SESSION_ID)
 			.message(UserMessage.builder().text("summary").build())
 			.build();
-		assertThatThrownBy(() -> this.repository.compactEvents(SESSION_ID, List.of(archived), List.of(retained), 1L))
+		CompactionPlan plan = new CompactionPlan(Set.of("old-1"),
+				List.of(new CompactionPlan.Insert(null, List.of(summary))));
+		assertThatThrownBy(() -> this.repository.applyCompaction(SESSION_ID, plan, 1L))
 			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("compactEvents is unsupported")
+			.hasMessageContaining("applyCompaction is unsupported")
 			.hasMessageContaining("compactionTrigger")
 			.hasMessageContaining("EventFilter.lastN");
 		then(this.client).shouldHaveNoInteractions();
@@ -586,7 +584,7 @@ class AgentCoreSessionRepositoryTests {
 		assertThatThrownBy(() -> this.repository.getEventVersion(SESSION_ID))
 			.isInstanceOf(UnsupportedOperationException.class)
 			.hasMessageContaining("getEventVersion is unsupported")
-			.hasMessageContaining("compactEvents")
+			.hasMessageContaining("applyCompaction")
 			.hasMessageNotContaining("replaceEvents")
 			.hasMessageContaining("compactionTrigger");
 		then(this.client).shouldHaveNoInteractions();
@@ -654,6 +652,24 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
+	void findEventsLastNKeepsTurnsWholeAndStopsPaginatingAtTheTurnStart() {
+		// lastN(1) lands on an assistant reply, so reading continues to the user message
+		// that starts its turn (page 2), and then stops: page 3 is never requested.
+		Event answer2 = payloadEvent("a-2", "answer-2", Role.ASSISTANT, Instant.parse("2026-01-04T00:00:00Z"));
+		Event question2 = payloadEvent("u-2", "question-2", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
+		Event answer1 = payloadEvent("a-1", "answer-1", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
+		given(this.client.listEvents(any(ListEventsRequest.class)))
+			.willReturn(ListEventsResponse.builder().events(answer2).nextToken("page2").build())
+			.willReturn(ListEventsResponse.builder().events(question2, answer1).nextToken("page3").build())
+			.willReturn(emptyPage());
+
+		List<SessionEvent> events = this.repository.findEvents(SESSION_ID, EventFilter.lastN(1));
+
+		assertThat(events).extracting((e) -> e.getMessage().getText()).containsExactly("question-2", "answer-2");
+		then(this.client).should(times(2)).listEvents(any(ListEventsRequest.class));
+	}
+
+	@Test
 	void findEventsLastNWithMessageTypeFilterStopsPaginatingAtNthMatch() {
 		// The early stop counts client-side MATCHES, not fetched events: page 1
 		// yields one USER match (the ASSISTANT event does not match), page 2 yields
@@ -702,9 +718,10 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(events).allSatisfy((e) -> assertThat(e.getMetadata())
 			.containsEntry(AgentCoreSessionRepository.EVENT_ID_METADATA_KEY, "e-1"));
 
-		// lastN(1) over the single event keeps only its newest (last) message.
+		// lastN(1) lands on the answer, mid-turn, so the window extends back to its
+		// question: windows keep turns whole.
 		List<SessionEvent> lastOne = this.repository.findEvents(SESSION_ID, EventFilter.lastN(1));
-		assertThat(lastOne).extracting((e) -> e.getMessage().getText()).containsExactly("answer");
+		assertThat(lastOne).extracting((e) -> e.getMessage().getText()).containsExactly("question", "answer");
 	}
 
 	@Test
@@ -778,20 +795,6 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void findEventsPushesBranchFilterDownToListEvents() {
-		this.givenDataEvents();
-
-		this.repository.findEvents(SESSION_ID, EventFilter.forBranch("b1"));
-
-		ListEventsRequest req = this.captureLastListEvents();
-		assertThat(req.filter()).isNotNull();
-		assertThat(req.filter().branch()).isNotNull();
-		assertThat(req.filter().branch().name()).isEqualTo("b1");
-		// true = SPI reference semantics: a branch read includes pre-fork history.
-		assertThat(req.filter().branch().includeParentBranches()).isTrue();
-	}
-
-	@Test
 	void findEventsAppliesInMemoryFilter() {
 		Event userEvent = payloadEvent("e-1", "user-text", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		Event assistantEvent = payloadEvent("e-2", "assistant-text", Role.ASSISTANT,
@@ -806,7 +809,7 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findEventsHonorsKeywordsAnyAndAllMatchModes() {
-		// spring-ai-session 0.8.0 EventFilter.keywords/matchMode are applied client-side
+		// spring-ai-session EventFilter.keywords/matchMode are applied client-side
 		// through EventFilter.matches; keywords are case-insensitive.
 		Event e1 = payloadEvent("e-1", "Deploy the Lambda", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		Event e2 = payloadEvent("e-2", "lambda cold start", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
@@ -846,7 +849,7 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void findEventsActiveFilterReturnsEveryEventBecauseNothingIsArchived() {
-		// AgentCore events are never archived (compactEvents is unsupported), so the
+		// AgentCore events are never archived (applyCompaction is unsupported), so the
 		// EventFilter.active() narrowing that SessionMemoryAdvisor and
 		// DefaultSessionService.compact always apply must not drop anything.
 		Event e1 = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
@@ -856,9 +859,11 @@ class AgentCoreSessionRepositoryTests {
 		List<SessionEvent> active = this.repository.findEvents(SESSION_ID, EventFilter.active());
 		assertThat(active).extracting(SessionEvent::getId).containsExactly("e-1", "e-2");
 		assertThat(active).noneMatch(SessionEvent::isArchived);
+		// lastN(1) lands on the assistant reply, so the turn-aware window adds its user
+		// message.
 		assertThat(this.repository.findEvents(SESSION_ID, EventFilter.active().merge(EventFilter.lastN(1))))
 			.extracting(SessionEvent::getId)
-			.containsExactly("e-2");
+			.containsExactly("e-1", "e-2");
 	}
 
 	@Test
@@ -956,7 +961,9 @@ class AgentCoreSessionRepositoryTests {
 	@Test
 	void findByIdMismatchedUserIdContextAdvisorThrowsIllegalStateException() {
 		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage())
+		// Turn 1: the advisor's findById and saveIfAbsent (from SessionService.create)
+		// both see an empty session.
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage(), emptyPage())
 			.willReturn(ListEventsResponse.builder().events(tail).build());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("stamp").build()).build());

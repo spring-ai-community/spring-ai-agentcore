@@ -35,6 +35,7 @@ import org.springframework.ai.session.EventFilter;
 import org.springframework.ai.session.Session;
 import org.springframework.ai.session.SessionEvent;
 import org.springframework.ai.session.SessionRepository;
+import org.springframework.ai.session.compaction.CompactionPlan;
 import org.springframework.core.NativeDetector;
 
 /**
@@ -50,7 +51,7 @@ import org.springframework.core.NativeDetector;
  * <ul>
  * <li>A signature probe: every {@link SessionRepository} method must resolve to a
  * concrete {@link AgentCoreSessionRepository} method with a compatible return type, and
- * {@link SessionEvent} and {@link EventFilter} must expose the 0.8.0 archive members. It
+ * {@link SessionEvent} and {@link EventFilter} must expose the archive members. It
  * catches an old jar, a newer SPI and a mixed split, including a shaded jar whose Maven
  * markers were stripped.</li>
  * <li>A best-effort Maven marker scan. The renamed {@code spring-ai-session-management}
@@ -70,7 +71,7 @@ final class SessionApiCompatibility {
 	/**
 	 * Version prefix of the spring-ai-session line this module is built and tested for.
 	 */
-	static final String SUPPORTED_VERSION_LINE = "0.8.";
+	static final String SUPPORTED_VERSION_LINE = "0.10.";
 
 	/**
 	 * {@link #SUPPORTED_VERSION_LINE} as written in every message, the configuration
@@ -151,8 +152,8 @@ final class SessionApiCompatibility {
 			problems.add(repositorySpi.getSimpleName() + ".findById(String) returns "
 					+ findById.getReturnType().getName() + " instead of " + Session.class.getName());
 		}
-		if (findMethod(repositorySpi, "compactEvents", String.class, List.class, List.class, long.class) == null) {
-			problems.add(repositorySpi.getSimpleName() + ".compactEvents(String, List, List, long) is missing");
+		if (findMethod(repositorySpi, "applyCompaction", String.class, CompactionPlan.class, long.class) == null) {
+			problems.add(repositorySpi.getSimpleName() + ".applyCompaction(String, CompactionPlan, long) is missing");
 		}
 		// An SPI method the implementation cannot serve (an abstract method added by a
 		// newer
@@ -174,6 +175,12 @@ final class SessionApiCompatibility {
 		Method active = findMethod(eventFilter, "active");
 		if (active == null || !Modifier.isStatic(active.getModifiers())) {
 			problems.add(eventFilter.getSimpleName() + ".active() is missing");
+		}
+		if (findMethod(sessionEvent, "isTurnStart") == null) {
+			problems.add(sessionEvent.getSimpleName() + ".isTurnStart() is missing");
+		}
+		if (findMethod(eventFilter, "applyTurnAwareWindow", List.class) == null) {
+			problems.add(eventFilter.getSimpleName() + ".applyTurnAwareWindow(List) is missing");
 		}
 		if (!problems.isEmpty()) {
 			throw new IllegalStateException("AgentCoreSessionRepository requires " + REQUIRED_ARTIFACT
