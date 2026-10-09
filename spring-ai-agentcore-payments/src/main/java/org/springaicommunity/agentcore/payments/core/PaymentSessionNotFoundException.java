@@ -17,13 +17,14 @@
 package org.springaicommunity.agentcore.payments.core;
 
 /**
- * The payment session has expired; a new session must be created.
+ * The payment session does not exist: it has expired, was deleted or never existed.
+ * AgentCore Payments reports all three the same way, so a new session must be created.
  *
  * @author Andrei Shakirin
  */
-public class PaymentSessionExpiredException extends PaymentException {
+public class PaymentSessionNotFoundException extends PaymentException {
 
-	public PaymentSessionExpiredException(String message, Throwable cause) {
+	public PaymentSessionNotFoundException(String message, Throwable cause) {
 		super(message, cause);
 	}
 

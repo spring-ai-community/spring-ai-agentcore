@@ -173,17 +173,21 @@ public class PaymentToolCallback implements ToolCallback {
 		HttpHeaders headers = new HttpHeaders();
 		for (Map.Entry<String, JsonNode> header : node.path("headers").properties()) {
 			if (header.getValue().isArray()) {
-				header.getValue().forEach((value) -> headers.add(header.getKey(), value.asString()));
+				header.getValue().forEach((value) -> headers.add(header.getKey(), text(value)));
 			}
 			else {
-				headers.add(header.getKey(), header.getValue().asString());
+				headers.add(header.getKey(), text(header.getValue()));
 			}
 		}
 		JsonNode body = node.get("body");
-		String bodyText = (body == null || body.isNull()) ? null
-				: ((body.isString()) ? body.stringValue() : body.toString());
+		String bodyText = (body == null || body.isNull()) ? null : text(body);
 		return new PaymentRequired(node.path("statusCode").asInt(PaymentRequired.PAYMENT_REQUIRED_STATUS), headers,
 				bodyText);
+	}
+
+	// A string as is, any other JSON value (object, array, number) as its JSON text.
+	private static String text(JsonNode node) {
+		return (node.isString()) ? node.stringValue() : node.toString();
 	}
 
 	private static @Nullable String unquote(@Nullable String result) {

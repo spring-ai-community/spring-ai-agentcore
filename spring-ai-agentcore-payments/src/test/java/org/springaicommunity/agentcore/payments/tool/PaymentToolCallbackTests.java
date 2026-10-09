@@ -101,6 +101,16 @@ class PaymentToolCallbackTests {
 	}
 
 	@Test
+	void keepsNonStringHeaderValuesAsJsonText() {
+		PaymentRequired paymentRequired = PaymentToolCallback.extractPaymentRequired(
+				PaymentToolCallback.PAYMENT_REQUIRED_MARKER + "{\"statusCode\":402,\"headers\":{\"x-object\":{\"a\":1},"
+						+ "\"x-list\":[\"v1\",[2]]},\"body\":\"{}\"}");
+
+		assertThat(paymentRequired.headers().get("x-object")).containsExactly("{\"a\":1}");
+		assertThat(paymentRequired.headers().get("x-list")).containsExactly("v1", "[2]");
+	}
+
+	@Test
 	void recognizesMarkerInJsonEncodedStringResult() {
 		RecordingTool tool = new RecordingTool((input) -> (input.contains("X-PAYMENT")) ? "\"ok\""
 				: "\"" + PAYMENT_REQUIRED.replace("\"", "\\\"") + "\"");

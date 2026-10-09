@@ -21,6 +21,7 @@ import java.util.List;
 
 import io.modelcontextprotocol.server.McpServerFeatures;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springaicommunity.agentcore.payments.client.AgentCorePaymentsClientHttpRequestInterceptor;
 import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
@@ -36,6 +37,8 @@ import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Configuration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +49,7 @@ import static org.mockito.Mockito.mock;
  *
  * @author Andrei Shakirin
  */
+@ExtendWith(OutputCaptureExtension.class)
 class AgentCorePaymentsAutoConfigurationTests {
 
 	private static final String ARN = "agentcore.payments.payment-manager-arn=arn:aws:bedrock-agentcore:pm";
@@ -53,6 +57,14 @@ class AgentCorePaymentsAutoConfigurationTests {
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
 		.withConfiguration(AutoConfigurations.of(AgentCorePaymentsAutoConfiguration.class))
 		.withBean(BedrockAgentCoreClient.class, () -> mock(BedrockAgentCoreClient.class));
+
+	@Test
+	void warnsWhenFixedUserOrSessionIsConfigured(CapturedOutput output) {
+		this.contextRunner.withPropertyValues(ARN)
+			.run((context) -> assertThat(output).doesNotContain("agentcore.payments.user-id / payment-session-id"));
+		this.contextRunner.withPropertyValues(ARN, "agentcore.payments.payment-session-id=session-1")
+			.run((context) -> assertThat(output).contains("agentcore.payments.user-id / payment-session-id are set"));
+	}
 
 	@Test
 	void isDisabledWithoutPaymentManagerArn() {

@@ -46,6 +46,7 @@ import software.amazon.awssdk.services.bedrockagentcore.model.ProcessPaymentRequ
 import software.amazon.awssdk.services.bedrockagentcore.model.ProcessPaymentResponse;
 import software.amazon.awssdk.services.bedrockagentcore.model.SessionLimits;
 import software.amazon.awssdk.services.bedrockagentcore.model.ValidationException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -58,9 +59,12 @@ import org.springframework.util.Assert;
  * {@code 402 Payment Required} response into the header that pays for the retried request
  * ({@link #generatePaymentHeader}). Supports the x402 protocol, versions 1 and 2.
  * <p>
- * Thread-safe. AWS SDK exceptions propagate unchanged, except budget and expiry
- * rejections of {@code ProcessPayment}, which are mapped to
- * {@link InsufficientBudgetException} and {@link PaymentSessionExpiredException}.
+ * Thread-safe. AWS SDK exceptions propagate unchanged, except two
+ * {@code ValidationException}s of {@code ProcessPayment}, recognized by their message
+ * (the service sends no reason code for them): {@code "Insufficient budget for session
+ * ..."} becomes {@link InsufficientBudgetException} and {@code "Payment session not
+ * found: ..."}, which the service also returns for an expired session, becomes
+ * {@link PaymentSessionNotFoundException}.
  *
  * @author Andrei Shakirin
  */
@@ -75,8 +79,18 @@ public class AgentCorePaymentsTemplate {
 			List.of(BlockchainChainId.BASE, BlockchainChainId.BASE_SEPOLIA, BlockchainChainId.ETHEREUM), "SOLANA",
 			List.of(BlockchainChainId.SOLANA, BlockchainChainId.SOLANA_DEVNET));
 
-	/** Start of the ProcessPayment error message when the session budget is exhausted. */
+	/**
+	 * Start of the ProcessPayment error message when the session budget is exhausted, for
+	 * example {@code "Insufficient budget for session <id>. Pending amount: ..."}
+	 * (observed 2026-10-09).
+	 */
 	static final String INSUFFICIENT_BUDGET_MESSAGE = "insufficient budget for session";
+
+	/**
+	 * Start of the ProcessPayment error message for an expired, deleted or unknown
+	 * session: {@code "Payment session not found: <id>"} (observed 2026-10-09).
+	 */
+	static final String SESSION_NOT_FOUND_MESSAGE = "payment session not found";
 
 	private final BedrockAgentCoreClient client;
 
@@ -88,7 +102,11 @@ public class AgentCorePaymentsTemplate {
 
 	private final @Nullable String permit2AllowanceLimit;
 
-	private final JsonMapper jsonMapper = JsonMapper.builder().build();
+	// Exact decimals: a double would lose digits of an amount, and an out-of-range number
+	// such as 1e348 would become Infinity, which cannot be sent to the service.
+	private final JsonMapper jsonMapper = JsonMapper.builder()
+		.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+		.build();
 
 	/** Wallet network per payment instrument; it does not change for an instrument. */
 	private final Cache<String, String> instrumentNetworks = Caffeine.newBuilder().maximumSize(1_000).build();
@@ -278,7 +296,8 @@ public class AgentCorePaymentsTemplate {
 	 * @param request customizes the request
 	 * @return the payment result with the payment proof
 	 * @throws InsufficientBudgetException if the session budget is exhausted
-	 * @throws PaymentSessionExpiredException if the session has expired
+	 * @throws PaymentSessionNotFoundException if the session has expired, was deleted or
+	 * never existed
 	 */
 	public ProcessPaymentResponse processPayment(Consumer<ProcessPaymentRequest.Builder> request) {
 		Assert.notNull(request, "request must not be null");
@@ -291,14 +310,17 @@ public class AgentCorePaymentsTemplate {
 			});
 		}
 		catch (ValidationException ex) {
-			// The service reports these cases only in the message (no reason code), for
-			// example "Insufficient budget for session <id>. Pending amount: ...".
+			// The service reports these cases only in the message (no reason code). The
+			// messages name the session id, so they stay in the cause: tool callers
+			// return
+			// the exception message to the model.
 			String message = String.valueOf(ex.getMessage()).toLowerCase(Locale.ROOT);
-			if (message.contains(INSUFFICIENT_BUDGET_MESSAGE)) {
-				throw new InsufficientBudgetException("Insufficient payment session budget: " + ex.getMessage(), ex);
+			if (message.startsWith(INSUFFICIENT_BUDGET_MESSAGE)) {
+				throw new InsufficientBudgetException("Insufficient payment session budget", ex);
 			}
-			if (message.contains("session") && message.contains("expired")) {
-				throw new PaymentSessionExpiredException("Payment session expired: " + ex.getMessage(), ex);
+			if (message.startsWith(SESSION_NOT_FOUND_MESSAGE)) {
+				throw new PaymentSessionNotFoundException(
+						"Payment session not found: it has expired, was deleted or never existed", ex);
 			}
 			logger.debug("ProcessPayment validation error not mapped to a payment exception: {}", ex.getMessage());
 			throw ex;
@@ -352,7 +374,7 @@ public class AgentCorePaymentsTemplate {
 			return this.pay(requirements, instrumentNetwork, userId, paymentInstrumentId, paymentSessionId,
 					clientToken);
 		}
-		catch (InsufficientBudgetException | PaymentSessionExpiredException ex) {
+		catch (InsufficientBudgetException | PaymentSessionNotFoundException ex) {
 			throw ex;
 		}
 		catch (RuntimeException ex) {

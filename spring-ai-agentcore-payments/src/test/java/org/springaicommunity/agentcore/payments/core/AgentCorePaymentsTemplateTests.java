@@ -29,6 +29,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.core.document.Document;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
 import software.amazon.awssdk.services.bedrockagentcore.model.BlockchainChainId;
+import software.amazon.awssdk.services.bedrockagentcore.model.CreatePaymentSessionRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.CreatePaymentSessionResponse;
 import software.amazon.awssdk.services.bedrockagentcore.model.CryptoWalletNetwork;
 import software.amazon.awssdk.services.bedrockagentcore.model.CryptoX402PaymentOutput;
 import software.amazon.awssdk.services.bedrockagentcore.model.EmbeddedCryptoWallet;
@@ -37,6 +39,7 @@ import software.amazon.awssdk.services.bedrockagentcore.model.InstrumentBalanceT
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInstrument;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInstrumentDetails;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentOutput;
+import software.amazon.awssdk.services.bedrockagentcore.model.PaymentSession;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentType;
 import software.amazon.awssdk.services.bedrockagentcore.model.ProcessPaymentRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.ProcessPaymentResponse;
@@ -49,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -112,24 +116,28 @@ class AgentCorePaymentsTemplateTests {
 			.build());
 		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
 
-		assertThatExceptionOfType(InsufficientBudgetException.class).isThrownBy(() -> template
-			.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)));
+		assertThatExceptionOfType(InsufficientBudgetException.class)
+			.isThrownBy(() -> template.generatePaymentHeader(CONTEXT,
+					X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)))
+			.withMessageNotContaining("payment-session-");
 	}
 
 	@Test
 	@SuppressWarnings("unchecked")
-	void doesNotReportOtherValidationErrorsAsBudgetErrors() {
+	void doesNotMapOtherValidationErrors() {
 		this.givenEthereumInstrument();
-		ValidationException walletError = ValidationException.builder()
-			.message("Insufficient funds in wallet for transaction")
-			.build();
-		given(this.client.processPayment(any(Consumer.class))).willThrow(walletError);
 		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		for (String message : List.of("Insufficient funds in wallet for transaction",
+				"Invalid value for field 'session': value 'expired' is not an allowed state",
+				"Payment instrument not found: payment-instrument-1")) {
+			ValidationException error = ValidationException.builder().message(message).build();
+			willThrow(error).given(this.client).processPayment(any(Consumer.class));
 
-		assertThatExceptionOfType(ValidationException.class)
-			.isThrownBy(() -> template.generatePaymentHeader(CONTEXT,
-					X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)))
-			.isSameAs(walletError);
+			assertThatExceptionOfType(ValidationException.class)
+				.isThrownBy(() -> template.generatePaymentHeader(CONTEXT,
+						X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)))
+				.isSameAs(error);
+		}
 	}
 
 	@Test
@@ -151,13 +159,16 @@ class AgentCorePaymentsTemplateTests {
 
 	@Test
 	@SuppressWarnings("unchecked")
-	void mapsExpiredSessionToPaymentSessionExpiredException() {
+	void mapsMissingOrExpiredSessionToPaymentSessionNotFoundException() {
 		this.givenEthereumInstrument();
-		given(this.client.processPayment(any(Consumer.class)))
-			.willThrow(ValidationException.builder().message("Payment session session-1 has expired").build());
+		// message as returned by AgentCore Payments for an expired session (observed
+		// 2026-10-09); an unknown session id gets the same message
+		given(this.client.processPayment(any(Consumer.class))).willThrow(ValidationException.builder()
+			.message("Payment session not found: payment-session-ppWwkpSBHBZhdJE")
+			.build());
 		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
 
-		assertThatExceptionOfType(PaymentSessionExpiredException.class).isThrownBy(() -> template
+		assertThatExceptionOfType(PaymentSessionNotFoundException.class).isThrownBy(() -> template
 			.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)));
 	}
 
@@ -218,6 +229,48 @@ class AgentCorePaymentsTemplateTests {
 					X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)))
 			.withMessageContaining(PaymentContext.PAYMENT_SESSION_ID_KEY);
 		then(this.client).shouldHaveNoInteractions();
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void passesOutOfRangeAndDecimalNumbersOfTheOptionExactly() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(paymentWithProof());
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+
+		template.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
+				{"x402Version":1,"accepts":[{"scheme":"exact","network":"eip155:8453","maxAmountRequired":"5000",
+				  "payTo":"0xabc","asset":"0xdef","extra":{"huge":1e348,"price":0.10000000000000000001}}]}"""));
+
+		Map<String, Document> extra = this.capturedProcessPayment()
+			.paymentInput()
+			.cryptoX402()
+			.payload()
+			.asMap()
+			.get("extra")
+			.asMap();
+		assertThat(extra.get("huge").asNumber().bigDecimalValue()).isEqualByComparingTo("1e348");
+		assertThat(extra.get("price").asNumber().bigDecimalValue()).isEqualByComparingTo("0.10000000000000000001");
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void createsPaymentSessionWithCallerToken() {
+		given(this.client.createPaymentSession(any(Consumer.class))).willReturn(
+				CreatePaymentSessionResponse.builder().paymentSession(PaymentSession.builder().build()).build());
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+
+		template.createPaymentSession("user-1", "0.50", 15, "session-token-1");
+
+		ArgumentCaptor<Consumer<CreatePaymentSessionRequest.Builder>> captor = ArgumentCaptor.forClass(Consumer.class);
+		then(this.client).should().createPaymentSession(captor.capture());
+		CreatePaymentSessionRequest.Builder builder = CreatePaymentSessionRequest.builder();
+		captor.getValue().accept(builder);
+		CreatePaymentSessionRequest request = builder.build();
+		assertThat(request.clientToken()).isEqualTo("session-token-1");
+		assertThat(request.userId()).isEqualTo("user-1");
+		assertThat(request.limits().maxSpendAmount().value()).isEqualTo("0.50");
+		assertThat(request.expiryTimeInMinutes()).isEqualTo(15);
 	}
 
 	@SuppressWarnings("unchecked")

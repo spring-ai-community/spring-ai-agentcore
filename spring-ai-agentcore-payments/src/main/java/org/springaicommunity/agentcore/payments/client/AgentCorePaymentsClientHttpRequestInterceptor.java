@@ -96,7 +96,7 @@ public class AgentCorePaymentsClientHttpRequestInterceptor implements ClientHttp
 		}
 		PaymentRequired paymentRequired = read(response);
 		logger.info("{} {}://{}{} requires payment, paying through AgentCore Payments", request.getMethod(),
-				request.getURI().getScheme(), request.getURI().getAuthority(), request.getURI().getPath());
+				request.getURI().getScheme(), request.getURI().getHost(), request.getURI().getPath());
 		PaymentHeader header = this.payments.generatePaymentHeader(this.paymentContext(request), paymentRequired);
 		sleep(this.postPaymentDelay);
 

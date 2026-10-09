@@ -185,7 +185,7 @@ The registry knows when a session expires because it sets the expiry itself; it 
 
 ### Errors
 
-Payment failures are `PaymentException`s: `InsufficientBudgetException` (the session budget is used up), `PaymentSessionExpiredException`, `PaymentConfigurationException` (missing user, instrument or session) or `PaymentException`, for example for a `402` that uses the Machine Payments Protocol, which is not supported yet. Raised inside a tool, they reach Spring AI as `ToolExecutionException`; by default Spring AI returns the message to the model. Set `spring.ai.tools.throw-exception-on-error=true` to handle them in the application.
+Payment failures are `PaymentException`s: `InsufficientBudgetException` (the session budget is used up), `PaymentSessionNotFoundException` (the session has expired, was deleted or never existed; AgentCore does not tell these apart), `PaymentConfigurationException` (missing user, instrument or session) or `PaymentException`, for example for a `402` that uses the Machine Payments Protocol, which is not supported yet. Raised inside a tool, they reach Spring AI as `ToolExecutionException`; by default Spring AI returns the message to the model. Set `spring.ai.tools.throw-exception-on-error=true` to handle them in the application.
 
 When the budget is used up, every further payment of the conversation fails until the application grants a new one. Recommended pattern:
 
@@ -202,9 +202,9 @@ catch (ToolExecutionException ex) {
 }
 ```
 
-AgentCore Payments reports a used-up budget only in the error message ("Insufficient budget for session ..."). Other validation errors, for example a wallet without enough funds, propagate unchanged as AWS SDK `ValidationException` and are logged at DEBUG.
+AgentCore Payments reports a used-up budget and a missing session only in the error message of a `ValidationException` ("Insufficient budget for session ..." and "Payment session not found: ..."; an expired session gets the latter too). The module maps these two messages; other validation errors, for example a wallet without enough funds, propagate unchanged as AWS SDK `ValidationException` and are logged at DEBUG.
 
-`AgentCorePaymentsTemplate` is thread-safe and uses the synchronous AWS client. AWS SDK exceptions propagate unchanged, except budget and expiry rejections of `ProcessPayment`.
+`AgentCorePaymentsTemplate` is thread-safe and uses the synchronous AWS client. AWS SDK exceptions propagate unchanged, except the budget and session-not-found rejections of `ProcessPayment` (see [Errors](#errors)).
 
 ## End-to-end test (Stripe Privy, Base Sepolia testnet)
 
@@ -301,6 +301,12 @@ Changes against earlier snapshots of this preview module:
 - `paidHttpRequest` is off by default; enable it with `agentcore.payments.paid-http-tool.enabled=true` and `agentcore.payments.paid-http-tool.allowed-hosts`.
 - `getPaymentInstrument`, `getPaymentInstrumentBalance` and `getPaymentSession` no longer accept instrument or session ids; they use the current `PaymentContext`.
 - `agentcore.payments.user-id` and `payment-session-id` are fallbacks for local runs and tests; a WARN is logged when they are set.
+- `PaymentSessionExpiredException` is renamed to `PaymentSessionNotFoundException`: AgentCore reports an expired session as not found.
+
+Differences from the configuration proposed in [#230](https://github.com/spring-ai-community/spring-ai-agentcore/issues/230):
+
+- No `wallet-provider` property: the wallet provider (Coinbase or Stripe Privy) is set by the payment connector of the payment manager, not by the client.
+- No `currency` property: session budgets are in USD, the only currency AgentCore Payments accepts for session limits. The asset actually paid (for example USDC) comes from the merchant's x402 payment option.
 
 ## Next steps
 
