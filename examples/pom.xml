@@ -36,6 +36,7 @@
         <module>spring-ai-sse-chat-client</module>
         <module>spring-ai-identity</module>
         <module>spring-ai-identity-agentcore</module>
+        <module>spring-ai-payments</module>
     </modules>
 
     <!--

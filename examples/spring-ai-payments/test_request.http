@@ -1,0 +1,25 @@
+### Way 1: HTTP client interceptor (domain tool on a RestClient with the payments interceptor)
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: example-session-0000000000000001
+
+{ "prompt" : "Give me a short recap of recent prediction-market activity.", "approach" : "interceptor" }
+
+
+### Way 2: paidHttpRequest tool (generic fetch tool, URL in the prompt)
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: example-session-0000000000000001
+
+{ "prompt" : "Fetch https://sandbox.node4all.com/v1/x402-test and summarize it in one sentence. Then tell me the remaining budget of my payment session.", "approach" : "tool" }
+
+
+### Way 3: own integration (domain tool on the JDK HttpClient paying through AgentCorePaymentsTemplate)
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: example-session-0000000000000001
+
+{ "prompt" : "Read my fortune, in one sentence.", "approach" : "custom" }

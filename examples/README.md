@@ -68,6 +68,13 @@ Browser automation example using AgentCore Browser. Features:
 - Screenshot capture and local file saving
 - Local mode (Playwright) and AgentCore mode support
 
+### spring-ai-payments
+AgentCore Payments example: an agent paying for x402 APIs on a testnet. Demonstrates:
+- Paying through a `RestClient` interceptor in a domain tool
+- The generic `paidHttpRequest` tool and payment query tools
+- An own integration with the JDK `HttpClient` and `AgentCorePaymentsTemplate`
+- One budget per conversation with `PaymentSessionRegistry`
+
 ### spring-ai-sse-chat-client
 Server-Sent Events streaming with Spring AI integration. Features:
 - `Flux<String>` streaming responses

@@ -1,0 +1,28 @@
+{
+  "properties": [
+    {
+      "name": "agentcore.payments.post-payment-delay",
+      "defaultValue": "3s"
+    },
+    {
+      "name": "agentcore.payments.paid-http-tool.enabled",
+      "defaultValue": false
+    },
+    {
+      "name": "agentcore.payments.paid-http-tool.max-response-length",
+      "defaultValue": 10000
+    },
+    {
+      "name": "agentcore.payments.session.max-spend",
+      "defaultValue": "1.00"
+    },
+    {
+      "name": "agentcore.payments.session.expiry",
+      "defaultValue": "60m"
+    },
+    {
+      "name": "agentcore.payments.session.max-entries",
+      "defaultValue": 10000
+    }
+  ]
+}
