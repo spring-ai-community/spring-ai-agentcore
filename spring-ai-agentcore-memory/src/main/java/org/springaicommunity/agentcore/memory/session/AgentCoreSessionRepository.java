@@ -23,11 +23,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -42,6 +42,7 @@ import software.amazon.awssdk.services.bedrockagentcore.model.CreateEventRequest
 import software.amazon.awssdk.services.bedrockagentcore.model.DeleteEventRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.Event;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListEventsRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.ListEventsResponse;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListSessionsRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.ListSessionsResponse;
 import software.amazon.awssdk.services.bedrockagentcore.model.PayloadType;
@@ -434,15 +435,14 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 
 		try {
 			var actorAndSession = this.actorAndSession(sessionId);
-			AtomicInteger deleted = new AtomicInteger();
-			this.forEachEventPage(actorAndSession, false, false, (page) -> {
-				page.forEach((event) -> {
+			int deleted = 0;
+			for (List<Event> page : this.eventPages(actorAndSession, false, false)) {
+				for (Event event : page) {
 					this.deleteEvent(actorAndSession, event.eventId());
-					deleted.incrementAndGet();
-				});
-				return true;
-			});
-			logger.debug("Deleted {} AgentCore events for sessionId: {}", deleted.get(), sessionId);
+					deleted++;
+				}
+			}
+			logger.debug("Deleted {} AgentCore events for sessionId: {}", deleted, sessionId);
 		}
 		catch (SdkException ex) {
 			logger.error("Failed to delete AgentCore session: {}", sessionId, ex);
@@ -644,30 +644,9 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		// below.
 		var actorAndSession = this.actorAndSession(sessionId);
 		try {
-			// Events arrive newest-first; collect matches grouped per event so the
-			// early-stop for lastN never splits one event's messages.
-			List<List<SessionEvent>> matchedPerEvent = new ArrayList<>();
-			AtomicInteger matchedCount = new AtomicInteger();
-			// EventFilter rejects lastN combined with page/pageSize at construction, so
-			// stopping early on lastN can never race the paged path.
-			boolean stopAtLastN = filter.lastN() != null;
-			this.forEachEventPage(actorAndSession, true, true, (page) -> {
-				for (Event event : page) {
-					List<SessionEvent> matched = this.toMatchedSessionEvents(event, sessionId, filter);
-					if (!matched.isEmpty()) {
-						matchedPerEvent.add(matched);
-						matchedCount.addAndGet(matched.size());
-					}
-					if (stopAtLastN && matchedCount.get() >= filter.lastN()
-							&& lastNWindowIsComplete(matched, matchedCount.get(), filter)) {
-						return false;
-					}
-				}
-				return true;
-			});
-
+			List<List<SessionEvent>> matchedPerEvent = this.collectMatchedPerEvent(actorAndSession, sessionId, filter);
 			// Flatten back to chronological order (oldest first).
-			List<SessionEvent> matched = new ArrayList<>(matchedCount.get());
+			List<SessionEvent> matched = new ArrayList<>();
 			for (int i = matchedPerEvent.size() - 1; i >= 0; i--) {
 				matched.addAll(matchedPerEvent.get(i));
 			}
@@ -685,6 +664,30 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 			throw new AgentCoreMemoryException.RetrievalException("Failed to fetch events for sessionId: " + sessionId,
 					ex);
 		}
+	}
+
+	// Events arrive newest-first; collects matches grouped per event (newest first) so
+	// the early stop for lastN never splits one event's messages. EventFilter rejects
+	// lastN combined with page/pageSize at construction, so stopping early on lastN can
+	// never race the paged path.
+	private List<List<SessionEvent>> collectMatchedPerEvent(
+			AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, String sessionId, EventFilter filter) {
+		List<List<SessionEvent>> matchedPerEvent = new ArrayList<>();
+		int matchedCount = 0;
+		for (List<Event> page : this.eventPages(actorAndSession, true, true)) {
+			for (Event event : page) {
+				List<SessionEvent> matched = this.toMatchedSessionEvents(event, sessionId, filter);
+				if (!matched.isEmpty()) {
+					matchedPerEvent.add(matched);
+					matchedCount += matched.size();
+				}
+				if (filter.lastN() != null && matchedCount >= filter.lastN()
+						&& lastNWindowIsComplete(matched, matchedCount, filter)) {
+					return matchedPerEvent;
+				}
+			}
+		}
+		return matchedPerEvent;
 	}
 
 	// The lastN window keeps turns whole (spring-ai-session 0.10): reading may stop once
@@ -828,45 +831,30 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 
 	// ==================== pagination ====================
 
-	// Streams pages of events (newest first). The handler returns false to stop
-	// paginating early; respectLimit caps the total events seen at totalEventsLimit.
-	private void forEachEventPage(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
-			boolean includePayloads, boolean respectLimit, Predicate<List<Event>> pageHandler) {
-		String nextToken = null;
-		int requestPageSize = (respectLimit && this.totalEventsLimit != null)
-				? Math.min(this.pageSize, this.totalEventsLimit) : this.pageSize;
+	// Pages of events (newest first), fetched lazily so a caller that stops iterating
+	// stops paginating. respectLimit caps the total events seen at totalEventsLimit.
+	private Iterable<List<Event>> eventPages(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
+			boolean includePayloads, boolean respectLimit) {
+		Integer limit = (respectLimit) ? this.totalEventsLimit : null;
+		int requestPageSize = (limit != null) ? Math.min(this.pageSize, limit) : this.pageSize;
 		// ListEvents accepts maxResults 1-100; clamp like findByUserId does for
 		// ListSessions so an oversized page-size property degrades instead of failing.
-		requestPageSize = Math.min(Math.max(requestPageSize, 1), SERVICE_MAX_RESULTS);
-		int seen = 0;
-		do {
-			ListEventsRequest.Builder builder = ListEventsRequest.builder()
-				.actorId(actorAndSession.actor())
-				.sessionId(actorAndSession.session())
-				.memoryId(this.memoryId)
-				.includePayloads(includePayloads)
-				.maxResults(requestPageSize);
-			if (nextToken != null) {
-				builder.nextToken(nextToken);
-			}
-			var response = this.client.listEvents(builder.build());
-			if (response == null || response.events() == null) {
-				break;
-			}
-			List<Event> page = response.events();
-			if (respectLimit && this.totalEventsLimit != null && seen + page.size() > this.totalEventsLimit) {
-				page = page.subList(0, this.totalEventsLimit - seen);
-			}
-			if (!pageHandler.test(page)) {
-				break;
-			}
-			seen += page.size();
-			nextToken = response.nextToken();
-			if (respectLimit && this.totalEventsLimit != null && seen >= this.totalEventsLimit) {
-				break;
-			}
+		int maxResults = Math.min(Math.max(requestPageSize, 1), SERVICE_MAX_RESULTS);
+		return () -> new EventPageIterator(actorAndSession, includePayloads, maxResults, limit);
+	}
+
+	private ListEventsResponse listEventsPage(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession,
+			boolean includePayloads, int maxResults, String nextToken) {
+		ListEventsRequest.Builder builder = ListEventsRequest.builder()
+			.actorId(actorAndSession.actor())
+			.sessionId(actorAndSession.session())
+			.memoryId(this.memoryId)
+			.includePayloads(includePayloads)
+			.maxResults(maxResults);
+		if (nextToken != null) {
+			builder.nextToken(nextToken);
 		}
-		while (nextToken != null);
+		return this.client.listEvents(builder.build());
 	}
 
 	AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession(String sessionId) {
@@ -996,6 +984,71 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 
 		public AgentCoreSessionRepository build() {
 			return new AgentCoreSessionRepository(this);
+		}
+
+	}
+
+	// Fetches the next ListEvents page on demand and stops after the last page or once
+	// limit events (when set) have been returned.
+	private final class EventPageIterator implements Iterator<List<Event>> {
+
+		private final AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession;
+
+		private final boolean includePayloads;
+
+		private final int maxResults;
+
+		private final Integer limit;
+
+		private List<Event> nextPage;
+
+		private String nextToken;
+
+		private boolean exhausted;
+
+		private int seen;
+
+		EventPageIterator(AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, boolean includePayloads,
+				int maxResults, Integer limit) {
+			this.actorAndSession = actorAndSession;
+			this.includePayloads = includePayloads;
+			this.maxResults = maxResults;
+			this.limit = limit;
+		}
+
+		@Override
+		public boolean hasNext() {
+			if (this.nextPage == null && !this.exhausted) {
+				this.fetch();
+			}
+			return this.nextPage != null;
+		}
+
+		@Override
+		public List<Event> next() {
+			if (!this.hasNext()) {
+				throw new NoSuchElementException();
+			}
+			List<Event> page = this.nextPage;
+			this.nextPage = null;
+			return page;
+		}
+
+		private void fetch() {
+			ListEventsResponse response = AgentCoreSessionRepository.this.listEventsPage(this.actorAndSession,
+					this.includePayloads, this.maxResults, this.nextToken);
+			if (response == null || response.events() == null) {
+				this.exhausted = true;
+				return;
+			}
+			List<Event> page = response.events();
+			if (this.limit != null && this.seen + page.size() > this.limit) {
+				page = page.subList(0, this.limit - this.seen);
+			}
+			this.seen += page.size();
+			this.nextToken = response.nextToken();
+			this.exhausted = this.nextToken == null || (this.limit != null && this.seen >= this.limit);
+			this.nextPage = page;
 		}
 
 	}
