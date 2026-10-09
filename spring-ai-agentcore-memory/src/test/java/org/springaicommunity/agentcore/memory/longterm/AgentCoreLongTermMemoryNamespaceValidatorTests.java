@@ -28,10 +28,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.EpisodicReflectionConfiguration;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ReflectionConfiguration;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.StrategyConfiguration;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -336,6 +339,70 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 
 			// Verify registrar was never called
 			then(this.registrar).should(never()).registerNamespace(any(), any(), any());
+		}
+
+	}
+
+	@Nested
+	@DisplayName("Episodic Reflection Namespace Tests")
+	class ReflectionNamespaceTests {
+
+		private static final String EPISODES = "/episodes/{actorId}/{sessionId}";
+
+		private static final String REFLECTIONS = "/episodes/{actorId}";
+
+		@Test
+		@DisplayName("Should validate reflections pattern against the reflection namespaces (gh-254)")
+		void shouldPassWhenReflectionsPatternMatchesReflectionNamespace() {
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this
+				.mockGetMemoryResponse(List.of(episodicStrategy(List.of(REFLECTIONS))));
+
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this.validator.validateNamespaces("test-memory",
+					Map.of("episodic-123", List.of(EPISODES)), Map.of("episodic-123", REFLECTIONS));
+		}
+
+		@Test
+		@DisplayName("Should fail on reflections mismatch without auto-registering it as episode namespace")
+		void shouldFailOnReflectionsMismatchEvenWithAutoRegister() {
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this
+				.mockGetMemoryResponse(List.of(episodicStrategy(List.of("/reflections/{actorId}"))));
+			var autoRegistering = new AgentCoreLongTermMemoryNamespaceValidator(
+					AgentCoreLongTermMemoryNamespaceValidatorTests.this.controlClient,
+					AgentCoreLongTermMemoryNamespaceValidatorTests.this.registrar, true);
+
+			assertThatThrownBy(() -> autoRegistering.validateNamespaces("test-memory",
+					Map.of("episodic-123", List.of(EPISODES)), Map.of("episodic-123", REFLECTIONS)))
+				.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+				.hasMessageContaining("Reflection namespace mismatch")
+				.hasMessageContaining("/reflections/{actorId}");
+			then(AgentCoreLongTermMemoryNamespaceValidatorTests.this.registrar).should(never())
+				.registerNamespace(any(), any(), any());
+		}
+
+		@Test
+		@DisplayName("Should fail when the episodic strategy has no reflection configuration")
+		void shouldFailWhenStrategyHasNoReflectionNamespaces() {
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this.mockGetMemoryResponse(
+					List.of(MemoryStrategy.builder().strategyId("episodic-123").namespaces(List.of(EPISODES)).build()));
+
+			assertThatThrownBy(() -> AgentCoreLongTermMemoryNamespaceValidatorTests.this.validator.validateNamespaces(
+					"test-memory", Map.of("episodic-123", List.of(EPISODES)), Map.of("episodic-123", REFLECTIONS)))
+				.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+				.hasMessageContaining("<none configured in the memory>");
+		}
+
+		private static MemoryStrategy episodicStrategy(List<String> reflectionNamespaces) {
+			EpisodicReflectionConfiguration episodicReflection = EpisodicReflectionConfiguration.builder()
+				.namespaces(reflectionNamespaces)
+				.build();
+			ReflectionConfiguration reflection = ReflectionConfiguration.builder()
+				.episodicReflectionConfiguration(episodicReflection)
+				.build();
+			return MemoryStrategy.builder()
+				.strategyId("episodic-123")
+				.namespaces(List.of(EPISODES))
+				.configuration(StrategyConfiguration.builder().reflection(reflection).build())
+				.build();
 		}
 
 	}

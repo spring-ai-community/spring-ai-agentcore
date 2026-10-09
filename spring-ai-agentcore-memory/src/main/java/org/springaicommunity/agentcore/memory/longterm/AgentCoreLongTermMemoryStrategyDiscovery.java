@@ -117,7 +117,7 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 		}
 
 		List<String> reflectionsNamespaces = (type != AgentCoreLongTermMemoryStrategyType.EPISODIC) ? List.of()
-				: this.extractReflectionsNamespaces(strategy);
+				: extractReflectionsNamespaces(strategy);
 
 		return new DiscoveredStrategy(strategy.strategyId(), type, List.copyOf(namespaces), reflectionsNamespaces);
 	}
@@ -132,7 +132,7 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 	 * @param strategy the AWS memory strategy descriptor
 	 * @return the configured reflection namespaces, or empty when not applicable
 	 */
-	private List<String> extractReflectionsNamespaces(MemoryStrategy strategy) {
+	static List<String> extractReflectionsNamespaces(MemoryStrategy strategy) {
 		StrategyConfiguration configuration = strategy.configuration();
 		if (configuration == null) {
 			return List.of();

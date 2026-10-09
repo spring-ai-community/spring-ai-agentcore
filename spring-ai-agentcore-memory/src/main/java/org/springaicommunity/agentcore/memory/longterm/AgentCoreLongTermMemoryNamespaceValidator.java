@@ -76,7 +76,26 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 	 * match expected format
 	 */
 	public void validateNamespaces(String memoryId, Map<String, List<String>> namespacesByStrategy) {
-		if (namespacesByStrategy.isEmpty()) {
+		this.validateNamespaces(memoryId, namespacesByStrategy, Map.of());
+	}
+
+	/**
+	 * Validates namespace configuration for all configured strategies, including the
+	 * reflection namespaces of episodic strategies. Reflection namespaces live in the
+	 * strategy's reflection configuration, not in its namespaces, so they are validated
+	 * against those and are never auto-registered (registration writes the strategy's
+	 * episode namespaces).
+	 * @param memoryId the memory resource ID
+	 * @param namespacesByStrategy map of strategy ID to its list of expected namespace
+	 * patterns
+	 * @param reflectionNamespacesByStrategy map of episodic strategy ID to its expected
+	 * reflection namespace pattern
+	 * @throws AgentCoreMemoryException.ConfigurationException if any namespace doesn't
+	 * match expected format
+	 */
+	public void validateNamespaces(String memoryId, Map<String, List<String>> namespacesByStrategy,
+			Map<String, String> reflectionNamespacesByStrategy) {
+		if (namespacesByStrategy.isEmpty() && reflectionNamespacesByStrategy.isEmpty()) {
 			return;
 		}
 
@@ -96,18 +115,16 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 			List<String> expectedPatterns = entry.getValue();
 			this.validateStrategy(memoryId, strategies, strategyId, expectedPatterns);
 		}
+		for (Map.Entry<String, String> entry : reflectionNamespacesByStrategy.entrySet()) {
+			this.validateReflections(memoryId, strategies, entry.getKey(), entry.getValue());
+		}
 
 		logger.info("Namespace validation passed for {} strategies", namespacesByStrategy.size());
 	}
 
 	private void validateStrategy(String memoryId, List<MemoryStrategy> strategies, String strategyId,
 			List<String> expectedPatterns) {
-		MemoryStrategy strategy = strategies.stream()
-			.filter((s) -> strategyId.equals(s.strategyId()))
-			.findFirst()
-			.orElseThrow(() -> new AgentCoreMemoryException.ConfigurationException(
-					"Strategy '" + strategyId + "' not found in memory '" + memoryId + "'. " + "Available strategies: "
-							+ strategies.stream().map(MemoryStrategy::strategyId).toList()));
+		MemoryStrategy strategy = findStrategy(memoryId, strategies, strategyId);
 
 		List<String> actualNamespaces = strategy.namespaces();
 		if (actualNamespaces == null || actualNamespaces.isEmpty()) {
@@ -131,6 +148,34 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 
 		logger.debug("Strategy '{}' namespace validated: expected={}, actual={}", strategyId, expectedPatterns,
 				actualNamespaces);
+	}
+
+	private void validateReflections(String memoryId, List<MemoryStrategy> strategies, String strategyId,
+			String expectedPattern) {
+		MemoryStrategy strategy = findStrategy(memoryId, strategies, strategyId);
+		List<String> actualNamespaces = AgentCoreLongTermMemoryStrategyDiscovery.extractReflectionsNamespaces(strategy);
+		boolean matched = actualNamespaces.stream().anyMatch((actual) -> this.matchesPattern(actual, expectedPattern));
+		if (!matched) {
+			throw new AgentCoreMemoryException.ConfigurationException(String.format(
+					"Reflection namespace mismatch for episodic strategy '%s'.%n" + "  In AWS Memory:    %s%n"
+							+ "  In Spring Config: %s%n%n"
+							+ "Configure the reflection namespace of the memory in application.properties:%n"
+							+ "  agentcore.memory.long-term.episodic.reflections-namespace-pattern=%s%n"
+							+ "Reflection namespaces are not registered automatically.",
+					strategyId, actualNamespaces, expectedPattern,
+					(actualNamespaces.isEmpty()) ? "<none configured in the memory>" : actualNamespaces.get(0)));
+		}
+		logger.debug("Strategy '{}' reflection namespace validated: expected={}, actual={}", strategyId,
+				expectedPattern, actualNamespaces);
+	}
+
+	private static MemoryStrategy findStrategy(String memoryId, List<MemoryStrategy> strategies, String strategyId) {
+		return strategies.stream()
+			.filter((s) -> strategyId.equals(s.strategyId()))
+			.findFirst()
+			.orElseThrow(() -> new AgentCoreMemoryException.ConfigurationException(
+					"Strategy '" + strategyId + "' not found in memory '" + memoryId + "'. " + "Available strategies: "
+							+ strategies.stream().map(MemoryStrategy::strategyId).toList()));
 	}
 
 	private boolean matchesPattern(String actual, String expected) {
