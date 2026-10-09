@@ -16,7 +16,6 @@
 
 package org.springaicommunity.agentcore.memory.longterm;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -117,13 +116,15 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 
 		if (!longTermMemoryProperties.autoDiscovery()) {
 			Map<String, List<String>> namespacesByStrategy = this.collectNamespacesByStrategy(longTermMemoryProperties);
-			if (!namespacesByStrategy.isEmpty()) {
+			Map<String, String> reflectionNamespacesByStrategy = this
+				.collectReflectionNamespacesByStrategy(longTermMemoryProperties);
+			if (!namespacesByStrategy.isEmpty() || !reflectionNamespacesByStrategy.isEmpty()) {
 				try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
 					AgentCoreLongTermMemoryNamespaceRegistrar registrar = new AgentCoreLongTermMemoryNamespaceRegistrar(
 							controlClient);
 					AgentCoreLongTermMemoryNamespaceValidator validator = new AgentCoreLongTermMemoryNamespaceValidator(
 							controlClient, registrar, longTermMemoryProperties.namespace().autoRegister());
-					validator.validateNamespaces(memoryId, namespacesByStrategy);
+					validator.validateNamespaces(memoryId, namespacesByStrategy, reflectionNamespacesByStrategy);
 				}
 			}
 		}
@@ -281,15 +282,12 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 		}
 		if (config.episodic() != null && config.episodic().strategyId() != null) {
 			var episodic = config.episodic();
-			List<String> namespaces = new ArrayList<>();
-			namespaces.add(episodic.resolveNamespacePattern());
+			namespacesByStrategy.put(episodic.strategyId(), List.of(episodic.resolveNamespacePattern()));
 
-			// Modern path: reflections live under the same strategy, different namespace.
+			// Modern path: reflections live under the same strategy, in its reflection
+			// configuration; validated separately
+			// (collectReflectionNamespacesByStrategy).
 			String reflectionsPattern = episodic.resolveReflectionsNamespacePattern();
-			if (reflectionsPattern != null) {
-				namespaces.add(reflectionsPattern);
-			}
-			namespacesByStrategy.put(episodic.strategyId(), namespaces);
 
 			// Legacy path: reflections in a separate strategy, same namespace. Kept
 			// working for one release to ease migration. Will be removed.
@@ -299,6 +297,14 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 			}
 		}
 		return namespacesByStrategy;
+	}
+
+	private Map<String, String> collectReflectionNamespacesByStrategy(AgentCoreLongTermMemoryProperties config) {
+		if (config.episodic() == null || config.episodic().strategyId() == null) {
+			return Map.of();
+		}
+		String reflectionsPattern = config.episodic().resolveReflectionsNamespacePattern();
+		return (reflectionsPattern != null) ? Map.of(config.episodic().strategyId(), reflectionsPattern) : Map.of();
 	}
 
 	/**
