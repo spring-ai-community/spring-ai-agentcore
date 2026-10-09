@@ -19,6 +19,7 @@ package org.springaicommunity.agentcore.memory.session;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
@@ -44,6 +45,7 @@ import org.springframework.ai.session.EventFilter;
 import org.springframework.ai.session.SessionEvent;
 import org.springframework.ai.session.advisor.IdempotentSessionEventIdGenerator;
 import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
+import org.springframework.ai.session.compaction.CompactionPlan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -149,18 +151,19 @@ class AgentCoreSessionRepositoryIT {
 	}
 
 	@Test
-	void compactEventsIsUnsupported() {
-		// compactEvents throws before any AWS call: AgentCore events are immutable and
+	void applyCompactionIsUnsupported() {
+		// applyCompaction throws before any AWS call: AgentCore events are immutable and
 		// the log has no compare-and-set, so the repository refuses to rewrite the log.
 		String sessionId = "alice-it:compact-" + System.nanoTime();
 		List<SessionEvent> retained = List.of(SessionEvent.builder()
 			.sessionId(sessionId)
 			.message(UserMessage.builder().text("summary-1").build())
 			.build());
+		CompactionPlan plan = new CompactionPlan(Set.of(), List.of(new CompactionPlan.Insert(null, retained)));
 
-		assertThatThrownBy(() -> repository.compactEvents(sessionId, List.of(), retained, 1L))
+		assertThatThrownBy(() -> repository.applyCompaction(sessionId, plan, 1L))
 			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("compactEvents is unsupported");
+			.hasMessageContaining("applyCompaction is unsupported");
 		assertThat(repository.findEvents(sessionId, EventFilter.all())).isEmpty();
 	}
 

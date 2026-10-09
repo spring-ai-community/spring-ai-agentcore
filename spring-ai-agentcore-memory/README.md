@@ -15,7 +15,7 @@ For quick start and usage examples, see the [main README](../README.md#agentcore
 ## Session API (spring-ai-session, incubating)
 
 Since 2.2.0 the module ships an opt-in bean stack backed by the community
-`org.springaicommunity:spring-ai-session` artifact (0.8.x). When enabled, four beans
+`org.springaicommunity:spring-ai-session` artifact (0.10.x). When enabled, four beans
 are added to the context: `AgentCoreSessionRepository` (implements
 `org.springframework.ai.session.SessionRepository`), `DefaultSessionService`,
 `SessionMemoryAdvisor`, and `AgentCoreSessionMemory` (bundles the session advisor with
@@ -95,11 +95,25 @@ cannot be mixed. To upgrade:
    A `SessionMemoryAdvisor` you build yourself keeps the upstream default unless you set
    `.order(...)`.
 
+**Upgrading from spring-ai-session 0.8.x.** This release requires
+`spring-ai-session` 0.10.x (import `spring-ai-session-bom` 0.10.0). Changes visible to
+callers of `AgentCoreSessionRepository`:
+
+- Branches are gone from the SPI. Events are written without an AgentCore branch and read
+  without a branch filter.
+- `findExpiredSessionIds` is replaced by `deleteExpiredSessions`, which returns `0`
+  instead of throwing.
+- `compactEvents` is replaced by `applyCompaction`, which still throws
+  `UnsupportedOperationException`.
+- `saveIfAbsent` is new and backs `SessionService.create`: it fails with "Session already
+  exists" for a session that has events.
+- A `lastN` read keeps turns whole and can return more than N events.
+
 The `AgentCoreSessionRepository` constructor checks the classpath once. It fails with an
 `IllegalStateException` that names the fix when `spring-ai-session-management`, two
-different `spring-ai-session` versions, or a Session API that does not match 0.8.x is
+different `spring-ai-session` versions, or a Session API that does not match 0.10.x is
 present, instead of failing on the first request with `NoSuchMethodError` or
-`AbstractMethodError`. A `spring-ai-session` version outside 0.8.x whose API still matches
+`AbstractMethodError`. A `spring-ai-session` version outside 0.10.x whose API still matches
 only logs a WARN, because pre-1.0 minor releases have changed the SPI every time so far.
 
 **Usage.** `SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY` equals `ChatMemory.CONVERSATION_ID`,
@@ -138,7 +152,7 @@ context key.
 
 **Reads and writes.** The event log is append-only: `appendEvent` and `delete` are the
 only write paths, synthetic events (framework generated, for example compaction summaries)
-are never persisted, and `compactEvents` and `getEventVersion` throw
+are never persisted, and `applyCompaction` and `getEventVersion` throw
 `UnsupportedOperationException` (see the table below). To bound the context sent to
 the model, give the advisor a read window instead of compaction and let AgentCore
 long-term memory extraction carry older facts. Define your own `SessionMemoryAdvisor`
@@ -159,10 +173,11 @@ including keyword and pattern searches and `CrossSessionRecallTools`, which then
 the newest events of each session and silently miss older matches. Do not configure a
 `compactionTrigger` or `compactionStrategy` on `SessionMemoryAdvisor` with this
 repository: the compaction runs after the turn has been persisted and the model has
-answered, and then fails. `findEvents` pushes `EventFilter.branch()` down to AgentCore,
-applies every other `EventFilter` predicate (time range, message types, `keyword`,
-`keywords`/`matchMode`, `pattern`, `excludeArchived`) client-side, and stops paginating
-early for plain `lastN` queries. Keyword and pattern searches without `lastN` read the
+answered, and then fails. `findEvents` applies every `EventFilter` predicate (time range,
+message types, `keyword`, `keywords`/`matchMode`, `pattern`, `excludeArchived`)
+client-side and stops paginating early for `lastN` queries. As the 0.10 SPI requires, a
+`lastN` window keeps turns whole: when the newest N events start mid-turn, the window
+extends back to the turn's user message, so the advisor may return more than N events. Keyword and pattern searches without `lastN` read the
 whole session log (up to `total-events-limit`), and `CrossSessionRecallTools` repeats
 that for every session of the user after a `ListSessions` scan, which also needs the
 `bedrock-agentcore:ListSessions` IAM permission.
@@ -191,13 +206,15 @@ the session advisor's order below it.
 |----------------|----------|---------------|
 | `save(Session)` | no-op (no session-metadata store) | Metadata mutated on the `Session` (e.g. `session.withMetadata(...)`) is not persisted and will not reappear on `findById`. Do not use `save` for metadata persistence. |
 | `findByUserId(String)` | maps `userId` to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`, falling back to the `Instant.EPOCH` sentinel when the summary has none (the same fallback documented on the `Session.createdAt` row); unknown user yields an empty list. |
-| `findExpiredSessionIds(Instant)` | throws `UnsupportedOperationException` | Expiry is memory-level retention (`eventExpiryDuration`), not re-derivable per session; use `findByUserId(userId)` to enumerate a user's sessions. |
+| `saveIfAbsent(Session)` | returns `true` when the session has no events, stores nothing | Like `save`, there is no session-metadata store; the check is not atomic (AgentCore has no compare-and-set), so two concurrent `SessionService.create` calls for the same id can both succeed. |
+| `deleteExpiredSessions(Instant)` | deletes nothing, returns `0` | Sessions have no TTL; AgentCore removes events itself through memory-level retention (`eventExpiryDuration`). A scheduled `SessionService.deleteExpiredSessions` keeps running. |
+| `findEventsByUserId(String, EventFilter)` | SPI default: `findByUserId`, then `findEvents` per session | AgentCore has no cross-session event query, so each call scans every session of the user (`ListSessions` plus one `ListEvents` read per session). |
 | `findById(String)` | returns `null` when the session has no events | AgentCore has no notion of an empty session; the first `appendEvent` creates it. |
-| `compactEvents(String, List, List, long)` | throws `UnsupportedOperationException` | AgentCore events are immutable (nothing can be marked archived in place) and the log has no CAS, so the `expectedVersion` check cannot be made atomic; bound context via read-windowing (`EventFilter.lastN` on the advisor, or `totalEventsLimit`) and long-term memory extraction instead. Every event read back reports `isArchived() == false`. |
-| `getEventVersion(String)` | throws `UnsupportedOperationException` | Its only SPI purpose is supplying the `expectedVersion` for `compactEvents`; a count would suggest an optimistic-lock capability the backend does not have. `DefaultSessionService.compact` calls it first, so a configured compaction fails here. |
+| `applyCompaction(String, CompactionPlan, long)` | throws `UnsupportedOperationException` | AgentCore events are immutable (nothing can be marked archived in place) and the log has no CAS, so the `expectedVersion` check cannot be made atomic; bound context via read-windowing (`EventFilter.lastN` on the advisor, or `totalEventsLimit`) and long-term memory extraction instead. Every event read back reports `isArchived() == false`. |
+| `getEventVersion(String)` | throws `UnsupportedOperationException` | Its only SPI purpose is supplying the `expectedVersion` for `applyCompaction`; a count would suggest an optimistic-lock capability the backend does not have. `DefaultSessionService.compact` calls it first, so a configured compaction fails here. |
 | `appendEvent(SessionEvent)` | does not throw when session is unknown | First append implicitly creates the session server-side. |
 | `appendEvent(SessionEvent)` | idempotent by `SessionEvent.getId()`, best effort, expected rather than verified | The id feeds a deterministic CreateEvent `clientToken`. Per the CreateEvent API reference, AgentCore should then ignore a retry with the same id (for example with `IdempotentSessionEventIdGenerator`); the reference does not say what happens when the retry carries a different timestamp, and only the live `AgentCoreSessionRepositoryIT` checks it. If AgentCore rejects such a retry, it fails with `StorageException` and `IdempotentSessionEventIdGenerator` is unsafe with this repository. Unlike the SPI reference, AgentCore remembers tokens only for an undocumented window: a replay after it would be stored again, a re-append after `delete` inside it would be dropped, and with `IdempotentSessionEventIdGenerator` a user who repeats the same text in one session would be dropped inside it. The advisor's default random ids never collide. |
-| events read back (`findEvents`, advisor history) | ids derived from the AgentCore `eventId`, `null` branch, text only | No tool calls, media or custom metadata come back (only `agentcore.eventId`). Re-appending a loaded event with a rebuilt `Message` is not deduplicated. Branch reads rely on the server-side `EventFilter.forBranch` filter. |
+| events read back (`findEvents`, advisor history) | ids derived from the AgentCore `eventId`, text only | No tool calls, media or custom metadata come back (only `agentcore.eventId`). Re-appending a loaded event with a rebuilt `Message` is not deduplicated. |
 | `total-events-limit` | caps every read without `EventFilter.lastN` to the newest N events | Keyword and pattern searches and `CrossSessionRecallTools` silently miss older matches; bound the advisor's context with `EventFilter.lastN` instead. |
 | `Session.createdAt` | `findByUserId`: real instant from each `SessionSummary`; `findById`: the tail (most recent) event timestamp, without calling `ListSessions` | Either path falls back to the `Instant.EPOCH` sentinel when its source carries no timestamp; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
 | `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
