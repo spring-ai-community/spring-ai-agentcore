@@ -16,6 +16,7 @@
 
 package org.springaicommunity.agentcore.payments.core;
 
+import java.math.BigDecimal;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +45,7 @@ import software.amazon.awssdk.services.bedrockagentcore.model.PaymentType;
 import software.amazon.awssdk.services.bedrockagentcore.model.ProcessPaymentRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.ProcessPaymentResponse;
 import software.amazon.awssdk.services.bedrockagentcore.model.ValidationException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -251,6 +253,42 @@ class AgentCorePaymentsTemplateTests {
 			.asMap();
 		assertThat(extra.get("huge").asNumber().bigDecimalValue()).isEqualByComparingTo("1e348");
 		assertThat(extra.get("price").asNumber().bigDecimalValue()).isEqualByComparingTo("0.10000000000000000001");
+	}
+
+	@Test
+	void rejectsNumberBeyondDecimalRangeBeforePaying() {
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+
+		assertThatExceptionOfType(PaymentException.class)
+			.isThrownBy(() -> template.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
+					{"x402Version":1,"accepts":[{"scheme":"exact","network":"eip155:8453","maxAmountRequired":"5000",
+					  "payTo":"0xabc","asset":"0xdef","extra":{"n":123e456789012345678901234567890}}]}""")))
+			.withMessageContaining("not valid JSON");
+		then(this.client).shouldHaveNoInteractions();
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void keepsLargeExponentOfProofAsDecimal() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(ProcessPaymentResponse.builder()
+			.paymentOutput(PaymentOutput.fromCryptoX402(CryptoX402PaymentOutput.builder()
+				.version("1")
+				.payload(Document.fromMap(Map.of("n", Document.fromNumber(new BigDecimal("1234567890123456E89012390")),
+						"nonce", Document.fromNumber(new BigDecimal("42")))))
+				.build()))
+			.build());
+		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+
+		PaymentHeader header = template.generatePaymentHeader(CONTEXT,
+				X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY));
+
+		JsonNode decoded = JsonMapper.builder()
+			.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+			.build()
+			.readTree(Base64.getDecoder().decode(header.value()));
+		assertThat(decoded.at("/payload/n").decimalValue()).isEqualByComparingTo("1234567890123456E89012390");
+		assertThat(decoded.at("/payload/nonce").isIntegralNumber()).isTrue();
 	}
 
 	@Test

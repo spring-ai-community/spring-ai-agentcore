@@ -83,7 +83,9 @@ final class X402PaymentRequirements {
 		try {
 			node = jsonMapper.readTree(json);
 		}
-		catch (JacksonException ex) {
+		// Jackson throws NumberFormatException, not a JacksonException, for a number
+		// whose exponent is out of the BigDecimal range
+		catch (JacksonException | NumberFormatException ex) {
 			throw new PaymentException("x402: payment requirements are not valid JSON", ex);
 		}
 		if (!(node instanceof ObjectNode payload)) {

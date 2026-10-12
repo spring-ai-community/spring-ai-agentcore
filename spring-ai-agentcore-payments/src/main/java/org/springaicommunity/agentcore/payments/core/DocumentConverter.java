@@ -86,7 +86,9 @@ final class DocumentConverter {
 		}
 		if (document.isNumber()) {
 			BigDecimal number = document.asNumber().bigDecimalValue();
-			return (number.scale() <= 0) ? factory.numberNode(number.toBigIntegerExact()) : factory.numberNode(number);
+			// a negative scale stays decimal: expanding 1E+89012390 to a BigInteger would
+			// build an 89-million-digit number
+			return (number.scale() == 0) ? factory.numberNode(number.unscaledValue()) : factory.numberNode(number);
 		}
 		if (document.isBoolean()) {
 			return factory.booleanNode(document.asBoolean());

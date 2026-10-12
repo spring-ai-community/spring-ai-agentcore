@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
 import org.springaicommunity.agentcore.payments.core.InsufficientBudgetException;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
+import org.springaicommunity.agentcore.payments.core.PaymentException;
 import org.springaicommunity.agentcore.payments.core.PaymentHeader;
 import org.springaicommunity.agentcore.payments.core.PaymentRequired;
 
@@ -108,6 +109,34 @@ class PaymentToolCallbackTests {
 
 		assertThat(paymentRequired.headers().get("x-object")).containsExactly("{\"a\":1}");
 		assertThat(paymentRequired.headers().get("x-list")).containsExactly("v1", "[2]");
+	}
+
+	@Test
+	void keepsDecimalsOfBodyExactly() {
+		PaymentRequired paymentRequired = PaymentToolCallback
+			.extractPaymentRequired(PaymentToolCallback.PAYMENT_REQUIRED_MARKER
+					+ "{\"statusCode\":402,\"body\":{\"price\":0.10000000000000000001,\"huge\":1e348}}");
+
+		assertThat(paymentRequired.body()).contains("0.10000000000000000001").contains("1E+348");
+	}
+
+	@Test
+	void rejectsNumberBeyondDecimalRange() {
+		assertThatExceptionOfType(PaymentException.class)
+			.isThrownBy(() -> PaymentToolCallback.extractPaymentRequired(PaymentToolCallback.PAYMENT_REQUIRED_MARKER
+					+ "{\"statusCode\":402,\"body\":{\"n\":123e456789012345678901234567890}}"))
+			.withMessageContaining("not valid JSON");
+	}
+
+	@Test
+	void keepsDecimalsOfToolInputWhenAddingPaymentHeader() {
+		RecordingTool tool = new RecordingTool(
+				(input) -> (input.contains("X-PAYMENT")) ? "{\"statusCode\":200}" : PAYMENT_REQUIRED);
+		given(this.payments.generatePaymentHeader(any(), any())).willReturn(new PaymentHeader("X-PAYMENT", "proof"));
+
+		this.paying(tool).call("{\"amount\":0.10000000000000000001,\"headers\":{}}");
+
+		assertThat(tool.inputs.get(1)).contains("0.10000000000000000001").contains("X-PAYMENT");
 	}
 
 	@Test

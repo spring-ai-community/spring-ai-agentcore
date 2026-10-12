@@ -27,6 +27,7 @@ import org.springaicommunity.agentcore.payments.core.PaymentException;
 import org.springaicommunity.agentcore.payments.core.PaymentHeader;
 import org.springaicommunity.agentcore.payments.core.PaymentRequired;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -62,7 +63,11 @@ public class PaymentToolCallback implements ToolCallback {
 
 	private static final Logger logger = LoggerFactory.getLogger(PaymentToolCallback.class);
 
-	private static final JsonMapper JSON_MAPPER = JsonMapper.builder().build();
+	// Exact decimals: the 402 body and the tool input are written back as JSON text, a
+	// double would change their numbers.
+	private static final JsonMapper JSON_MAPPER = JsonMapper.builder()
+		.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+		.build();
 
 	private final ToolCallback delegate;
 
@@ -166,7 +171,8 @@ public class PaymentToolCallback implements ToolCallback {
 		try {
 			node = JSON_MAPPER.readTree(text.substring(PAYMENT_REQUIRED_MARKER.length()));
 		}
-		catch (JacksonException ex) {
+		// NumberFormatException: exponent out of the BigDecimal range
+		catch (JacksonException | NumberFormatException ex) {
 			throw new PaymentException("Tool result after " + PAYMENT_REQUIRED_MARKER.trim() + " is not valid JSON",
 					ex);
 		}
