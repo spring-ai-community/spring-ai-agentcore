@@ -31,6 +31,7 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.DeleteMemor
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStatus;
 
+import org.springframework.ai.bedrock.converse.BedrockChatOptions;
 import org.springframework.ai.bedrock.converse.BedrockProxyChatModel;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.session.DefaultSessionService;
@@ -60,7 +61,7 @@ class EndToEndSpringAISessionChatClientIntegrationTests {
 	static void beforeAll() {
 		dataClient = BedrockAgentCoreClient.create();
 		controlClient = BedrockAgentCoreControlClient.create();
-		String name = "session-e2e-" + System.currentTimeMillis();
+		String name = "session_e2e_" + System.currentTimeMillis();
 		var created = controlClient
 			.createMemory(CreateMemoryRequest.builder().name(name).eventExpiryDuration(90).build());
 		memoryId = created.memory().id();
@@ -98,7 +99,9 @@ class EndToEndSpringAISessionChatClientIntegrationTests {
 		SessionService sessionService = DefaultSessionService.builder().sessionRepository(repository).build();
 		SessionMemoryAdvisor advisor = SessionMemoryAdvisor.builder(sessionService).build();
 
-		BedrockProxyChatModel model = BedrockProxyChatModel.builder().build();
+		BedrockProxyChatModel model = BedrockProxyChatModel.builder()
+			.options(BedrockChatOptions.builder().model("global.amazon.nova-2-lite-v1:0").build())
+			.build();
 		ChatClient client = ChatClient.builder(model).defaultAdvisors(advisor).build();
 
 		client.prompt()

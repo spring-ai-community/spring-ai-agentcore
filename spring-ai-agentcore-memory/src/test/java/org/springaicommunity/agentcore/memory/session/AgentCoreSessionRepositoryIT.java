@@ -73,7 +73,7 @@ class AgentCoreSessionRepositoryIT {
 	static void beforeAll() {
 		dataClient = BedrockAgentCoreClient.create();
 		controlClient = BedrockAgentCoreControlClient.create();
-		String name = "session-it-" + System.currentTimeMillis();
+		String name = "session_it_" + System.currentTimeMillis();
 		var created = controlClient
 			.createMemory(CreateMemoryRequest.builder().name(name).eventExpiryDuration(90).build());
 		memoryId = created.memory().id();

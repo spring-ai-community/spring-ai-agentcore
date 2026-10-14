@@ -73,10 +73,10 @@ mvn clean verify
 # Integration tests (requires AWS credentials in us-east-1)
 # ITs self-provision and tear down their own AWS resources; no pre-existing
 # resources are needed for the default path.
-AGENTCORE_IT=true AWS_REGION=us-east-1 mvn verify -pl spring-ai-agentcore-memory
+AGENTCORE_IT=true AWS_REGION=us-east-1 mvn verify -Pintegration -pl spring-ai-agentcore-memory
 
 # Run integration tests across all modules
-AGENTCORE_IT=true AWS_REGION=us-east-1 mvn clean verify
+AGENTCORE_IT=true AWS_REGION=us-east-1 mvn clean verify -Pintegration
 ```
 
 > **Integration test prerequisites**
@@ -133,7 +133,7 @@ AGENTCORE_MEMORY_LONG_TERM_EPISODIC_STRATEGY_ID=EpisodicMemory-xxxxx
 |------|---------|
 | Build | `mvn clean install` |
 | Test | `mvn test` |
-| Integration test | `AGENTCORE_IT=true mvn verify` |
+| Integration test | `AGENTCORE_IT=true mvn verify -Pintegration` |
 | Format | `mvn spring-javaformat:apply` |
 | Fix all style | `mvn spring-javaformat:apply rewrite:run -pl <module>` |
 | Run memory IT | `./scripts/it-memory.sh` |
