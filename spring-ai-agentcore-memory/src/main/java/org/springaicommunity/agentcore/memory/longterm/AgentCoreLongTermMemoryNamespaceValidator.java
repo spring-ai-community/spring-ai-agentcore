@@ -18,6 +18,8 @@ package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +53,11 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrat
 public class AgentCoreLongTermMemoryNamespaceValidator {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryNamespaceValidator.class);
+
+	private static final Pattern PLACEHOLDER = Pattern.compile("\\{[^}]*}");
+
+	private static final List<String> SUPPORTED_PLACEHOLDERS = List.of("{memoryStrategyId}", "{actorId}",
+			"{sessionId}");
 
 	private final BedrockAgentCoreControlClient controlClient;
 
@@ -141,7 +148,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 				}
 				else {
 					throw new AgentCoreMemoryException.ConfigurationException(
-							this.buildErrorMessage(strategyId, actualNamespaces, expected));
+							this.buildErrorMessage(strategy, actualNamespaces, expected));
 				}
 			}
 		}
@@ -156,14 +163,20 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 		List<String> actualNamespaces = AgentCoreLongTermMemoryStrategyDiscovery.extractReflectionsNamespaces(strategy);
 		boolean matched = actualNamespaces.stream().anyMatch((actual) -> this.matchesPattern(actual, expectedPattern));
 		if (!matched) {
-			throw new AgentCoreMemoryException.ConfigurationException(String.format(
-					"Reflection namespace mismatch for episodic strategy '%s'.%n" + "  In AWS Memory:    %s%n"
-							+ "  In Spring Config: %s%n%n"
-							+ "Configure the reflection namespace of the memory in application.properties:%n"
-							+ "  agentcore.memory.long-term.episodic.reflections-namespace-pattern=%s%n"
+			String header = String.format("Reflection namespace mismatch for episodic strategy '%s'.%n"
+					+ "  In AWS Memory:    %s%n" + "  In Spring Config: %s%n%n", strategyId, actualNamespaces,
+					expectedPattern);
+			String supported = firstSupported(actualNamespaces);
+			if (!actualNamespaces.isEmpty() && supported == null) {
+				throw new AgentCoreMemoryException.ConfigurationException(
+						header + unsupportedNamespaceHint("reflection namespace"));
+			}
+			throw new AgentCoreMemoryException.ConfigurationException(header + String.format(
+					"Configure the reflection namespace of the memory in application.properties:%n"
+							+ "  %s.reflections-namespace-pattern=%s%n"
 							+ "Reflection namespaces are not registered automatically.",
-					strategyId, actualNamespaces, expectedPattern,
-					(actualNamespaces.isEmpty()) ? "<none configured in the memory>" : actualNamespaces.get(0)));
+					AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX,
+					(supported != null) ? supported : "<none configured in the memory>"));
 		}
 		logger.debug("Strategy '{}' reflection namespace validated: expected={}, actual={}", strategyId,
 				expectedPattern, actualNamespaces);
@@ -199,13 +212,63 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 		return segment.startsWith("{") && segment.endsWith("}");
 	}
 
-	private String buildErrorMessage(String strategyId, List<String> actual, String expected) {
-		return String.format("Namespace mismatch for strategy '%s'.%n" + "  In AWS Memory:    %s%n"
-				+ "  In Spring Config: %s%n%n"
-				+ "The memory was created with a different namespace format than configured in Spring.%n"
-				+ "Either update the memory namespace or configure the matching pattern in application.properties:%n"
-				+ "  agentcore.memory.long-term.<strategy>.namespace-pattern=%s", strategyId, actual, expected,
-				(actual.isEmpty()) ? expected : actual.get(0));
+	private String buildErrorMessage(MemoryStrategy strategy, List<String> actual, String expected) {
+		String header = String.format(
+				"Namespace mismatch for strategy '%s'.%n" + "  In AWS Memory:    %s%n" + "  In Spring Config: %s%n%n",
+				strategy.strategyId(), actual, expected);
+		String supported = firstSupported(actual);
+		if (supported == null) {
+			return header + unsupportedNamespaceHint("namespace");
+		}
+		return header
+				+ String.format(
+						"The memory was created with a different namespace format than configured in Spring.%n"
+								+ "Either update the memory namespace or configure the matching pattern in "
+								+ "application.properties:%n  %s.namespace-pattern=%s",
+						configPrefix(strategy), supported);
+	}
+
+	// The property prefix of the strategy's config, derived from its AWS type
+	private static String configPrefix(MemoryStrategy strategy) {
+		AgentCoreLongTermMemoryStrategyType type = AgentCoreLongTermMemoryStrategyType.fromAwsType(strategy.type());
+		if (type == null) {
+			return AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".<strategy>";
+		}
+		return switch (type) {
+			case SEMANTIC -> AgentCoreLongTermMemoryProperties.Semantic.CONFIG_PREFIX;
+			case USER_PREFERENCE -> AgentCoreLongTermMemoryProperties.UserPreference.CONFIG_PREFIX;
+			case SUMMARY -> AgentCoreLongTermMemoryProperties.Summary.CONFIG_PREFIX;
+			case EPISODIC -> AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX;
+			case CUSTOM -> AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".<strategy>";
+		};
+	}
+
+	// A memory namespace can be copied into the Spring config only if it is scoped by
+	// actor and uses no placeholders that retrieval cannot fill.
+	private static String firstSupported(List<String> namespaces) {
+		return namespaces.stream()
+			.filter(AgentCoreLongTermMemoryNamespaceValidator::isSupported)
+			.findFirst()
+			.orElse(null);
+	}
+
+	private static boolean isSupported(String namespace) {
+		Matcher matcher = PLACEHOLDER.matcher(namespace);
+		boolean hasActor = false;
+		while (matcher.find()) {
+			String placeholder = matcher.group();
+			if (!SUPPORTED_PLACEHOLDERS.contains(placeholder)) {
+				return false;
+			}
+			hasActor |= "{actorId}".equals(placeholder);
+		}
+		return hasActor;
+	}
+
+	private static String unsupportedNamespaceHint(String what) {
+		return "The " + what + " of the memory cannot be used: it must contain {actorId} and may only use the "
+				+ "placeholders " + SUPPORTED_PLACEHOLDERS + ". Change the " + what
+				+ " of the memory strategy with the AWS console, CLI or your infrastructure tooling.";
 	}
 
 }

@@ -361,23 +361,13 @@ agentcore:
 **Override rules:**
 - `strategy-id` must match the discovered strategy ID for overrides to apply
 - If `strategy-id` doesn't match, the explicit config is ignored
-- `namespace-pattern` must match one of the namespaces discovered from AWS, or use `auto-register=true`
+- `namespace-pattern` must match one of the namespaces discovered from AWS; otherwise startup fails
 
-**Namespace auto-registration:**
+**Namespace auto-registration (deprecated):**
 
-If you want to use a namespace that doesn't exist in AWS yet:
+`agentcore.memory.long-term.namespace.auto-register=true` is deprecated and will be removed in 3.0.0. On a namespace mismatch it writes the configured pattern to the memory strategy in AWS at startup. A strategy has exactly one namespace, so this replaces the existing one: records extracted before stay under the old namespace and are no longer retrieved, and other applications using the same memory are affected.
 
-```yaml
-agentcore:
-  memory:
-    long-term:
-      auto-discovery: true
-      namespace:
-        auto-register: true                      # Register new namespaces in AWS
-      semantic:
-        strategy-id: discovered-semantic-id
-        namespace-pattern: /new/custom/namespace # Will be registered in AWS
-```
+Instead, configure `namespace-pattern` to match the memory (the startup error shows the property and value to use), or omit it and let auto-discovery use the memory's namespace. To change the namespace of a memory strategy, use the AWS console, CLI or your infrastructure tooling.
 
 #### Option 2: Explicit Configuration
 

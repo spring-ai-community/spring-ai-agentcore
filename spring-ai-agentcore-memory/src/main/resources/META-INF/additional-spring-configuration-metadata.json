@@ -83,6 +83,16 @@
       "name": "agentcore.memory.session.default-session",
       "type": "java.lang.String",
       "description": "Session-scoped default session id used when the conversation id carries no session segment. Applies only when agentcore.memory.session.enabled=true. When null, resolution falls back to agentcore.memory.short-term.default-session, then the legacy agentcore.memory.default-session, then 'default-session'."
+    },
+    {
+      "name": "agentcore.memory.long-term.namespace.auto-register",
+      "type": "java.lang.Boolean",
+      "description": "Whether a namespace mismatch at startup writes the configured pattern to the memory strategy in AWS, replacing its namespace.",
+      "defaultValue": false,
+      "deprecation": {
+        "level": "warning",
+        "reason": "Replaces the namespace of the memory strategy in AWS at startup. Configure namespace-pattern to match the memory, or use auto-discovery. Removal scheduled for 3.0.0. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/264."
+      }
     }
   ]
 }

@@ -241,6 +241,34 @@ public class AgentCoreLongTermMemoryProperties {
 	}
 
 	public record Namespace(boolean autoRegister) {
+
+		private static final Logger logger = LoggerFactory.getLogger(Namespace.class);
+
+		public Namespace {
+			if (autoRegister) {
+				logger.warn("'" + AgentCoreLongTermMemoryProperties.CONFIG_PREFIX
+						+ ".namespace.auto-register' is deprecated and will be removed in 3.0.0. On a namespace "
+						+ "mismatch it replaces the namespace of the memory strategy in AWS at startup. Configure "
+						+ "'namespace-pattern' to match the memory, or use auto-discovery, and change memory "
+						+ "namespaces with your infrastructure tooling. See "
+						+ "https://github.com/spring-ai-community/spring-ai-agentcore/issues/264");
+			}
+		}
+
+		/**
+		 * Returns whether a mismatching namespace is written to the memory strategy at
+		 * startup.
+		 * @return {@code true} if namespaces are auto-registered
+		 * @deprecated Registration replaces the namespace of the memory strategy in AWS.
+		 * Configure the namespace pattern to match the memory, or use auto-discovery.
+		 * Removal scheduled for 3.0.0.
+		 */
+		@Deprecated(since = "2.3.0", forRemoval = true)
+		@Override
+		public boolean autoRegister() {
+			return this.autoRegister;
+		}
+
 	}
 
 }

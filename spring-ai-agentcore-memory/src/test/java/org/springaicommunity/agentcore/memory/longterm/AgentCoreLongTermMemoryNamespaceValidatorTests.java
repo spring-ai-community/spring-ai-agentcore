@@ -33,6 +33,7 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRe
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategyType;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ReflectionConfiguration;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.StrategyConfiguration;
 
@@ -115,6 +116,41 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 			.hasMessageContaining("Namespace mismatch")
 			.hasMessageContaining("semantic-123")
 			.hasMessageContaining("/users/{actorId}/preferences");
+	}
+
+	@Test
+	@DisplayName("Should name the strategy's property and the memory's namespace in the mismatch error")
+	void shouldNameStrategyPropertyInMismatchError() {
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.type(MemoryStrategyType.SEMANTIC)
+			.namespaces(List.of("/users/{actorId}/facts"))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("agentcore.memory.long-term.semantic.namespace-pattern=/users/{actorId}/facts");
+	}
+
+	@Test
+	@DisplayName("Should not suggest a memory namespace that is not scoped by actor")
+	void shouldNotSuggestUnsupportedMemoryNamespace() {
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.type(MemoryStrategyType.SEMANTIC)
+			.namespaces(List.of("/strategies/{memoryStrategyId}/shared"))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("cannot be used")
+			.hasMessageNotContaining("namespace-pattern=");
 	}
 
 	@Test
@@ -389,6 +425,20 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 					"test-memory", Map.of("episodic-123", List.of(EPISODES)), Map.of("episodic-123", REFLECTIONS)))
 				.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
 				.hasMessageContaining("<none configured in the memory>");
+		}
+
+		@Test
+		@DisplayName("Should not suggest a reflection namespace with unsupported placeholders")
+		void shouldNotSuggestUnsupportedReflectionNamespace() {
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this
+				.mockGetMemoryResponse(List.of(episodicStrategy(List.of("/reflections/{tenantId}/{actorId}"))));
+
+			assertThatThrownBy(() -> AgentCoreLongTermMemoryNamespaceValidatorTests.this.validator.validateNamespaces(
+					"test-memory", Map.of("episodic-123", List.of(EPISODES)), Map.of("episodic-123", REFLECTIONS)))
+				.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+				.hasMessageContaining("Reflection namespace mismatch")
+				.hasMessageContaining("cannot be used")
+				.hasMessageNotContaining("reflections-namespace-pattern=");
 		}
 
 		private static MemoryStrategy episodicStrategy(List<String> reflectionNamespaces) {
