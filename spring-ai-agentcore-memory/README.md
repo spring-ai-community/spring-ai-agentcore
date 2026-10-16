@@ -435,6 +435,8 @@ Available placeholders:
 
 **Note**: Only these predefined placeholders are supported. Custom placeholders are not allowed.
 
+Validation compares placeholders by name, so a pattern that puts `{sessionId}` where the memory has `{actorId}` (or the reverse) fails at startup instead of reading the wrong scope. A literal segment in the memory only matches `{memoryStrategyId}`, and only when it equals the configured strategy ID. The episodic `reflections-namespace-pattern` is checked against the strategy's reflection namespaces, whether they come from `episodicReflectionConfiguration` or from the `episodicReflectionOverride` of a `customReflectionConfiguration`.
+
 #### Defaults Summary
 
 | Strategy | top-k | scope |

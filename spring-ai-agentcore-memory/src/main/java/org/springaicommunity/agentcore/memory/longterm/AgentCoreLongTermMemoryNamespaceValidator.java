@@ -23,9 +23,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CustomReflectionConfiguration;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.EpisodicReflectionOverride;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ReflectionConfiguration;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.StrategyConfiguration;
 
 /**
  * Validates that memory strategy namespaces match the expected format required by
@@ -51,6 +55,8 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrat
 public class AgentCoreLongTermMemoryNamespaceValidator {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreLongTermMemoryNamespaceValidator.class);
+
+	private static final String STRATEGY_ID_PLACEHOLDER = "{memoryStrategyId}";
 
 	private final BedrockAgentCoreControlClient controlClient;
 
@@ -134,7 +140,8 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 
 		// Every expected pattern must match at least one actual namespace.
 		for (String expected : expectedPatterns) {
-			boolean matched = actualNamespaces.stream().anyMatch((actual) -> this.matchesPattern(actual, expected));
+			boolean matched = actualNamespaces.stream()
+				.anyMatch((actual) -> this.matchesPattern(actual, expected, strategyId));
 			if (!matched) {
 				if (this.autoRegister) {
 					this.registrar.registerNamespace(memoryId, strategyId, expected);
@@ -153,8 +160,9 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 	private void validateReflections(String memoryId, List<MemoryStrategy> strategies, String strategyId,
 			String expectedPattern) {
 		MemoryStrategy strategy = findStrategy(memoryId, strategies, strategyId);
-		List<String> actualNamespaces = AgentCoreLongTermMemoryStrategyDiscovery.extractReflectionsNamespaces(strategy);
-		boolean matched = actualNamespaces.stream().anyMatch((actual) -> this.matchesPattern(actual, expectedPattern));
+		List<String> actualNamespaces = reflectionNamespaces(strategy);
+		boolean matched = actualNamespaces.stream()
+			.anyMatch((actual) -> this.matchesPattern(actual, expectedPattern, strategyId));
 		if (!matched) {
 			throw new AgentCoreMemoryException.ConfigurationException(String.format(
 					"Reflection namespace mismatch for episodic strategy '%s'.%n" + "  In AWS Memory:    %s%n"
@@ -178,7 +186,25 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 							+ strategies.stream().map(MemoryStrategy::strategyId).toList()));
 	}
 
-	private boolean matchesPattern(String actual, String expected) {
+	// Reflection namespaces live in episodicReflectionConfiguration, or in the
+	// episodicReflectionOverride of a customReflectionConfiguration.
+	private static List<String> reflectionNamespaces(MemoryStrategy strategy) {
+		List<String> episodic = AgentCoreLongTermMemoryStrategyDiscovery.extractReflectionsNamespaces(strategy);
+		if (!episodic.isEmpty()) {
+			return episodic;
+		}
+		StrategyConfiguration configuration = strategy.configuration();
+		ReflectionConfiguration reflection = (configuration != null) ? configuration.reflection() : null;
+		CustomReflectionConfiguration custom = (reflection != null) ? reflection.customReflectionConfiguration() : null;
+		EpisodicReflectionOverride override = (custom != null) ? custom.episodicReflectionOverride() : null;
+		List<String> namespaces = (override != null) ? override.namespaces() : null;
+		return (namespaces != null) ? List.copyOf(namespaces) : List.of();
+	}
+
+	// Placeholders are filled at retrieval time, so a placeholder only matches the same
+	// placeholder: a swapped {actorId}/{sessionId} would read another scope's records.
+	// A literal in AWS matches a placeholder only when it is this strategy's resolved id.
+	private boolean matchesPattern(String actual, String expected, String strategyId) {
 		String[] actualParts = actual.split("/");
 		String[] expectedParts = expected.split("/");
 
@@ -188,7 +214,13 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 
 		for (int i = 0; i < expectedParts.length; i++) {
 			String expectedPart = expectedParts[i];
-			if (!this.isPlaceholder(expectedPart) && !expectedPart.equals(actualParts[i])) {
+			String actualPart = actualParts[i];
+			if (!this.isPlaceholder(expectedPart) || this.isPlaceholder(actualPart)) {
+				if (!expectedPart.equals(actualPart)) {
+					return false;
+				}
+			}
+			else if (!STRATEGY_ID_PLACEHOLDER.equals(expectedPart) || !actualPart.equals(strategyId)) {
 				return false;
 			}
 		}
