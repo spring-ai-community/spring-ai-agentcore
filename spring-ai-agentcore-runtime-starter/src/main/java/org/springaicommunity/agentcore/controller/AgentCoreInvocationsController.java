@@ -65,6 +65,12 @@ public class AgentCoreInvocationsController implements AgentCoreInvocationsHandl
 			this.logger.error("Error trying to invoke AgentCoreInvocation method: " + ex.getMessage(), ex);
 			throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
 		}
+		catch (IllegalArgumentException ex) {
+			// Invalid caller input, such as a missing user or session id. Logged with the
+			// stack trace: an IllegalArgumentException can also come from a server bug.
+			this.logger.warn("Invalid AgentCoreInvocation request: " + ex.getMessage(), ex);
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
+		}
 	}
 
 }

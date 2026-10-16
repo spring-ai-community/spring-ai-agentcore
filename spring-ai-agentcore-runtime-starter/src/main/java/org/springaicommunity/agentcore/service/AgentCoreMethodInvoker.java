@@ -83,6 +83,12 @@ public class AgentCoreMethodInvoker {
 				}
 				throw new AgentCoreInvocationException("Method invocation failed", ex);
 			}
+			catch (IllegalArgumentException ex) {
+				// Thrown by the framework itself (e.g. arguments that do not fit the
+				// method),
+				// not by the handler: keep it a server error, unlike handler exceptions
+				throw new AgentCoreInvocationException("Method invocation failed", ex);
+			}
 		}
 		catch (Exception | Error ex) {
 			invocationFailure = ex;

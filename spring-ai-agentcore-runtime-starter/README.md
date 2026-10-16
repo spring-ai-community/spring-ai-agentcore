@@ -249,6 +249,16 @@ Rate limits are applied per client IP address and reset every minute.
 }
 ```
 
+**Error Responses:**
+
+| Exception thrown by the `@AgentCoreInvocation` method | HTTP status |
+|---|---|
+| `IllegalArgumentException`, for example from `AgentCoreMemoryConversationIdParser` when the user or session id is missing | 400 |
+| `ResponseStatusException` | the exception's status, for example `new ResponseStatusException(HttpStatus.BAD_REQUEST, "...")` |
+| Any other exception | 500 |
+
+Throw `IllegalArgumentException` (or `ResponseStatusException`) for invalid caller input, so that client errors don't show up as server faults. The mapping applies to exceptions thrown by the method itself; once a streaming response (`Flux`, SSE) has started, the status can no longer change.
+
 ### GET /ping
 
 **Response (200):**

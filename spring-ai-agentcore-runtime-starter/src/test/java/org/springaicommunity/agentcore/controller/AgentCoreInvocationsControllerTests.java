@@ -31,10 +31,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -177,6 +179,24 @@ class AgentCoreInvocationsControllerTests {
 
 		this.mockMvc.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON).content("{ }"))
 			.andExpect(status().isInternalServerError());
+	}
+
+	@Test
+	void shouldReturnBadRequestForInvalidCallerInput() throws Exception {
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class)))
+			.willThrow(new IllegalArgumentException("userId must not be null or blank"));
+
+		this.mockMvc.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON).content("{ }"))
+			.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void shouldPassResponseStatusFromHandlerToCaller() throws Exception {
+		given(this.mockInvoker.invokeAgentMethod(any(), any(HttpHeaders.class)))
+			.willThrow(new ResponseStatusException(HttpStatus.UNPROCESSABLE_CONTENT, "unsupported prompt"));
+
+		this.mockMvc.perform(post("/invocations").contentType(MediaType.APPLICATION_JSON).content("{ }"))
+			.andExpect(status().isUnprocessableContent());
 	}
 
 	@SpringBootApplication
