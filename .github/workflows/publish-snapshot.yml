@@ -21,7 +21,9 @@ jobs:
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
       - name: Publish snapshot
-        run: mvn -ntp clean deploy -Prelease
+        # Maven 3.10 scopes server credentials to the server's origins and treats the id
+        # 'central' as Maven Central only, so it would not send them to the snapshot repository
+        run: mvn -ntp clean deploy -Prelease -Dmaven.repository.credentialScope=id
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
           MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
