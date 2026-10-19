@@ -23,6 +23,7 @@ import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
 import org.springaicommunity.agentcore.memory.longterm.strategy.EpisodicMemoryStrategyHandler;
@@ -115,6 +116,8 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 		String memoryId = memoryConfig.memoryId();
 
 		if (!longTermMemoryProperties.autoDiscovery()) {
+			Map<String, AgentCoreLongTermMemoryStrategyType> typesByStrategy = collectTypesByStrategy(
+					longTermMemoryProperties);
 			Map<String, List<String>> namespacesByStrategy = this.collectNamespacesByStrategy(longTermMemoryProperties);
 			Map<String, String> reflectionNamespacesByStrategy = this
 				.collectReflectionNamespacesByStrategy(longTermMemoryProperties);
@@ -123,7 +126,8 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 					AgentCoreLongTermMemoryNamespaceRegistrar registrar = new AgentCoreLongTermMemoryNamespaceRegistrar(
 							controlClient);
 					AgentCoreLongTermMemoryNamespaceValidator validator = new AgentCoreLongTermMemoryNamespaceValidator(
-							controlClient, registrar, longTermMemoryProperties.namespace().autoRegister());
+							controlClient, registrar, longTermMemoryProperties.namespace().autoRegister(),
+							typesByStrategy);
 					validator.validateNamespaces(memoryId, namespacesByStrategy, reflectionNamespacesByStrategy);
 				}
 			}
@@ -297,6 +301,32 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 			}
 		}
 		return namespacesByStrategy;
+	}
+
+	// The type each explicitly configured strategy ID is configured as. The namespace
+	// maps are keyed by ID, so one ID under two groups would leave one group's pattern
+	// unvalidated; it fails here instead.
+	private static Map<String, AgentCoreLongTermMemoryStrategyType> collectTypesByStrategy(
+			AgentCoreLongTermMemoryProperties config) {
+		Map<String, AgentCoreLongTermMemoryStrategyType> typesByStrategy = new HashMap<>();
+		for (AgentCoreLongTermMemoryStrategyType type : List.of(AgentCoreLongTermMemoryStrategyType.SEMANTIC,
+				AgentCoreLongTermMemoryStrategyType.USER_PREFERENCE, AgentCoreLongTermMemoryStrategyType.SUMMARY,
+				AgentCoreLongTermMemoryStrategyType.EPISODIC)) {
+			AgentCoreLongTermMemoryStrategy strategy = config.byKind(type);
+			String strategyId = (strategy != null) ? strategy.strategyId() : null;
+			if (strategyId == null) {
+				continue;
+			}
+			AgentCoreLongTermMemoryStrategyType previous = typesByStrategy.putIfAbsent(strategyId, type);
+			if (previous != null) {
+				throw new AgentCoreMemoryException.ConfigurationException(String.format(
+						"Strategy '%s' is configured as both %s.strategy-id and %s.strategy-id. A strategy has one "
+								+ "type, so configure its ID under one of them only.",
+						strategyId, AgentCoreLongTermMemoryNamespaceValidator.configPrefix(previous),
+						AgentCoreLongTermMemoryNamespaceValidator.configPrefix(type)));
+			}
+		}
+		return typesByStrategy;
 	}
 
 	private Map<String, String> collectReflectionNamespacesByStrategy(AgentCoreLongTermMemoryProperties config) {

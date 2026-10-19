@@ -154,6 +154,45 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 	}
 
 	@Test
+	@DisplayName("Should name the right group when a strategy ID is configured under another one")
+	void shouldFailWhenStrategyIsConfiguredUnderAnotherGroup() {
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("summary-456")
+			.type(MemoryStrategyType.SUMMARIZATION)
+			.namespaces(List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern()))
+			.build();
+		this.mockGetMemoryResponse(List.of(strategy));
+		var validator = new AgentCoreLongTermMemoryNamespaceValidator(this.controlClient, this.registrar, false,
+				Map.of("summary-456", AgentCoreLongTermMemoryStrategyType.SEMANTIC));
+
+		assertThatThrownBy(() -> validator.validateNamespaces("test-memory",
+				Map.of("summary-456", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("is a SUMMARIZATION strategy")
+			.hasMessageContaining("configured as agentcore.memory.long-term.semantic.strategy-id")
+			.hasMessageContaining("Configure it as agentcore.memory.long-term.summary.strategy-id instead")
+			.hasMessageNotContaining("namespace-pattern=");
+	}
+
+	@Test
+	@DisplayName("Should name the configured group in the mismatch hint for a CUSTOM strategy")
+	void shouldNameConfiguredGroupInHintForCustomStrategy() {
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("custom-1")
+			.type(MemoryStrategyType.CUSTOM)
+			.namespaces(List.of("/custom/{actorId}"))
+			.build();
+		this.mockGetMemoryResponse(List.of(strategy));
+		var validator = new AgentCoreLongTermMemoryNamespaceValidator(this.controlClient, this.registrar, false,
+				Map.of("custom-1", AgentCoreLongTermMemoryStrategyType.EPISODIC));
+
+		assertThatThrownBy(() -> validator.validateNamespaces("test-memory",
+				Map.of("custom-1", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("agentcore.memory.long-term.episodic.namespace-pattern=/custom/{actorId}");
+	}
+
+	@Test
 	@DisplayName("Should fail validation when strategy not found")
 	void shouldFailValidationWhenStrategyNotFound() {
 		// Given - empty strategies

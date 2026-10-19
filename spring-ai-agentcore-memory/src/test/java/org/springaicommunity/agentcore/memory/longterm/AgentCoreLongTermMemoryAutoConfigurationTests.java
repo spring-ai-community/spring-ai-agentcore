@@ -226,6 +226,37 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 	}
 
 	@Test
+	@DisplayName("Should fail startup when one strategy ID is configured under two groups")
+	void shouldFailWhenOneStrategyIdIsConfiguredUnderTwoGroups() {
+		// Both groups map to one ID, so one of the two patterns was never validated
+		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.semantic.strategy-id=summary-789",
+					"agentcore.memory.long-term.summary.strategy-id=summary-789")
+			.run((context) -> {
+				assertThat(context).hasFailed();
+				assertThat(context.getStartupFailure())
+					.hasRootCauseInstanceOf(AgentCoreMemoryException.ConfigurationException.class);
+				assertThat(context.getStartupFailure().getMessage())
+					.contains("configured as both agentcore.memory.long-term.semantic.strategy-id and "
+							+ "agentcore.memory.long-term.summary.strategy-id");
+			});
+	}
+
+	@Test
+	@DisplayName("Should fail startup when a strategy ID is configured under the wrong group")
+	void shouldFailWhenStrategyIdIsConfiguredUnderTheWrongGroup() {
+		this.contextRunner.withUserConfiguration(TypedSummaryConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.semantic.strategy-id=summary-456")
+			.run((context) -> {
+				assertThat(context).hasFailed();
+				assertThat(context.getStartupFailure().getMessage()).contains(
+						"Strategy 'summary-456' is a SUMMARIZATION strategy",
+						"configured as agentcore.memory.long-term.semantic.strategy-id",
+						"Configure it as agentcore.memory.long-term.summary.strategy-id instead");
+			});
+	}
+
+	@Test
 	@DisplayName("Should fail startup when custom namespace in config but default in AWS")
 	void shouldFailStartupWhenNamespaceMismatch() {
 		String customPattern = "custom-namespace/strategies/{memoryStrategyId}/actors/{actorId}";
@@ -699,6 +730,34 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 						.type(MemoryStrategyType.SEMANTIC)
 						// First one used
 						.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}", SESSION_NAMESPACE))
+						.build()))
+					.build())
+				.build();
+
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class TypedSummaryConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder()
+					.strategies(List.of(MemoryStrategy.builder()
+						.strategyId("summary-456")
+						.type(MemoryStrategyType.SUMMARIZATION)
+						.namespaces(List.of(SESSION_NAMESPACE))
 						.build()))
 					.build())
 				.build();

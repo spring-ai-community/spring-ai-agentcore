@@ -65,11 +65,29 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 
 	private final boolean autoRegister;
 
+	private final Map<String, AgentCoreLongTermMemoryStrategyType> configuredTypes;
+
 	public AgentCoreLongTermMemoryNamespaceValidator(BedrockAgentCoreControlClient controlClient,
 			AgentCoreLongTermMemoryNamespaceRegistrar registrar, boolean autoRegister) {
+		this(controlClient, registrar, autoRegister, Map.of());
+	}
+
+	/**
+	 * Creates a validator that also checks each strategy's type against the group it is
+	 * configured under.
+	 * @param controlClient the AgentCore control-plane client
+	 * @param registrar the namespace registrar used when auto-registration is on
+	 * @param autoRegister whether to register mismatching namespaces
+	 * @param configuredTypes the strategy type each strategy ID is configured as, keyed
+	 * by strategy ID; IDs without an entry are not type-checked
+	 */
+	public AgentCoreLongTermMemoryNamespaceValidator(BedrockAgentCoreControlClient controlClient,
+			AgentCoreLongTermMemoryNamespaceRegistrar registrar, boolean autoRegister,
+			Map<String, AgentCoreLongTermMemoryStrategyType> configuredTypes) {
 		this.controlClient = controlClient;
 		this.registrar = registrar;
 		this.autoRegister = autoRegister;
+		this.configuredTypes = Map.copyOf(configuredTypes);
 	}
 
 	/**
@@ -132,6 +150,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 	private void validateStrategy(String memoryId, List<MemoryStrategy> strategies, String strategyId,
 			List<String> expectedPatterns) {
 		MemoryStrategy strategy = findStrategy(memoryId, strategies, strategyId);
+		this.requireConfiguredType(memoryId, strategy);
 
 		List<String> actualNamespaces = strategy.namespaces();
 		if (actualNamespaces == null || actualNamespaces.isEmpty()) {
@@ -220,17 +239,40 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 		if (supported == null) {
 			return header + unsupportedNamespaceHint("namespace");
 		}
-		return header
-				+ String.format(
-						"The memory was created with a different namespace format than configured in Spring.%n"
-								+ "Either update the memory namespace or configure the matching pattern in "
-								+ "application.properties:%n  %s.namespace-pattern=%s",
-						configPrefix(strategy), supported);
+		return header + String.format(
+				"The memory was created with a different namespace format than configured in Spring.%n"
+						+ "Either update the memory namespace or configure the matching pattern in "
+						+ "application.properties:%n  %s.namespace-pattern=%s",
+				this.configPrefixFor(strategy), supported);
+	}
+
+	// A strategy ID under another group's property gets that group's handler, and the
+	// mismatch hint would name a property that has no effect, so name the right group.
+	private void requireConfiguredType(String memoryId, MemoryStrategy strategy) {
+		AgentCoreLongTermMemoryStrategyType configured = this.configuredTypes.get(strategy.strategyId());
+		AgentCoreLongTermMemoryStrategyType actual = AgentCoreLongTermMemoryStrategyType.fromAwsType(strategy.type());
+		// CUSTOM and unknown types can back any group
+		if (configured != null && actual != null && configured != actual) {
+			throw new AgentCoreMemoryException.ConfigurationException(String.format(
+					"Strategy '%s' is a %s strategy in memory '%s', but it is configured as %s.strategy-id. "
+							+ "Configure it as %s.strategy-id instead.",
+					strategy.strategyId(), strategy.type(), memoryId, configPrefix(configured), configPrefix(actual)));
+		}
+	}
+
+	// Prefer the group the ID is configured under: that is the property the user can set
+	private String configPrefixFor(MemoryStrategy strategy) {
+		AgentCoreLongTermMemoryStrategyType configured = this.configuredTypes.get(strategy.strategyId());
+		return (configured != null) ? configPrefix(configured) : configPrefix(strategy);
 	}
 
 	// The property prefix of the strategy's config, derived from its AWS type
 	private static String configPrefix(MemoryStrategy strategy) {
-		AgentCoreLongTermMemoryStrategyType type = AgentCoreLongTermMemoryStrategyType.fromAwsType(strategy.type());
+		return configPrefix(AgentCoreLongTermMemoryStrategyType.fromAwsType(strategy.type()));
+	}
+
+	// The property prefix of a strategy group; CUSTOM and unknown types have none
+	static String configPrefix(AgentCoreLongTermMemoryStrategyType type) {
 		if (type == null) {
 			return AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".<strategy>";
 		}
