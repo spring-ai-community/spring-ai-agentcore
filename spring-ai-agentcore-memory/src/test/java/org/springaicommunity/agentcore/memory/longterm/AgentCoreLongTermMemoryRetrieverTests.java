@@ -157,6 +157,26 @@ class AgentCoreLongTermMemoryRetrieverTests {
 	}
 
 	@Test
+	void shouldListMemoriesInSessionScopedNamespace() {
+		String sessionNamespace = "/strategies/strategy-123/actors/user-456/sessions/session-1";
+		var summary = MemoryRecordSummary.builder()
+			.memoryRecordId("pref-1")
+			.content(MemoryContent.builder().text("Prefers dark mode").build())
+			.namespaces(sessionNamespace)
+			.build();
+		given(this.client.listMemoryRecords(any(ListMemoryRecordsRequest.class)))
+			.willReturn(ListMemoryRecordsResponse.builder().memoryRecordSummaries(summary).build());
+
+		List<MemoryRecord> records = this.retriever.listMemories("strategy-123", "user-456", "session-1",
+				AgentCoreLongTermMemoryNamespace.SESSION.getPattern());
+
+		assertThat(records).extracting(MemoryRecord::content).containsExactly("Prefers dark mode");
+		ArgumentCaptor<ListMemoryRecordsRequest> captor = ArgumentCaptor.forClass(ListMemoryRecordsRequest.class);
+		then(this.client).should().listMemoryRecords(captor.capture());
+		assertThat(captor.getValue().namespace()).isEqualTo(sessionNamespace);
+	}
+
+	@Test
 	void shouldThrowExceptionOnApiError() {
 		// Given
 		given(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))

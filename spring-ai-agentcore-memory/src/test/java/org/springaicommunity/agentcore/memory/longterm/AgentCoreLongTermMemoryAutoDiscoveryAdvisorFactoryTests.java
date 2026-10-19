@@ -252,7 +252,7 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 					anyString()))
 			.thenReturn(List.of());
 		Mockito.lenient()
-			.when(this.retriever.listMemories(anyString(), anyString(), anyString()))
+			.when(this.retriever.listMemories(anyString(), anyString(), anyString(), anyString()))
 			.thenReturn(List.of());
 	}
 

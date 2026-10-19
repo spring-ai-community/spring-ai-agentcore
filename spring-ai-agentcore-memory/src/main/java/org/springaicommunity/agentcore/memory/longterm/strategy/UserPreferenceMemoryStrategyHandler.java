@@ -52,8 +52,9 @@ public final class UserPreferenceMemoryStrategyHandler implements MemoryStrategy
 
 	@Override
 	public MemoryFetchResult fetch(MemoryFetchContext ctx) {
-		return MemoryFetchResult
-			.primaryOnly(ctx.retriever().listMemories(this.strategyId, ctx.userId(), this.namespacePattern));
+		// The session fills {sessionId} when the memory scopes preferences by session
+		return MemoryFetchResult.primaryOnly(
+				ctx.retriever().listMemories(this.strategyId, ctx.userId(), ctx.sessionId(), this.namespacePattern));
 	}
 
 	@Override

@@ -136,14 +136,14 @@ class AgentCoreLongTermMemoryAdvisorTests {
 
 	@Test
 	void userPreferenceListsMemoriesWithoutQuery() {
-		given(this.retriever.listMemories("strategy-456", "user-456", ACTOR_NS)).willReturn(
+		given(this.retriever.listMemories("strategy-456", "user-456", "session-1", ACTOR_NS)).willReturn(
 				List.of(new MemoryRecord("1", "Dark mode enabled", 0.0), new MemoryRecord("2", "Metric units", 0.0)));
 
 		this.userPreferenceAdvisor.adviseCall(
 				this.requestWith("Show settings", Map.of(ChatMemory.CONVERSATION_ID, "user-456:session-1")),
 				this.chain);
 
-		then(this.retriever).should().listMemories("strategy-456", "user-456", ACTOR_NS);
+		then(this.retriever).should().listMemories("strategy-456", "user-456", "session-1", ACTOR_NS);
 		SystemMessage enriched = (SystemMessage) this.captureEnrichedPrompt().getInstructions().get(0);
 		assertThat(enriched.getText()).contains("User preferences", "Dark mode enabled");
 	}
@@ -239,13 +239,26 @@ class AgentCoreLongTermMemoryAdvisorTests {
 
 	@Test
 	void userPreferenceProceedsEvenWhenUserPromptIsEmpty() {
-		given(this.retriever.listMemories("strategy-456", "user-1", ACTOR_NS))
+		given(this.retriever.listMemories("strategy-456", "user-1", "default-session", ACTOR_NS))
 			.willReturn(List.of(new MemoryRecord("1", "Dark mode", 0.0)));
 
 		this.userPreferenceAdvisor.adviseCall(this.requestWith("", Map.of(ChatMemory.CONVERSATION_ID, "user-1")),
 				this.chain);
 
-		then(this.retriever).should().listMemories("strategy-456", "user-1", ACTOR_NS);
+		then(this.retriever).should().listMemories("strategy-456", "user-1", "default-session", ACTOR_NS);
+	}
+
+	@Test
+	void userPreferenceListsSessionScopedNamespaceWithTheSession() {
+		// Without the session, a pattern with {sessionId} failed on every call
+		AgentCoreLongTermMemoryAdvisor advisor = this.userPreferenceAdvisor("strategy-456", SESSION_NS,
+				"User preferences", 101);
+		given(this.retriever.listMemories("strategy-456", "user-1", "session-1", SESSION_NS))
+			.willReturn(List.of(new MemoryRecord("1", "Dark mode", 0.0)));
+
+		advisor.adviseCall(this.requestWith("Hi", Map.of(ChatMemory.CONVERSATION_ID, "user-1:session-1")), this.chain);
+
+		then(this.retriever).should().listMemories("strategy-456", "user-1", "session-1", SESSION_NS);
 	}
 
 	// ------------------------------------------------------------------
