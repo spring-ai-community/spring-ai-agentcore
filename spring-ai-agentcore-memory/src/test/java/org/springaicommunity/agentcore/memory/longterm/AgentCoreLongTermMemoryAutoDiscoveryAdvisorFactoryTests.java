@@ -150,6 +150,25 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 	}
 
 	@Test
+	void episodicSkipsDiscoveredReflectionsWithAPlaceholderRetrievalCannotFill() {
+		// Given: the reflections namespace uses a custom namespace key
+		String reflections = "/reflections/{orgname}/{actorId}/";
+		DiscoveredStrategy discovered = episodicWithReflections(DISCOVERED_EPISODES_NS, reflections);
+		AgentCoreLongTermMemoryProperties config = propertiesWithoutEpisodicExplicit();
+
+		// When
+		var advisor = this.factory(config).createAdvisors(List.of(discovered)).get(0);
+		this.stubEmptyMemories();
+		advisor.adviseCall(userRequest("q"), this.chain);
+
+		// Then: episodes are still retrieved; reflections are never requested.
+		verify(this.retriever).searchMemories(eq(STRATEGY_ID), anyString(), anyString(), eq("q"), anyInt(),
+				eq(DISCOVERED_EPISODES_NS));
+		verify(this.retriever, never()).searchMemories(anyString(), anyString(), anyString(), anyString(), anyInt(),
+				eq(reflections));
+	}
+
+	@Test
 	void episodicWithNoReflectionsAnywhereRunsEpisodesOnly() {
 		// Given: nothing reflection-related in either discovery or explicit config.
 		DiscoveredStrategy discovered = episodicWithoutReflections(DISCOVERED_EPISODES_NS);

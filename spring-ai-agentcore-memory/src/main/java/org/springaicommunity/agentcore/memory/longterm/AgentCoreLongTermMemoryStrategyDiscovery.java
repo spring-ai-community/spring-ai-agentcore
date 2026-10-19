@@ -115,6 +115,16 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 			logger.warn("Strategy '{}' has no namespaces, skipping", strategy.strategyId());
 			return null;
 		}
+		// Retrieval cannot fill custom namespace keys; every request for this strategy
+		// would fail, and the failure would reach the chat call.
+		for (String namespace : namespaces) {
+			String unfilled = AgentCoreLongTermMemoryNamespace.unfilledPlaceholder(namespace);
+			if (unfilled != null) {
+				logger.warn("Strategy '{}' namespace '{}' uses the placeholder {}, which retrieval cannot fill, "
+						+ "skipping", strategy.strategyId(), namespace, unfilled);
+				return null;
+			}
+		}
 
 		List<String> reflectionsNamespaces = (type != AgentCoreLongTermMemoryStrategyType.EPISODIC) ? List.of()
 				: extractReflectionsNamespaces(strategy);

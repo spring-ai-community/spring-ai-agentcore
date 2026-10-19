@@ -149,6 +149,15 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 
 	private void applyDiscoveredReflections(EpisodicMemoryStrategyHandler.Builder b, DiscoveredStrategy discovered) {
 		String discoveredReflections = discovered.defaultReflectionsNamespace();
+		String unfilled = (discoveredReflections != null)
+				? AgentCoreLongTermMemoryNamespace.unfilledPlaceholder(discoveredReflections) : null;
+		if (unfilled != null) {
+			// Every reflections request would fail; keep the episodes working without
+			// them
+			logger.warn("Strategy '{}': reflections namespace '{}' uses the placeholder {}, which retrieval cannot "
+					+ "fill, skipping reflections", discovered.strategyId(), discoveredReflections, unfilled);
+			return;
+		}
 		if (discoveredReflections != null) {
 			b.reflectionsNamespacePattern(discoveredReflections);
 			logger.debug("Strategy '{}': using discovered reflections namespace '{}'", discovered.strategyId(),

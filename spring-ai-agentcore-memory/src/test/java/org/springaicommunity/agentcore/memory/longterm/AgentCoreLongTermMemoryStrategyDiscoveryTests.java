@@ -142,6 +142,29 @@ class AgentCoreLongTermMemoryStrategyDiscoveryTests {
 		assertThat(ds.reflectionsNamespaces()).isEmpty();
 	}
 
+	@Test
+	void shouldSkipStrategyWhoseNamespaceHasAPlaceholderRetrievalCannotFill() {
+		// A custom namespace key such as {orgname} would reach AgentCore as literal
+		// braces
+		MemoryStrategy custom = MemoryStrategy.builder()
+			.strategyId("sem-org")
+			.type(MemoryStrategyType.SEMANTIC)
+			.namespaces(List.of("/orgs/{orgname}/actors/{actorId}/"))
+			.build();
+		MemoryStrategy usable = MemoryStrategy.builder()
+			.strategyId("sem-1")
+			.type(MemoryStrategyType.SEMANTIC)
+			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/"))
+			.build();
+
+		this.mockGetMemory(List.of(custom, usable));
+
+		List<DiscoveredStrategy> discovered = new AgentCoreLongTermMemoryStrategyDiscovery(this.controlClient)
+			.discoverStrategies("mem-1");
+
+		assertThat(discovered).extracting(DiscoveredStrategy::strategyId).containsExactly("sem-1");
+	}
+
 	private void mockGetMemory(List<MemoryStrategy> strategies) {
 		Memory memory = Memory.builder().strategies(strategies).build();
 		GetMemoryResponse response = GetMemoryResponse.builder().memory(memory).build();
