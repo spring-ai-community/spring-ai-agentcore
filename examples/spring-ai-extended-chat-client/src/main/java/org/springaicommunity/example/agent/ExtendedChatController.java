@@ -18,6 +18,7 @@ package org.springaicommunity.example.agent;
 import org.springaicommunity.agentcore.annotation.AgentCoreInvocation;
 import org.springaicommunity.agentcore.context.AgentCoreContext;
 import org.springaicommunity.agentcore.context.AgentCoreHeaders;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -60,8 +61,10 @@ public class ExtendedChatController {
 			String userId = extractUserIdFromContext(context);
 			String sessionId = context.getHeader(AgentCoreHeaders.SESSION_ID);
 			
-			// Create conversation ID from user and session
-			String conversationId = userId + ":" + sessionId;
+			// Create conversation ID from user and session. The session id header is
+			// client-chosen: of() rejects a ':' in it, which would otherwise move the
+			// split point into the user id and reach another user's memory.
+			String conversationId = AgentCoreMemoryConversationIdParser.of(userId, sessionId);
 			
 			String message = (String) request.get("prompt");
 			if (message == null) {

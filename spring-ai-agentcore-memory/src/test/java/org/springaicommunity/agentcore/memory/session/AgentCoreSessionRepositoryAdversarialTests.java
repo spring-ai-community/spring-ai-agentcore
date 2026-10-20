@@ -137,6 +137,17 @@ class AgentCoreSessionRepositoryAdversarialTests {
 		then(this.client).should(never()).listEvents(any(ListEventsRequest.class));
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = { ":tenant:alice", ":tenant:alice:conv-1", "::conv-1", " :tenant:conv-1", ": :conv-1",
+			"tenant::conv-1", "tenant: :conv-1", "a::b::c" })
+	void leadingOrDoubledColonInMultiColonIdIsRejectedAtSeam(String sessionId) {
+		// The last-colon split keeps a leading or doubled colon inside the actor, where
+		// it leaves a blank part. AgentCore never accepts such an actor id.
+		assertThatThrownBy(() -> this.repository.findById(sessionId)).isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("actor id must not start or end with ':' or contain an empty part between colons");
+		then(this.client).should(never()).listEvents(any(ListEventsRequest.class));
+	}
+
 	@Test
 	void sessionSeamTrimsActorAndSessionSegments() {
 		// D7: " alice : conv " trims to actor "alice", session "conv" in the AWS request.

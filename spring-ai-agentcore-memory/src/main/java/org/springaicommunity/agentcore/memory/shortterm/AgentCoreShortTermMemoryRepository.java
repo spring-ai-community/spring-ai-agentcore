@@ -357,7 +357,19 @@ public class AgentCoreShortTermMemoryRepository implements ChatMemoryRepository 
 	}
 
 	AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession(String conversationId) {
-		return AgentCoreMemoryConversationIdParser.parse(conversationId, this.defaultSession);
+		AgentCoreMemoryConversationIdParser.ActorAndSession parsed = AgentCoreMemoryConversationIdParser
+			.parse(conversationId, this.defaultSession);
+		// Fail before calling AgentCore, which never accepts such an actor id, as the
+		// session repository does
+		if (parsed.actor().isEmpty()) {
+			throw new IllegalArgumentException("conversationId '" + conversationId
+					+ "' has an empty actor segment; expected 'actorId' or 'actorId:sessionId'");
+		}
+		if (AgentCoreMemoryConversationIdParser.hasBlankPart(parsed.actor())) {
+			throw new IllegalArgumentException("conversationId '" + conversationId + "': "
+					+ AgentCoreMemoryConversationIdParser.BLANK_ACTOR_PART_MESSAGE);
+		}
+		return parsed;
 	}
 
 	private String validateMemoryId(String memoryId) {

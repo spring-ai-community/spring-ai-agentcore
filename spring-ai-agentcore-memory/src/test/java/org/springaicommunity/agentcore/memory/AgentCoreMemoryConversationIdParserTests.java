@@ -17,6 +17,8 @@
 package org.springaicommunity.agentcore.memory;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -51,11 +53,30 @@ class AgentCoreMemoryConversationIdParserTests {
 	}
 
 	@Test
-	void shouldHandleColonInSessionId() {
-		var result = AgentCoreMemoryConversationIdParser.parse("user123:session:with:colons");
+	void shouldSplitAtLastColonSoActorIdMayContainColons() {
+		// AgentCore actor ids may contain ':', session ids may not (#260).
+		var result = AgentCoreMemoryConversationIdParser.parse("tenant:alice:s1");
 
-		assertThat(result.actor()).isEqualTo("user123");
-		assertThat(result.session()).isEqualTo("session:with:colons");
+		assertThat(result.actor()).isEqualTo("tenant:alice");
+		assertThat(result.session()).isEqualTo("s1");
+	}
+
+	@Test
+	void shouldKeepUrnStyleActorIdWhole() {
+		var result = AgentCoreMemoryConversationIdParser.parse("urn:example:user:42:conv-1");
+
+		assertThat(result.actor()).isEqualTo("urn:example:user:42");
+		assertThat(result.session()).isEqualTo("conv-1");
+	}
+
+	@Test
+	void shouldReadActorOnlyIdWithColonAsActorAndSession() {
+		// Documented limitation: without a session, the colon of the actor id is taken
+		// as the separator. Actor ids with a colon must use the "actorId:sessionId" form.
+		var result = AgentCoreMemoryConversationIdParser.parse("tenant:alice");
+
+		assertThat(result.actor()).isEqualTo("tenant");
+		assertThat(result.session()).isEqualTo("alice");
 	}
 
 	@Test
@@ -118,6 +139,82 @@ class AgentCoreMemoryConversationIdParserTests {
 			.hasMessageContaining("sessionSuffix");
 		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("alice", null))
 			.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	// ==================== #260: colons in the user id ====================
+
+	@Test
+	void ofAcceptsUserIdWithColonAndRoundTripsThroughParse() {
+		String compound = AgentCoreMemoryConversationIdParser.of("tenant:alice", "s1");
+		assertThat(compound).isEqualTo("tenant:alice:s1");
+
+		var parsed = AgentCoreMemoryConversationIdParser.parse(compound);
+		assertThat(parsed.actor()).isEqualTo("tenant:alice");
+		assertThat(parsed.session()).isEqualTo("s1");
+	}
+
+	@Test
+	void usersSharingAColonPrefixKeepDistinctActors() {
+		// A first-colon split read the first two users as actor "tenant", so they
+		// shared memory with each other and with the user "tenant".
+		assertThat(actorOf("tenant:alice")).isEqualTo("tenant:alice");
+		assertThat(actorOf("tenant:bob")).isEqualTo("tenant:bob");
+		assertThat(actorOf("tenant")).isEqualTo("tenant");
+	}
+
+	@Test
+	void ofRejectsSessionSuffixContainingColon() {
+		// A colon in the suffix would move the split point, and AgentCore rejects it in
+		// session ids anyway.
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("alice", "conv:1"))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("sessionSuffix must not contain ':'");
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("alice", " conv: "))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("sessionSuffix must not contain ':'");
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { ":tenant", "tenant:", "a::b", "a: :b" })
+	void ofRejectsUserIdWithEmptyPartBetweenColons(String userId) {
+		// The session repository rejects these, and AgentCore never accepts them.
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of(userId, "s1"))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("empty part between colons");
+	}
+
+	@Test
+	void hasBlankPartFindsEmptyLeadingTrailingAndDoubledParts() {
+		assertThat(AgentCoreMemoryConversationIdParser.hasBlankPart("")).isTrue();
+		assertThat(AgentCoreMemoryConversationIdParser.hasBlankPart(":tenant")).isTrue();
+		assertThat(AgentCoreMemoryConversationIdParser.hasBlankPart("tenant:")).isTrue();
+		assertThat(AgentCoreMemoryConversationIdParser.hasBlankPart("a::b")).isTrue();
+		assertThat(AgentCoreMemoryConversationIdParser.hasBlankPart("a: :b")).isTrue();
+		assertThat(AgentCoreMemoryConversationIdParser.hasBlankPart("tenant:alice")).isFalse();
+		assertThat(AgentCoreMemoryConversationIdParser.hasBlankPart("alice")).isFalse();
+	}
+
+	@Test
+	void ofRejectsControlCharactersInsideEitherPart() {
+		// The session repository rejects control characters, so of() does too.
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("al\tice", "s1"))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("userId must not contain control characters (found U+0009 at index 2)");
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("alice", "s\u00001"))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("sessionSuffix must not contain control characters");
+		assertThatThrownBy(() -> AgentCoreMemoryConversationIdParser.of("alice", "s\u007F"))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("sessionSuffix must not contain control characters");
+	}
+
+	@Test
+	void ofTrimsBeforeCheckingForControlCharacters() {
+		assertThat(AgentCoreMemoryConversationIdParser.of("\talice\n", "s1\r\n")).isEqualTo("alice:s1");
+	}
+
+	private static String actorOf(String userId) {
+		return AgentCoreMemoryConversationIdParser.parse(AgentCoreMemoryConversationIdParser.of(userId, "s1")).actor();
 	}
 
 }

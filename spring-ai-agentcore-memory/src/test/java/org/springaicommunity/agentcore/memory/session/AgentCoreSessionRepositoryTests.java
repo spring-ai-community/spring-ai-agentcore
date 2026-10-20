@@ -219,6 +219,48 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
+	void findByIdActorIdWithColonSplitsAtLastColon() {
+		// #260: actor ids may contain ':', so the last colon starts the session.
+		Event tail = Event.builder().eventId("evt-4").eventTimestamp(Instant.now()).build();
+		this.givenDataEvents(tail);
+
+		Session synthesized = this.repository.findById("tenant:alice:conv-1");
+
+		ListEventsRequest tailReq = this.captureLastListEvents();
+		assertThat(tailReq.actorId()).isEqualTo("tenant:alice");
+		assertThat(tailReq.sessionId()).isEqualTo("conv-1");
+		assertThat(synthesized).isNotNull();
+		assertThat(synthesized.userId()).isEqualTo("tenant:alice");
+	}
+
+	@Test
+	void findByUserIdWithColonReturnsIdsThatRoundTripThroughFindById() {
+		// #260: the compound ids listed for a user id with ':' must resolve back to that
+		// actor, not to the text before its first colon.
+		SessionSummary summary = SessionSummary.builder()
+			.sessionId("conv-1")
+			.actorId("tenant:alice")
+			.createdAt(Instant.parse("2026-01-01T00:00:00Z"))
+			.build();
+		given(this.client.listSessions(any(ListSessionsRequest.class)))
+			.willReturn(ListSessionsResponse.builder().sessionSummaries(summary).build());
+		this.givenDataEvents(Event.builder().eventId("evt-5").eventTimestamp(Instant.now()).build());
+
+		List<Session> sessions = this.repository.findByUserId("tenant:alice");
+
+		ArgumentCaptor<ListSessionsRequest> listSessions = ArgumentCaptor.forClass(ListSessionsRequest.class);
+		then(this.client).should().listSessions(listSessions.capture());
+		assertThat(listSessions.getValue().actorId()).isEqualTo("tenant:alice");
+		assertThat(sessions).extracting(Session::id).containsExactly("tenant:alice:conv-1");
+
+		this.repository.findById(sessions.get(0).id());
+
+		ListEventsRequest tailReq = this.captureLastListEvents();
+		assertThat(tailReq.actorId()).isEqualTo("tenant:alice");
+		assertThat(tailReq.sessionId()).isEqualTo("conv-1");
+	}
+
+	@Test
 	void findByUserIdReturnsSessionsFromPaginatedListSessions() {
 		// D2: findByUserId maps userId -> actor and paginates listSessions.
 		Instant t1 = Instant.parse("2026-01-01T00:00:00Z");
@@ -985,6 +1027,40 @@ class AgentCoreSessionRepositoryTests {
 			.build();
 		assertThatThrownBy(() -> advisor.before(turn2, null)).isInstanceOf(IllegalStateException.class)
 			.hasMessageContaining("does not belong to user 'bob'");
+	}
+
+	@Test
+	void findByIdUserIdWithColonPassesOwnershipCheck() {
+		// #260: a first-colon split derived Session.userId "tenant" here, so the
+		// advisor rejected user "tenant:alice" on the second turn.
+		String sessionId = "tenant:alice:conv-1";
+		String userId = "tenant:alice";
+		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage())
+			.willReturn(ListEventsResponse.builder().events(tail).build());
+		given(this.client.createEvent(any(CreateEventRequest.class)))
+			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("stamp").build()).build());
+
+		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
+		SessionMemoryAdvisor advisor = SessionMemoryAdvisor.builder(service).build();
+
+		ChatClientRequest turn1 = ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage("first"))))
+			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId)
+			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, userId)
+			.build();
+		advisor.before(turn1, null);
+
+		ChatClientRequest turn2 = ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage("second"))))
+			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId)
+			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, userId)
+			.build();
+		advisor.before(turn2, null);
+
+		ListEventsRequest lastReq = this.captureLastListEvents();
+		assertThat(lastReq.actorId()).isEqualTo(userId);
+		assertThat(lastReq.sessionId()).isEqualTo("conv-1");
 	}
 
 	// ==================== Helpers ====================

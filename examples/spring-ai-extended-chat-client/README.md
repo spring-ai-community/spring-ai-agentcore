@@ -108,7 +108,8 @@ curl -X POST \
 
 ### Memory Integration
 - Uses AgentCore Memory service for conversation persistence
-- Memory is scoped per user: `userId:sessionId`
+- Memory is scoped per user: `userId:sessionId`, built with `AgentCoreMemoryConversationIdParser.of(userId, sessionId)`. The session id comes from the client's `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` header, so `of()` rejects a session id that contains `:`, which would otherwise move the split point into the user id.
+- The user id is used as the AgentCore actor id, so it must use the characters AgentCore allows in actor ids. Map identity-provider subjects such as e-mail addresses to a safe value first (see the memory module README).
 - Configurable message window size (default: 10 messages)
 
 ### Architecture

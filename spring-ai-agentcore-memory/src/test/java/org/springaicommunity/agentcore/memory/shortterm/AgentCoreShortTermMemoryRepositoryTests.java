@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -182,6 +183,65 @@ public class AgentCoreShortTermMemoryRepositoryTests {
 
 		assertThat(result.actor()).isEqualTo("actor123");
 		assertThat(result.session()).isEqualTo("default-session");
+	}
+
+	@Test
+	void shouldKeepColonInActorIdForReadsAndWrites() {
+		// #260: actor ids may contain ':', so the last colon starts the session id.
+		given(this.client.createEvent(any(CreateEventRequest.class)))
+			.willReturn(CreateEventResponse.builder().event(this.buildTestEvent()).build());
+		given(this.client.listEvents(any(ListEventsRequest.class)))
+			.willReturn(ListEventsResponse.builder().events(this.buildTestEvent()).build());
+
+		var conversationId = "tenant:alice:s1";
+		this.memoryRepository.saveAll(conversationId, List.of(UserMessage.builder().text("hello").build()));
+		this.memoryRepository.findByConversationId(conversationId);
+
+		ArgumentCaptor<CreateEventRequest> createCaptor = ArgumentCaptor.forClass(CreateEventRequest.class);
+		then(this.client).should().createEvent(createCaptor.capture());
+		assertThat(createCaptor.getValue().actorId()).isEqualTo("tenant:alice");
+		assertThat(createCaptor.getValue().sessionId()).isEqualTo("s1");
+
+		ArgumentCaptor<ListEventsRequest> listCaptor = ArgumentCaptor.forClass(ListEventsRequest.class);
+		then(this.client).should().listEvents(listCaptor.capture());
+		assertThat(listCaptor.getValue().actorId()).isEqualTo("tenant:alice");
+		assertThat(listCaptor.getValue().sessionId()).isEqualTo("s1");
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { ":tenant:alice", "tenant::s1", "a::b::c", " :tenant:s1" })
+	void shouldRejectBlankActorPartBeforeCallingAgentCore(String conversationId) {
+		// Same check as the session repository: AgentCore never accepts such an actor id
+		assertThatThrownBy(() -> this.memoryRepository.findByConversationId(conversationId))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("actor id must not start or end with ':' or contain an empty part between colons");
+		assertThatThrownBy(() -> this.memoryRepository.saveAll(conversationId,
+				List.of(UserMessage.builder().text("hello").build())))
+			.isInstanceOf(IllegalArgumentException.class);
+		then(this.client).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldRejectEmptyActorBeforeCallingAgentCore() {
+		assertThatThrownBy(() -> this.memoryRepository.deleteByConversationId(":s1"))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("has an empty actor segment");
+		then(this.client).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void shouldTrimPaddedConversationIdLikeTheSessionRepository() {
+		// The session repository trims " tenant:alice : s1 "; STM must reach the same
+		// AgentCore actor and session instead of sending padded ids
+		given(this.client.listEvents(any(ListEventsRequest.class)))
+			.willReturn(ListEventsResponse.builder().events(this.buildTestEvent()).build());
+
+		this.memoryRepository.findByConversationId(" tenant:alice : s1 ");
+
+		ArgumentCaptor<ListEventsRequest> listCaptor = ArgumentCaptor.forClass(ListEventsRequest.class);
+		then(this.client).should().listEvents(listCaptor.capture());
+		assertThat(listCaptor.getValue().actorId()).isEqualTo("tenant:alice");
+		assertThat(listCaptor.getValue().sessionId()).isEqualTo("s1");
 	}
 
 	@Test

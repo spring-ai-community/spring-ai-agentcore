@@ -162,6 +162,18 @@ class AgentCoreLongTermMemoryAdvisorTests {
 			.searchMemories(eq("sum-1"), eq("user-1"), eq("session-1"), eq("Continue"), anyInt(), eq(SESSION_NS));
 	}
 
+	@Test
+	void keepsColonInActorIdWhenFetchingMemories() {
+		// #260: a first-colon split searched the records of actor "tenant" for this user.
+		AgentCoreLongTermMemoryAdvisor advisor = this.summaryAdvisor("sum-1", SESSION_NS, "Prior session summary");
+
+		advisor.adviseCall(this.requestWith("Continue", Map.of(ChatMemory.CONVERSATION_ID, "tenant:alice:session-1")),
+				this.chain);
+
+		then(this.retriever).should()
+			.searchMemories(eq("sum-1"), eq("tenant:alice"), eq("session-1"), eq("Continue"), anyInt(), eq(SESSION_NS));
+	}
+
 	// ------------------------------------------------------------------
 	// Injection target — SYSTEM vs USER
 	// ------------------------------------------------------------------

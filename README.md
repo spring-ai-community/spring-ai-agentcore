@@ -91,7 +91,8 @@ public class MyAgent {
         return chatClient.prompt()
                 .user(request.prompt())
                 .advisors(agentCoreMemory.advisors)
-                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID, "user:" + sessionId))
+                .advisors(a -> a.param(ChatMemory.CONVERSATION_ID,
+                        AgentCoreMemoryConversationIdParser.of("user", sessionId)))
                 .stream()
                 .content();
     }

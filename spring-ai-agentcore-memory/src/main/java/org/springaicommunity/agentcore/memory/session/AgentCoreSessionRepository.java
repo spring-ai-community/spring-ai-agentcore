@@ -858,23 +858,30 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	}
 
 	AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession(String sessionId) {
+		// parse() trims both segments
 		AgentCoreMemoryConversationIdParser.ActorAndSession parsed = AgentCoreMemoryConversationIdParser
 			.parse(sessionId, this.defaultSession);
-		String actor = parsed.actor().trim();
-		String session = parsed.session().trim();
+		String actor = parsed.actor();
+		String session = parsed.session();
 		if (actor.isEmpty()) {
 			throw new IllegalArgumentException("sessionId '" + sessionId
 					+ "' has an empty actor segment; expected 'actorId' or 'actorId:sessionId'");
+		}
+		// The actor keeps every colon but the last, so a leading colon (":tenant:alice")
+		// or a doubled one ("tenant::conv") leaves a blank part in it.
+		if (AgentCoreMemoryConversationIdParser.hasBlankPart(actor)) {
+			throw new IllegalArgumentException(
+					"sessionId '" + sessionId + "': " + AgentCoreMemoryConversationIdParser.BLANK_ACTOR_PART_MESSAGE);
 		}
 		if (sessionId.contains(":") && session.isEmpty()) {
 			throw new IllegalArgumentException("sessionId '" + sessionId
 					+ "' has an empty session segment; expected 'actorId' or 'actorId:sessionId'");
 		}
 		if (sessionId.indexOf(':') != sessionId.lastIndexOf(':')) {
-			logger.debug("Multi-colon sessionId '{}' parsed as actor '{}' session '{}' (split on first colon)",
+			logger.debug("Multi-colon sessionId '{}' parsed as actor '{}' session '{}' (split on last colon)",
 					sessionId, actor, session);
 		}
-		return new AgentCoreMemoryConversationIdParser.ActorAndSession(actor, session);
+		return parsed;
 	}
 
 	private static String validateMemoryId(String memoryId) {
