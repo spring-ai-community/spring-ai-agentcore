@@ -380,25 +380,25 @@ agentcore:
       semantic:
         strategy-id: ${SEMANTIC_STRATEGY_ID}     # Enables strategy (omit to disable)
         top-k: 3                                 # Default: 3
-        scope: ACTOR                             # Default: ACTOR
+        namespace: ACTOR                         # Default: ACTOR
       user-preference:
         strategy-id: ${USER_PREFERENCE_STRATEGY_ID}  # Enables strategy (no top-k: lists all)
-        scope: ACTOR                             # Default: ACTOR
+        namespace: ACTOR                         # Default: ACTOR
       summary:
         strategy-id: ${SUMMARY_STRATEGY_ID}      # Enables strategy
         top-k: 3                                 # Default: 3
-        scope: SESSION                           # Default: SESSION
+        namespace: SESSION                       # Default: SESSION
       episodic:
         strategy-id: ${EPISODIC_STRATEGY_ID}     # Enables strategy
-        reflections-strategy-id: ${REFLECTIONS_STRATEGY_ID}  # Optional: enables reflections
+        reflections-namespace-pattern: ${REFLECTIONS_NAMESPACE}  # Optional: enables reflections; must match the memory
         episodes-top-k: 3                        # Default: 3
         reflections-top-k: 2                     # Default: 2
-        scope: ACTOR                             # Default: ACTOR
+        namespace: ACTOR                         # Default: ACTOR
 ```
 
-#### Scope Options
+#### Namespace Options
 
-| Scope | Namespace Pattern | Use Case |
+| `namespace` | Namespace Pattern | Use Case |
 |-------|-------------------|----------|
 | `ACTOR` | `/strategies/{memoryStrategyId}/actors/{actorId}` | Search across all sessions for the user |
 | `SESSION` | `/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}` | Search only current session |
@@ -429,14 +429,14 @@ With explicit configuration (`auto-discovery: false`), startup validation compar
 
 #### Defaults Summary
 
-| Strategy | top-k | scope |
-|----------|-------|-------|
+| Strategy | top-k | namespace |
+|----------|-------|-----------|
 | semantic | 3 | ACTOR |
 | user-preference | n/a (lists all) | ACTOR |
 | summary | 3 | SESSION |
 | episodic | episodes: 3, reflections: 2 | ACTOR |
 
-Set `enabled: true` to activate LTM, then configure individual strategies. Each strategy is optional - only configure the ones you need. Advisors are auto-created for configured strategies. Set `enabled: false` to temporarily disable all LTM without removing strategy configuration.
+Long-term memory turns on when `auto-discovery` is `true` or when at least one strategy has a `strategy-id`, and advisors are created only for the configured strategies. Each strategy is optional, so configure only the ones you need. There is no separate `enabled` switch.
 
 ## Conversation ID Format
 

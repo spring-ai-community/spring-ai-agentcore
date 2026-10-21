@@ -194,6 +194,21 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 	}
 
 	@Test
+	@DisplayName("Should bind the strategy namespace property")
+	void shouldBindStrategyNamespaceProperty() {
+		// The memory's semantic strategy is session-scoped
+		// (SessionScopedSemanticConfiguration)
+		this.contextRunner.withUserConfiguration(SessionScopedSemanticConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP,
+					"agentcore.memory.long-term.semantic.namespace=SESSION")
+			.run((context) -> {
+				var config = context.getBean(AgentCoreLongTermMemoryProperties.class);
+				assertThat(config.semantic().namespace()).isEqualTo(AgentCoreLongTermMemoryNamespace.SESSION);
+				assertThat(config.semantic().resolveNamespacePattern()).isEqualTo(SESSION_NAMESPACE);
+			});
+	}
+
+	@Test
 	@DisplayName("Should use custom namespace pattern when configured")
 	void shouldUseCustomNamespacePattern() {
 		String customPattern = "/custom/{memoryStrategyId}/users/{actorId}";
@@ -575,6 +590,33 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 					.strategies(List.of(MemoryStrategy.builder()
 						.strategyId("semantic-123")
 						.namespaces(List.of("/custom/{memoryStrategyId}/users/{actorId}"))
+						.build()))
+					.build())
+				.build();
+
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class SessionScopedSemanticConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder()
+					.strategies(List.of(MemoryStrategy.builder()
+						.strategyId("semantic-123")
+						.namespaces(List.of(SESSION_NAMESPACE))
 						.build()))
 					.build())
 				.build();
