@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.memory.longterm;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,18 +35,23 @@ import software.amazon.awssdk.services.bedrockagentcore.model.MemoryContent;
 import software.amazon.awssdk.services.bedrockagentcore.model.MemoryRecordSummary;
 import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryRecordsRequest;
 import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryRecordsResponse;
+import software.amazon.awssdk.services.bedrockagentcore.model.ThrottledException;
+
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
 
 /**
  * Unit tests for {@link AgentCoreLongTermMemoryRetriever}.
  *
  * @author Yuriy Bezsonov
  */
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({ MockitoExtension.class, OutputCaptureExtension.class })
 class AgentCoreLongTermMemoryRetrieverTests {
 
 	private static final String ACTOR_NAMESPACE = "/strategies/strategy-123/actors/user-456";
@@ -257,6 +263,99 @@ class AgentCoreLongTermMemoryRetrieverTests {
 	}
 
 	@Test
+	void shouldListMemoriesAcrossAllPages() {
+		// Given
+		given(this.client.listMemoryRecords(any(ListMemoryRecordsRequest.class))).willReturn(
+				page("token-2", record("pref-1", ACTOR_NAMESPACE), record("pref-2", ACTOR_NAMESPACE)),
+				page(null, record("pref-3", ACTOR_NAMESPACE)));
+
+		// When
+		List<MemoryRecord> records = this.retriever.listMemories("strategy-123", "user-456",
+				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
+
+		// Then
+		assertThat(records).extracting(MemoryRecord::id).containsExactly("pref-1", "pref-2", "pref-3");
+
+		ArgumentCaptor<ListMemoryRecordsRequest> captor = ArgumentCaptor.forClass(ListMemoryRecordsRequest.class);
+		then(this.client).should(times(2)).listMemoryRecords(captor.capture());
+
+		assertThat(captor.getAllValues()).extracting(ListMemoryRecordsRequest::nextToken)
+			.containsExactly(null, "token-2");
+		assertThat(captor.getAllValues()).allSatisfy((request) -> {
+			assertThat(request.memoryId()).isEqualTo("test-memory-id");
+			assertThat(request.namespace()).isEqualTo(ACTOR_NAMESPACE);
+			assertThat(request.memoryStrategyId()).isEqualTo("strategy-123");
+			assertThat(request.maxResults()).isEqualTo(100);
+		});
+	}
+
+	@Test
+	void shouldFilterListedRecordsOnEveryPage() {
+		// Given: the first page holds only records of a prefix-sharing actor
+		var otherActor = "/strategies/strategy-123/actors/user-4567";
+		given(this.client.listMemoryRecords(any(ListMemoryRecordsRequest.class))).willReturn(
+				page("token-2", record("other-1", otherActor), record("other-2", otherActor)),
+				page(null, record("other-3", otherActor), record("own-1", ACTOR_NAMESPACE),
+						record("own-2", SESSION_NAMESPACE)));
+
+		// When
+		List<MemoryRecord> records = this.retriever.listMemories("strategy-123", "user-456",
+				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
+
+		// Then: a page that the filter empties does not end the listing
+		assertThat(records).extracting(MemoryRecord::id).containsExactly("own-1", "own-2");
+		then(this.client).should(times(2)).listMemoryRecords(any(ListMemoryRecordsRequest.class));
+	}
+
+	@Test
+	void shouldStopListingAfterMaxPages(CapturedOutput output) {
+		// Given: the service holds more pages than the retriever reads
+		this.stubListPages(AgentCoreLongTermMemoryRetriever.MAX_LIST_PAGES + 2);
+
+		// When
+		List<MemoryRecord> records = this.retriever.listMemories("strategy-123", "user-456",
+				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
+
+		// Then
+		assertThat(records).hasSize(AgentCoreLongTermMemoryRetriever.MAX_LIST_PAGES);
+		then(this.client).should(times(AgentCoreLongTermMemoryRetriever.MAX_LIST_PAGES))
+			.listMemoryRecords(any(ListMemoryRecordsRequest.class));
+		// One record per stubbed page
+		assertThat(output).contains("Stopped listing memories after " + AgentCoreLongTermMemoryRetriever.MAX_LIST_PAGES
+				+ " pages (" + AgentCoreLongTermMemoryRetriever.MAX_LIST_PAGES + " records); more remain");
+	}
+
+	@Test
+	void shouldNotWarnWhenLastPageIsTheMaxPage(CapturedOutput output) {
+		// Given
+		this.stubListPages(AgentCoreLongTermMemoryRetriever.MAX_LIST_PAGES);
+
+		// When
+		List<MemoryRecord> records = this.retriever.listMemories("strategy-123", "user-456",
+				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern());
+
+		// Then
+		assertThat(records).hasSize(AgentCoreLongTermMemoryRetriever.MAX_LIST_PAGES);
+		assertThat(output).doesNotContain("Stopped listing memories");
+	}
+
+	@Test
+	void shouldThrowExceptionWhenLaterListPageFails() {
+		// Given
+		given(this.client.listMemoryRecords(any(ListMemoryRecordsRequest.class)))
+			.willReturn(page("token-2", record("pref-1", ACTOR_NAMESPACE)))
+			.willThrow(ThrottledException.builder().message("Rate exceeded").build());
+
+		// When/Then
+		Assertions
+			.assertThatThrownBy(() -> this.retriever.listMemories("strategy-123", "user-456",
+					AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()))
+			.isInstanceOf(AgentCoreMemoryException.RetrievalException.class)
+			.hasMessageContaining("Failed to list memories")
+			.hasCauseInstanceOf(ThrottledException.class);
+	}
+
+	@Test
 	void shouldKeepRecordWhenAnyOfItsNamespacesIsInScope() {
 		// Given
 		var shared = record("shared", "/strategies/strategy-123/actors/user-4567", ACTOR_NAMESPACE);
@@ -320,6 +419,20 @@ class AgentCoreLongTermMemoryRetrieverTests {
 			.score(0.5)
 			.namespaces(namespaces)
 			.build();
+	}
+
+	private static ListMemoryRecordsResponse page(String nextToken, MemoryRecordSummary... summaries) {
+		return ListMemoryRecordsResponse.builder().memoryRecordSummaries(summaries).nextToken(nextToken).build();
+	}
+
+	// Stubs a listing of pageCount pages holding one record each
+	private void stubListPages(int pageCount) {
+		var calls = new AtomicInteger();
+		given(this.client.listMemoryRecords(any(ListMemoryRecordsRequest.class))).willAnswer((invocation) -> {
+			int call = calls.incrementAndGet();
+			String nextToken = (call < pageCount) ? "token-" + (call + 1) : null;
+			return page(nextToken, record("pref-" + call, ACTOR_NAMESPACE));
+		});
 	}
 
 }

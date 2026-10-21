@@ -235,7 +235,7 @@ See [issue #152](https://github.com/spring-ai-community/spring-ai-agentcore/issu
 
 ### Long-Term Memory (LTM)
 - **Semantic**: Semantic search for user facts using the current query
-- **User Preference**: Lists ALL stored preferences regardless of query — preferences should always apply
+- **User Preference**: Lists ALL stored preferences regardless of query (reads at most 200 records) — preferences should always apply
 - **Summary**: Semantic search for conversation summaries by session
 - **Episodic**: Semantic search for past interactions and reflections
 
@@ -432,7 +432,7 @@ With explicit configuration (`auto-discovery: false`), startup validation compar
 | Strategy | top-k | scope |
 |----------|-------|-------|
 | semantic | 3 | ACTOR |
-| user-preference | n/a (lists all) | ACTOR |
+| user-preference | n/a (lists all, reads at most 200) | ACTOR |
 | summary | 3 | SESSION |
 | episodic | episodes: 3, reflections: 2 | ACTOR |
 
