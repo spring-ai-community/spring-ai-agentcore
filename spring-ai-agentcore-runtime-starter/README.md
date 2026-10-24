@@ -259,6 +259,8 @@ Rate limits are applied per client IP address and reset every minute.
 
 Throw `IllegalArgumentException` (or `ResponseStatusException`) for invalid caller input, so that client errors don't show up as server faults. The mapping applies to exceptions thrown by the method itself; once a streaming response (`Flux`, SSE) has started, the status can no longer change.
 
+On AgentCore Runtime, the status reaches your container's logs and metrics, but not the `InvokeAgentRuntime` caller. A 400 from the container reaches the caller as `RuntimeClientError` (HTTP 424) with the message `Received error (400) from runtime. Please check your CloudWatch logs for more information.`; the response body is not forwarded. Direct calls to the container, for example when running locally, receive the status and body unchanged.
+
 ### GET /ping
 
 **Response (200):**
