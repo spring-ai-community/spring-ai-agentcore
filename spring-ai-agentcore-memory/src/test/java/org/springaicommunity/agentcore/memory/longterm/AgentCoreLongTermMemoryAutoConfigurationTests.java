@@ -37,6 +37,8 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRe
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategyType;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.OverrideType;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.StrategyConfiguration;
 
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -413,7 +415,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 	}
 
 	@Test
-	@DisplayName("Autodiscovery: Should skip CUSTOM strategy type")
+	@DisplayName("Autodiscovery: Should skip CUSTOM strategy without an override type")
 	void autodiscoveryShouldSkipCustomStrategyType() {
 		this.contextRunner.withUserConfiguration(AutodiscoveryWithCustomMockConfiguration.class)
 			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true")
@@ -425,6 +427,22 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				// Only SEMANTIC should be created, CUSTOM should be skipped
 				assertThat(advisors).hasSize(1);
 				assertThat(advisors.get(0).getName()).isEqualTo(ADVISOR_SEMANTIC);
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should create advisors for CUSTOM strategies by their override type")
+	void autodiscoveryShouldCreateAdvisorsForCustomOverrides() {
+		this.contextRunner.withUserConfiguration(AutodiscoveryWithCustomOverridesMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true")
+			.run((context) -> {
+				assertThat(context).hasNotFailed();
+
+				@SuppressWarnings("unchecked")
+				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
+				// The self-managed strategy has no built-in retrieval and is skipped
+				assertThat(advisors).extracting(AgentCoreLongTermMemoryAdvisor::getName)
+					.containsExactly(ADVISOR_SUMMARY, ADVISOR_EPISODIC);
 			});
 	}
 
@@ -749,6 +767,41 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 
 			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
 			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class AutodiscoveryWithCustomOverridesMockConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder()
+					.strategies(List.of(customStrategy("custom-summary", OverrideType.SUMMARY_OVERRIDE),
+							customStrategy("custom-episodic", OverrideType.EPISODIC_OVERRIDE),
+							customStrategy("self-managed", OverrideType.SELF_MANAGED)))
+					.build())
+				.build();
+
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
+			return () -> controlClient;
+		}
+
+		private static MemoryStrategy customStrategy(String strategyId, OverrideType override) {
+			return MemoryStrategy.builder()
+				.strategyId(strategyId)
+				.type(MemoryStrategyType.CUSTOM)
+				.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}"))
+				.configuration(StrategyConfiguration.builder().type(override).build())
+				.build();
 		}
 
 	}

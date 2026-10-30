@@ -113,7 +113,7 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 			}
 			case EPISODIC -> this.buildEpisodicHandler(discovered, explicitConfig, namespace);
 			case CUSTOM -> throw new IllegalStateException("Auto-discovery should never produce CUSTOM; "
-					+ "AgentCoreLongTermMemoryStrategyType.fromAwsType filters it out.");
+					+ "AgentCoreLongTermMemoryStrategyDiscovery maps a custom AWS strategy to the type it overrides.");
 		};
 	}
 

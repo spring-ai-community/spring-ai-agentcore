@@ -22,15 +22,23 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CustomReflectionConfiguration;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.EpisodicReflectionConfiguration;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.EpisodicReflectionOverride;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategyType;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.OverrideType;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ReflectionConfiguration;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.StrategyConfiguration;
 
 /**
  * Discovers memory strategies from AgentCore Memory for autodiscovery mode.
+ *
+ * <p>
+ * A {@code CUSTOM} strategy overrides one built-in type, recorded in its configuration's
+ * override type, and is discovered as that type. Self-managed and unknown overrides have
+ * no built-in retrieval and are skipped.
  *
  * @author Andrei Shakirin
  */
@@ -47,7 +55,8 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 	/**
 	 * Discovers all strategies from the given memory.
 	 * @param memoryId the memory resource ID
-	 * @return list of discovered strategies (excludes CUSTOM and unknown types)
+	 * @return list of discovered strategies (CUSTOM ones as the built-in type they
+	 * override; excludes self-managed and unknown types)
 	 */
 	public List<DiscoveredStrategy> discoverStrategies(String memoryId) {
 		logger.info("Discovering strategies for memory: {}", memoryId);
@@ -61,35 +70,46 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 		}
 
 		List<DiscoveredStrategy> discovered = new ArrayList<>();
+		List<String> typeLabels = new ArrayList<>();
 		int skipped = 0;
 		for (MemoryStrategy strategy : strategies) {
 			var mapped = this.mapStrategy(strategy);
 			if (mapped != null) {
+				// A CUSTOM strategy shows its override type, which is why it got this
+				// advisor
+				String typeLabel = (strategy.type() == MemoryStrategyType.CUSTOM) ? describeType(strategy)
+						: mapped.type().name();
 				discovered.add(mapped);
+				typeLabels.add(typeLabel);
 				logger.info("Discovered strategy: {} (type={}, namespaces={}, reflectionsNamespaces={})",
-						mapped.strategyId(), mapped.type(), mapped.namespaces(), mapped.reflectionsNamespaces());
+						mapped.strategyId(), typeLabel, mapped.namespaces(), mapped.reflectionsNamespaces());
 			}
 			else {
 				skipped++;
 			}
 		}
 
-		this.logDiscoveryOverview(memoryId, strategies.size(), discovered, skipped);
+		this.logDiscoveryOverview(memoryId, strategies.size(), discovered, typeLabels, skipped);
 		return discovered;
 	}
 
-	private void logDiscoveryOverview(String memoryId, int total, List<DiscoveredStrategy> discovered, int skipped) {
+	private void logDiscoveryOverview(String memoryId, int total, List<DiscoveredStrategy> discovered,
+			List<String> typeLabels, int skipped) {
 		if (discovered.isEmpty()) {
 			logger.warn("Strategy discovery for memory {}: {} total, 0 usable, {} skipped", memoryId, total, skipped);
 			return;
 		}
+		// Wide enough for labels such as CUSTOM (USER_PREFERENCE_OVERRIDE)
+		int typeWidth = Math.max(20, typeLabels.stream().mapToInt(String::length).max().orElse(0));
+		String row = "  %-" + typeWidth + "s %-45s %s%n";
 		StringBuilder table = new StringBuilder();
 		table.append(String.format("%n  Strategy discovery for memory '%s':%n", memoryId));
-		table.append(String.format("  %-20s %-45s %s%n", "TYPE", "STRATEGY ID", "REFLECTIONS"));
-		table.append("  ").append("-".repeat(80)).append(System.lineSeparator());
-		for (DiscoveredStrategy ds : discovered) {
+		table.append(String.format(row, "TYPE", "STRATEGY ID", "REFLECTIONS"));
+		table.append("  ").append("-".repeat(typeWidth + 60)).append(System.lineSeparator());
+		for (int i = 0; i < discovered.size(); i++) {
+			DiscoveredStrategy ds = discovered.get(i);
 			String refl = (ds.reflectionsNamespaces().isEmpty()) ? "no" : "yes";
-			table.append(String.format("  %-20s %-45s %s%n", ds.type(), ds.strategyId(), refl));
+			table.append(String.format(row, typeLabels.get(i), ds.strategyId(), refl));
 		}
 		table.append(String.format("  %d usable / %d total%s", discovered.size(), total,
 				(skipped > 0) ? " (" + skipped + " skipped)" : ""));
@@ -103,9 +123,9 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 			return null;
 		}
 
-		AgentCoreLongTermMemoryStrategyType type = AgentCoreLongTermMemoryStrategyType.fromAwsType(sdkType);
+		AgentCoreLongTermMemoryStrategyType type = effectiveType(strategy);
 		if (type == null) {
-			logger.warn("Unknown or unsupported strategy type '{}' for strategy '{}', skipping", sdkType,
+			logger.warn("Unknown or unsupported strategy type '{}' for strategy '{}', skipping", describeType(strategy),
 					strategy.strategyId());
 			return null;
 		}
@@ -128,40 +148,68 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 
 		List<String> reflectionsNamespaces = (type != AgentCoreLongTermMemoryStrategyType.EPISODIC) ? List.of()
 				: extractReflectionsNamespaces(strategy);
-		if (type == AgentCoreLongTermMemoryStrategyType.EPISODIC && usesCustomReflection(strategy)) {
-			logger.info("Strategy '{}' uses customReflectionConfiguration; reflection-namespace auto-discovery "
-					+ "will skip this entry. Configure reflection explicitly via {}.reflections-namespace-pattern.",
-					strategy.strategyId(), AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX);
-		}
 
 		return new DiscoveredStrategy(strategy.strategyId(), type, List.copyOf(namespaces), reflectionsNamespaces);
 	}
 
 	/**
+	 * The built-in type whose retrieval fits the strategy: its AWS type, or for a
+	 * {@code CUSTOM} strategy the type it overrides. Shared with the namespace validator,
+	 * which checks the configured group against it.
+	 * @param strategy the AWS memory strategy descriptor
+	 * @return the strategy type, or {@code null} for self-managed, unknown or missing
+	 * types
+	 */
+	static AgentCoreLongTermMemoryStrategyType effectiveType(MemoryStrategy strategy) {
+		AgentCoreLongTermMemoryStrategyType type = AgentCoreLongTermMemoryStrategyType.fromAwsType(strategy.type());
+		OverrideType override = overrideType(strategy);
+		if (type != null || override == null) {
+			return type;
+		}
+		return switch (override) {
+			case SEMANTIC_OVERRIDE -> AgentCoreLongTermMemoryStrategyType.SEMANTIC;
+			case SUMMARY_OVERRIDE -> AgentCoreLongTermMemoryStrategyType.SUMMARY;
+			case USER_PREFERENCE_OVERRIDE -> AgentCoreLongTermMemoryStrategyType.USER_PREFERENCE;
+			case EPISODIC_OVERRIDE -> AgentCoreLongTermMemoryStrategyType.EPISODIC;
+			case SELF_MANAGED, UNKNOWN_TO_SDK_VERSION -> null;
+		};
+	}
+
+	private static OverrideType overrideType(MemoryStrategy strategy) {
+		StrategyConfiguration configuration = strategy.configuration();
+		return (strategy.type() == MemoryStrategyType.CUSTOM && configuration != null) ? configuration.type() : null;
+	}
+
+	// "SUMMARIZATION", or "CUSTOM (SUMMARY_OVERRIDE)" for a custom override
+	static String describeType(MemoryStrategy strategy) {
+		OverrideType override = overrideType(strategy);
+		return (override != null) ? strategy.type() + " (" + override + ")" : String.valueOf(strategy.type());
+	}
+
+	/**
 	 * Walks the nullable {@link StrategyConfiguration} &rarr;
-	 * {@link ReflectionConfiguration} &rarr; {@link EpisodicReflectionConfiguration}
-	 * chain to extract reflection namespaces for an episodic strategy. Returns an empty
-	 * list when any link is missing or when the reflection variant is
-	 * {@code customReflectionConfiguration} (handled separately, not supported by
-	 * auto-discovery yet). Does not log: the namespace validator calls it as well, so
-	 * auto-discovery logs the custom reflection hint itself.
+	 * {@link ReflectionConfiguration} chain to extract reflection namespaces for an
+	 * episodic strategy, from its {@link EpisodicReflectionConfiguration} or, for a
+	 * {@code CUSTOM} strategy, from the {@link EpisodicReflectionOverride} of its
+	 * {@link CustomReflectionConfiguration}. Returns an empty list when any link is
+	 * missing. The namespace validator calls it as well.
 	 * @param strategy the AWS memory strategy descriptor
 	 * @return the configured reflection namespaces, or empty when not applicable
 	 */
 	static List<String> extractReflectionsNamespaces(MemoryStrategy strategy) {
 		StrategyConfiguration configuration = strategy.configuration();
-		if (configuration == null) {
-			return List.of();
-		}
-		ReflectionConfiguration reflection = configuration.reflection();
+		ReflectionConfiguration reflection = (configuration != null) ? configuration.reflection() : null;
 		if (reflection == null) {
 			return List.of();
 		}
 		EpisodicReflectionConfiguration episodic = reflection.episodicReflectionConfiguration();
-		if (episodic == null) {
-			return List.of();
+		if (episodic != null) {
+			return namespacesOrTemplates(episodic.namespaces(), episodic.namespaceTemplates());
 		}
-		return namespacesOrTemplates(episodic.namespaces(), episodic.namespaceTemplates());
+		CustomReflectionConfiguration custom = reflection.customReflectionConfiguration();
+		EpisodicReflectionOverride override = (custom != null) ? custom.episodicReflectionOverride() : null;
+		return (override != null) ? namespacesOrTemplates(override.namespaces(), override.namespaceTemplates())
+				: List.of();
 	}
 
 	// AWS marks the reflection namespaces field as legacy in favor of
@@ -171,21 +219,12 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 		return (chosen != null) ? List.copyOf(chosen) : List.of();
 	}
 
-	// A customReflectionConfiguration keeps its namespaces in its
-	// episodicReflectionOverride, which auto-discovery does not read.
-	private static boolean usesCustomReflection(MemoryStrategy strategy) {
-		StrategyConfiguration configuration = strategy.configuration();
-		ReflectionConfiguration reflection = (configuration != null) ? configuration.reflection() : null;
-		return reflection != null && reflection.episodicReflectionConfiguration() == null
-				&& reflection.customReflectionConfiguration() != null;
-	}
-
 	/**
 	 * Represents a discovered memory strategy.
 	 *
 	 * @param strategyId AWS strategy ID
 	 * @param type strategy type (semantic / summary / user-preference / episodic); never
-	 * {@code CUSTOM} because auto-discovery skips custom AWS strategies
+	 * {@code CUSTOM} because a custom AWS strategy is discovered as the type it overrides
 	 * @param namespaces namespaces registered on the strategy (episodes for episodic
 	 * strategies, primary namespace otherwise)
 	 * @param reflectionsNamespaces reflection namespaces registered on the strategy;

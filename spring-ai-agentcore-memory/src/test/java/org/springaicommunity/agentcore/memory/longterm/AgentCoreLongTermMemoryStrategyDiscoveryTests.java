@@ -20,17 +20,21 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CustomReflectionConfiguration;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.EpisodicReflectionConfiguration;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.EpisodicReflectionOverride;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategyType;
+import software.amazon.awssdk.services.bedrockagentcorecontrol.model.OverrideType;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ReflectionConfiguration;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.StrategyConfiguration;
 
@@ -42,8 +46,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
 /**
- * Tests for {@link AgentCoreLongTermMemoryStrategyDiscovery}. Focus on how reflection
- * namespaces are extracted from the AWS strategy configuration.
+ * Tests for {@link AgentCoreLongTermMemoryStrategyDiscovery}. Focus on how strategy types
+ * and reflection namespaces are read from the AWS strategy configuration.
  */
 @ExtendWith({ MockitoExtension.class, OutputCaptureExtension.class })
 class AgentCoreLongTermMemoryStrategyDiscoveryTests {
@@ -125,12 +129,39 @@ class AgentCoreLongTermMemoryStrategyDiscoveryTests {
 	}
 
 	@Test
-	void shouldSkipCustomReflectionConfigurationForNow(CapturedOutput output) {
-		// Strategy has a CustomReflectionConfiguration rather than an
-		// EpisodicReflectionConfiguration. Behaviour: log and skip;
-		// reflectionsNamespaces empty.
+	void shouldExtractReflectionsNamespacesOfCustomEpisodicOverride() {
+		// A CUSTOM strategy that overrides the episodic type keeps its reflection
+		// namespaces in the episodicReflectionOverride of a customReflectionConfiguration
 		MemoryStrategy strategy = MemoryStrategy.builder()
 			.strategyId("ep-3")
+			.type(MemoryStrategyType.CUSTOM)
+			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/session/{sessionId}/"))
+			.configuration(StrategyConfiguration.builder()
+				.type(OverrideType.EPISODIC_OVERRIDE)
+				.reflection(ReflectionConfiguration.builder()
+					.customReflectionConfiguration(CustomReflectionConfiguration.builder()
+						.episodicReflectionOverride(EpisodicReflectionOverride.builder()
+							.namespaceTemplates("/strategy/{memoryStrategyId}/actor/{actorId}/")
+							.build())
+						.build())
+					.build())
+				.build())
+			.build();
+
+		this.mockGetMemory(List.of(strategy));
+
+		DiscoveredStrategy ds = new AgentCoreLongTermMemoryStrategyDiscovery(this.controlClient)
+			.discoverStrategies("mem-1")
+			.get(0);
+
+		assertThat(ds.type()).isEqualTo(AgentCoreLongTermMemoryStrategyType.EPISODIC);
+		assertThat(ds.reflectionsNamespaces()).containsExactly("/strategy/{memoryStrategyId}/actor/{actorId}/");
+	}
+
+	@Test
+	void shouldReturnEmptyReflectionsForCustomReflectionConfigurationWithoutOverride() {
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("ep-5")
 			.type(MemoryStrategyType.EPISODIC)
 			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/"))
 			.configuration(StrategyConfiguration.builder()
@@ -147,8 +178,79 @@ class AgentCoreLongTermMemoryStrategyDiscoveryTests {
 			.get(0);
 
 		assertThat(ds.reflectionsNamespaces()).isEmpty();
-		assertThat(output).contains("Strategy 'ep-3' uses customReflectionConfiguration")
-			.contains("agentcore.memory.long-term.episodic.reflections-namespace-pattern");
+	}
+
+	@ParameterizedTest
+	@CsvSource({ "SEMANTIC_OVERRIDE, SEMANTIC", "SUMMARY_OVERRIDE, SUMMARY",
+			"USER_PREFERENCE_OVERRIDE, USER_PREFERENCE", "EPISODIC_OVERRIDE, EPISODIC" })
+	void shouldDiscoverCustomStrategyAsTheTypeItOverrides(OverrideType override,
+			AgentCoreLongTermMemoryStrategyType expected) {
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("custom-1")
+			.type(MemoryStrategyType.CUSTOM)
+			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/"))
+			.configuration(StrategyConfiguration.builder().type(override).build())
+			.build();
+
+		this.mockGetMemory(List.of(strategy));
+
+		List<DiscoveredStrategy> discovered = new AgentCoreLongTermMemoryStrategyDiscovery(this.controlClient)
+			.discoverStrategies("mem-1");
+
+		assertThat(discovered).singleElement().satisfies((ds) -> {
+			assertThat(ds.strategyId()).isEqualTo("custom-1");
+			assertThat(ds.type()).isEqualTo(expected);
+			assertThat(ds.namespaces()).containsExactly("/strategy/{memoryStrategyId}/actor/{actorId}/");
+		});
+	}
+
+	@Test
+	void shouldShowTheOverrideTypeOfCustomStrategiesInTheDiscoveryLog(CapturedOutput output) {
+		MemoryStrategy custom = MemoryStrategy.builder()
+			.strategyId("custom-sum")
+			.type(MemoryStrategyType.CUSTOM)
+			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/session/{sessionId}/"))
+			.configuration(StrategyConfiguration.builder().type(OverrideType.SUMMARY_OVERRIDE).build())
+			.build();
+		MemoryStrategy builtIn = MemoryStrategy.builder()
+			.strategyId("sem-1")
+			.type(MemoryStrategyType.SEMANTIC)
+			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/"))
+			.build();
+
+		this.mockGetMemory(List.of(custom, builtIn));
+
+		new AgentCoreLongTermMemoryStrategyDiscovery(this.controlClient).discoverStrategies("mem-1");
+
+		assertThat(output).contains("Discovered strategy: custom-sum (type=CUSTOM (SUMMARY_OVERRIDE),")
+			.containsPattern("CUSTOM [(]SUMMARY_OVERRIDE[)] +custom-sum +no")
+			.containsPattern("SEMANTIC +sem-1 +no");
+	}
+
+	@Test
+	void shouldSkipSelfManagedAndUntypedCustomStrategies(CapturedOutput output) {
+		// Neither has a built-in type whose retrieval fits its records
+		MemoryStrategy selfManaged = MemoryStrategy.builder()
+			.strategyId("self-1")
+			.type(MemoryStrategyType.CUSTOM)
+			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/"))
+			.configuration(StrategyConfiguration.builder().type(OverrideType.SELF_MANAGED).build())
+			.build();
+		MemoryStrategy untyped = MemoryStrategy.builder()
+			.strategyId("custom-2")
+			.type(MemoryStrategyType.CUSTOM)
+			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/"))
+			.build();
+
+		this.mockGetMemory(List.of(selfManaged, untyped));
+
+		List<DiscoveredStrategy> discovered = new AgentCoreLongTermMemoryStrategyDiscovery(this.controlClient)
+			.discoverStrategies("mem-1");
+
+		assertThat(discovered).isEmpty();
+		assertThat(output)
+			.contains("Unknown or unsupported strategy type 'CUSTOM (SELF_MANAGED)' for strategy 'self-1', skipping")
+			.contains("Unknown or unsupported strategy type 'CUSTOM' for strategy 'custom-2', skipping");
 	}
 
 	@Test

@@ -24,15 +24,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.CustomReflectionConfiguration;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.EpisodicReflectionOverride;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategyType;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.OverrideType;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.ReflectionConfiguration;
-import software.amazon.awssdk.services.bedrockagentcorecontrol.model.StrategyConfiguration;
 
 /**
  * Validates that memory strategy namespaces match the expected format required by
@@ -194,7 +188,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 			String expectedPattern) {
 		requireFillablePlaceholders(strategyId, expectedPattern);
 		MemoryStrategy strategy = findStrategy(memoryId, strategies, strategyId);
-		List<String> actualNamespaces = reflectionNamespaces(strategy);
+		List<String> actualNamespaces = AgentCoreLongTermMemoryStrategyDiscovery.extractReflectionsNamespaces(strategy);
 		boolean matched = actualNamespaces.stream()
 			.anyMatch((actual) -> this.matchesPattern(actual, expectedPattern, strategyId));
 		if (!matched) {
@@ -224,21 +218,6 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 			.orElseThrow(() -> new AgentCoreMemoryException.ConfigurationException(
 					"Strategy '" + strategyId + "' not found in memory '" + memoryId + "'. " + "Available strategies: "
 							+ strategies.stream().map(MemoryStrategy::strategyId).toList()));
-	}
-
-	// Reflection namespaces live in episodicReflectionConfiguration, or in the
-	// episodicReflectionOverride of a customReflectionConfiguration.
-	private static List<String> reflectionNamespaces(MemoryStrategy strategy) {
-		List<String> episodic = AgentCoreLongTermMemoryStrategyDiscovery.extractReflectionsNamespaces(strategy);
-		if (!episodic.isEmpty()) {
-			return episodic;
-		}
-		StrategyConfiguration configuration = strategy.configuration();
-		ReflectionConfiguration reflection = (configuration != null) ? configuration.reflection() : null;
-		CustomReflectionConfiguration custom = (reflection != null) ? reflection.customReflectionConfiguration() : null;
-		EpisodicReflectionOverride override = (custom != null) ? custom.episodicReflectionOverride() : null;
-		return (override != null) ? AgentCoreLongTermMemoryStrategyDiscovery
-			.namespacesOrTemplates(override.namespaces(), override.namespaceTemplates()) : List.of();
 	}
 
 	// Placeholders are filled at retrieval time, so a placeholder only matches the same
@@ -290,14 +269,14 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 	// mismatch hint would name a property that has no effect, so name the right group.
 	private void requireConfiguredType(String memoryId, MemoryStrategy strategy) {
 		AgentCoreLongTermMemoryStrategyType configured = this.configuredTypes.get(strategy.strategyId());
-		AgentCoreLongTermMemoryStrategyType actual = effectiveType(strategy);
+		AgentCoreLongTermMemoryStrategyType actual = AgentCoreLongTermMemoryStrategyDiscovery.effectiveType(strategy);
 		// SELF_MANAGED and unknown types can back any group
 		if (configured != null && actual != null && configured != actual) {
 			throw new AgentCoreMemoryException.ConfigurationException(String.format(
 					"Strategy '%s' is a %s strategy in memory '%s', but it is configured as %s.strategy-id. "
 							+ "Configure it as %s.strategy-id instead.",
-					strategy.strategyId(), describeType(strategy), memoryId, configPrefix(configured),
-					configPrefix(actual)));
+					strategy.strategyId(), AgentCoreLongTermMemoryStrategyDiscovery.describeType(strategy), memoryId,
+					configPrefix(configured), configPrefix(actual)));
 		}
 	}
 
@@ -310,7 +289,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 	// The property prefix of the strategy's config, derived from its AWS type, or from
 	// the override type of a CUSTOM strategy
 	private static String configPrefix(MemoryStrategy strategy) {
-		return configPrefix(effectiveType(strategy));
+		return configPrefix(AgentCoreLongTermMemoryStrategyDiscovery.effectiveType(strategy));
 	}
 
 	// The property prefix of a strategy group; CUSTOM and unknown types have none
@@ -325,34 +304,6 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 			case EPISODIC -> AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX;
 			case CUSTOM -> AgentCoreLongTermMemoryProperties.CONFIG_PREFIX + ".<strategy>";
 		};
-	}
-
-	// The group a strategy belongs to. A CUSTOM strategy overrides one built-in type;
-	// SELF_MANAGED and unknown overrides belong to none.
-	private static AgentCoreLongTermMemoryStrategyType effectiveType(MemoryStrategy strategy) {
-		AgentCoreLongTermMemoryStrategyType type = AgentCoreLongTermMemoryStrategyType.fromAwsType(strategy.type());
-		OverrideType override = overrideType(strategy);
-		if (type != null || override == null) {
-			return type;
-		}
-		return switch (override) {
-			case SEMANTIC_OVERRIDE -> AgentCoreLongTermMemoryStrategyType.SEMANTIC;
-			case SUMMARY_OVERRIDE -> AgentCoreLongTermMemoryStrategyType.SUMMARY;
-			case USER_PREFERENCE_OVERRIDE -> AgentCoreLongTermMemoryStrategyType.USER_PREFERENCE;
-			case EPISODIC_OVERRIDE -> AgentCoreLongTermMemoryStrategyType.EPISODIC;
-			case SELF_MANAGED, UNKNOWN_TO_SDK_VERSION -> null;
-		};
-	}
-
-	private static OverrideType overrideType(MemoryStrategy strategy) {
-		StrategyConfiguration configuration = strategy.configuration();
-		return (strategy.type() == MemoryStrategyType.CUSTOM && configuration != null) ? configuration.type() : null;
-	}
-
-	// "SUMMARIZATION", or "CUSTOM (SUMMARY_OVERRIDE)" for a custom override
-	private static String describeType(MemoryStrategy strategy) {
-		OverrideType override = overrideType(strategy);
-		return (override != null) ? strategy.type() + " (" + override + ")" : String.valueOf(strategy.type());
 	}
 
 	// A memory namespace can be copied into the Spring config only if it is scoped by
