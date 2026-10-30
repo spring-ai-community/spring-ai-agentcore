@@ -366,7 +366,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 
 	private static boolean isSupported(String namespace) {
 		return AgentCoreLongTermMemoryNamespace.unfilledPlaceholder(namespace) == null
-				&& namespace.contains("{actorId}");
+				&& AgentCoreLongTermMemoryNamespace.isActorScoped(namespace);
 	}
 
 	private static String unsupportedNamespaceHint(String what) {

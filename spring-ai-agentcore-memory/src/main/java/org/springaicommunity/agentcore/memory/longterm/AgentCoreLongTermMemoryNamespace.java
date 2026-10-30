@@ -123,4 +123,15 @@ public enum AgentCoreLongTermMemoryNamespace {
 		return null;
 	}
 
+	/**
+	 * Whether a namespace pattern contains {@code {actorId}}. The records of a pattern
+	 * without it are shared by all actors, so retrieval would add them to every user's
+	 * prompt.
+	 * @param pattern the namespace pattern
+	 * @return {@code true} if the pattern is scoped by actor
+	 */
+	static boolean isActorScoped(String pattern) {
+		return pattern.contains("{actorId}");
+	}
+
 }

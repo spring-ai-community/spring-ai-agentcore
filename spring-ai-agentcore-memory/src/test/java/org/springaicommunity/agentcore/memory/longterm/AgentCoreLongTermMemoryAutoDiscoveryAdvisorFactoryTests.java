@@ -24,8 +24,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryProperties.Episodic;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryProperties.Namespace;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryProperties.Semantic;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
 
 import org.springframework.ai.chat.client.ChatClientRequest;
@@ -33,8 +35,11 @@ import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -50,22 +55,28 @@ import static org.mockito.Mockito.verify;
  * factory produces advisors; each produced advisor is driven with a chat request so we
  * can verify which retriever calls it makes.
  */
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({ MockitoExtension.class, OutputCaptureExtension.class })
 class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 
 	private static final String MEMORY_ID = "mem-1";
 
 	private static final String STRATEGY_ID = "ep-1";
 
-	private static final String DISCOVERED_EPISODES_NS = "/strategy/{memoryStrategyId}/actor/{actorId}/";
+	private static final String DISCOVERED_EPISODES_NS = "/strategy/{memoryStrategyId}/actor/{actorId}/session/{sessionId}/";
 
-	private static final String DISCOVERED_REFLECTIONS_NS = "/strategy/{memoryStrategyId}/";
+	private static final String DISCOVERED_REFLECTIONS_NS = "/strategy/{memoryStrategyId}/actor/{actorId}/";
+
+	// Not scoped by actor: its records are shared by all users
+	private static final String SHARED_NS = "/strategy/{memoryStrategyId}/shared/";
 
 	@Mock
 	AgentCoreLongTermMemoryRetriever retriever;
 
 	@Mock
 	CallAdvisorChain chain;
+
+	@Mock
+	AgentCoreLongTermMemoryNamespaceRegistrar registrar;
 
 	// ------------------------------------------------------------------
 	// Episodic: reflection precedence matrix
@@ -208,6 +219,86 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 				eq(DISCOVERED_REFLECTIONS_NS));
 	}
 
+	@Test
+	void episodicSkipsDiscoveredReflectionsWithoutActorId(CapturedOutput output) {
+		// Given: the reflections namespace is shared by all actors
+		DiscoveredStrategy discovered = episodicWithReflections(DISCOVERED_EPISODES_NS, SHARED_NS);
+		AgentCoreLongTermMemoryProperties config = propertiesWithoutEpisodicExplicit();
+
+		// When
+		var advisor = this.factory(config).createAdvisors(List.of(discovered)).get(0);
+		this.stubEmptyMemories();
+		advisor.adviseCall(userRequest("q"), this.chain);
+
+		// Then: episodes are still retrieved; reflections are never requested, and the
+		// warning shows how to use them anyway.
+		verify(this.retriever).searchMemories(eq(STRATEGY_ID), anyString(), anyString(), eq("q"), anyInt(),
+				eq(DISCOVERED_EPISODES_NS));
+		verify(this.retriever, never()).searchMemories(anyString(), anyString(), anyString(), anyString(), anyInt(),
+				eq(SHARED_NS));
+		assertThat(output).contains("reflections namespace '" + SHARED_NS + "' does not contain {actorId}")
+			.contains("agentcore.memory.long-term.episodic.reflections-namespace-pattern=" + SHARED_NS);
+	}
+
+	// ------------------------------------------------------------------
+	// Namespaces without {actorId}
+	// ------------------------------------------------------------------
+
+	@Test
+	void strategyWhoseDiscoveredNamespaceLacksActorIdGetsNoAdvisor(CapturedOutput output) {
+		DiscoveredStrategy discovered = new DiscoveredStrategy("sem-1", AgentCoreLongTermMemoryStrategyType.SEMANTIC,
+				List.of(SHARED_NS), List.of());
+
+		var advisors = this.factory(propertiesWithoutEpisodicExplicit()).createAdvisors(List.of(discovered));
+
+		assertThat(advisors).isEmpty();
+		assertThat(output).contains("Strategy 'sem-1' namespace '" + SHARED_NS + "' does not contain {actorId}")
+			.contains("agentcore.memory.long-term.semantic.strategy-id=sem-1")
+			.contains("agentcore.memory.long-term.semantic.namespace-pattern=" + SHARED_NS);
+	}
+
+	@Test
+	void namespaceWithoutActorIdIsUsedWhenConfiguredExplicitly() {
+		// Naming the namespace in the config shares it on purpose
+		DiscoveredStrategy discovered = new DiscoveredStrategy("sem-1", AgentCoreLongTermMemoryStrategyType.SEMANTIC,
+				List.of(SHARED_NS), List.of());
+		AgentCoreLongTermMemoryProperties config = propertiesWithSemantic(new Semantic("sem-1", 5, null, SHARED_NS));
+
+		var advisors = this.factory(config).createAdvisors(List.of(discovered));
+		this.stubEmptyMemories();
+		advisors.get(0).adviseCall(userRequest("q"), this.chain);
+
+		verify(this.retriever).searchMemories(eq("sem-1"), anyString(), anyString(), eq("q"), eq(5), eq(SHARED_NS));
+	}
+
+	@Test
+	void configuredNamespaceWithoutActorIdIsNotRegistered() {
+		// Registering it would make all actors share the strategy's only namespace
+		DiscoveredStrategy discovered = new DiscoveredStrategy("sem-1", AgentCoreLongTermMemoryStrategyType.SEMANTIC,
+				List.of(DISCOVERED_REFLECTIONS_NS), List.of());
+		AgentCoreLongTermMemoryProperties config = propertiesWithSemantic(new Semantic("sem-1", 5, null, SHARED_NS));
+		var factory = new AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory(this.retriever, config, MEMORY_ID,
+				this.registrar);
+
+		assertThatThrownBy(() -> factory.createAdvisors(List.of(discovered)))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("not registered because it does not contain {actorId}");
+		verify(this.registrar, never()).registerNamespace(anyString(), anyString(), anyString());
+	}
+
+	@Test
+	void configuredActorScopedNamespaceIsStillRegistered() {
+		DiscoveredStrategy discovered = new DiscoveredStrategy("sem-1", AgentCoreLongTermMemoryStrategyType.SEMANTIC,
+				List.of(DISCOVERED_REFLECTIONS_NS), List.of());
+		String configured = "/custom/{actorId}/";
+		AgentCoreLongTermMemoryProperties config = propertiesWithSemantic(new Semantic("sem-1", 5, null, configured));
+		var factory = new AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory(this.retriever, config, MEMORY_ID,
+				this.registrar);
+
+		assertThat(factory.createAdvisors(List.of(discovered))).hasSize(1);
+		verify(this.registrar).registerNamespace(MEMORY_ID, "sem-1", configured);
+	}
+
 	// ------------------------------------------------------------------
 	// Non-episodic sanity check
 	// ------------------------------------------------------------------
@@ -249,6 +340,10 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 
 	private static AgentCoreLongTermMemoryProperties propertiesWithEpisodic(Episodic episodic) {
 		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false), episodic, null, null, null);
+	}
+
+	private static AgentCoreLongTermMemoryProperties propertiesWithSemantic(Semantic semantic) {
+		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false), null, semantic, null, null);
 	}
 
 	private static AgentCoreLongTermMemoryProperties propertiesWithoutEpisodicExplicit() {

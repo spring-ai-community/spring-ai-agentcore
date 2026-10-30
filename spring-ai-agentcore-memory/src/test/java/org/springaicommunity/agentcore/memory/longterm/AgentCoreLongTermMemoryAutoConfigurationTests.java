@@ -485,7 +485,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
 					"agentcore.memory.long-term.namespace.auto-register=true",
 					"agentcore.memory.long-term.semantic.strategy-id=discovered-semantic",
-					"agentcore.memory.long-term.semantic.namespace-pattern=/new/namespace/pattern")
+					"agentcore.memory.long-term.semantic.namespace-pattern=/new/namespace/{actorId}")
 			.run((context) -> {
 				// Should not fail - namespace should be auto-registered
 				assertThat(context).hasNotFailed();

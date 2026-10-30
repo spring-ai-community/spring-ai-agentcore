@@ -342,6 +342,7 @@ agentcore:
 - Skips `CUSTOM` strategy types (not supported by autodiscovery)
 - Uses the first namespace if a strategy has multiple namespaces
 - Uses default `topK` values for each strategy type
+- Skips a strategy whose namespace does not contain `{actorId}`, and an episodic reflection namespace without it (the episodes are still used), because their records are shared by all actors and would be added to every user's prompt. To use such a namespace on purpose, set the strategy's `strategy-id` with `namespace-pattern` or `reflections-namespace-pattern`; the startup warning shows the values
 
 **Overriding discovered defaults:**
 
@@ -369,7 +370,7 @@ agentcore:
 
 **Namespace auto-registration (deprecated):**
 
-`agentcore.memory.long-term.namespace.auto-register=true` is deprecated and will be removed in 3.0.0. On a namespace mismatch it writes the configured pattern to the memory strategy in AWS at startup. A strategy has exactly one namespace, so this replaces the existing one: records extracted before stay under the old namespace and are no longer retrieved, and other applications using the same memory are affected.
+`agentcore.memory.long-term.namespace.auto-register=true` is deprecated and will be removed in 3.0.0. On a namespace mismatch it writes the configured pattern to the memory strategy in AWS at startup. A strategy has exactly one namespace, so this replaces the existing one: records extracted before stay under the old namespace and are no longer retrieved, and other applications using the same memory are affected. A pattern without `{actorId}` is never registered, in either mode.
 
 Instead, configure `namespace-pattern` to match the memory (the startup error shows the property and value to use), or omit it and let auto-discovery use the memory's namespace. To change the namespace of a memory strategy, use the AWS console, CLI or your infrastructure tooling.
 
