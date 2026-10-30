@@ -299,6 +299,43 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 	}
 
 	@Test
+	@DisplayName("Should validate against namespace templates when the legacy namespaces field is empty")
+	void shouldValidateAgainstNamespaceTemplatesWhenNamespacesAreEmpty() {
+		// Given - AWS marks the strategy's namespaces field as legacy
+		String actor = AgentCoreLongTermMemoryNamespace.ACTOR.getPattern();
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.namespaceTemplates(List.of(actor))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - passes for the template, and a mismatch names it
+		this.validator.validateNamespaces("test-memory", Map.of("semantic-123", List.of(actor)));
+		assertThatThrownBy(() -> this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern()))))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("In AWS Memory:    [" + actor + "]");
+	}
+
+	@Test
+	@DisplayName("Should prefer namespace templates over a stale legacy namespaces field")
+	void shouldPreferNamespaceTemplatesOverStaleLegacyNamespaces() {
+		// Given - the legacy field may stop being updated
+		String actor = AgentCoreLongTermMemoryNamespace.ACTOR.getPattern();
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.namespaceTemplates(List.of(actor))
+			.namespaces(List.of("/legacy/{actorId}"))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(strategy));
+
+		// When/Then - no exception
+		this.validator.validateNamespaces("test-memory", Map.of("semantic-123", List.of(actor)));
+	}
+
+	@Test
 	@DisplayName("Should skip validation when no strategies configured")
 	void shouldSkipValidationWhenNoStrategiesConfigured() {
 		// When/Then - no exception, no API call
@@ -747,6 +784,28 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 			CustomReflectionConfiguration custom = CustomReflectionConfiguration.builder()
 				.episodicReflectionOverride(
 						EpisodicReflectionOverride.builder().namespaceTemplates(REFLECTIONS).build())
+				.build();
+			MemoryStrategy strategy = MemoryStrategy.builder()
+				.strategyId("episodic-123")
+				.namespaces(List.of(EPISODES))
+				.configuration(StrategyConfiguration.builder()
+					.reflection(ReflectionConfiguration.builder().customReflectionConfiguration(custom).build())
+					.build())
+				.build();
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this.mockGetMemoryResponse(List.of(strategy));
+
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this.validator.validateNamespaces("test-memory",
+					Map.of("episodic-123", List.of(EPISODES)), Map.of("episodic-123", REFLECTIONS));
+		}
+
+		@Test
+		@DisplayName("Should prefer the templates of a custom reflection override over its legacy namespaces")
+		void shouldPreferCustomReflectionOverrideTemplatesOverLegacyNamespaces() {
+			CustomReflectionConfiguration custom = CustomReflectionConfiguration.builder()
+				.episodicReflectionOverride(EpisodicReflectionOverride.builder()
+					.namespaceTemplates(REFLECTIONS)
+					.namespaces("/legacy/{actorId}")
+					.build())
 				.build();
 			MemoryStrategy strategy = MemoryStrategy.builder()
 				.strategyId("episodic-123")
