@@ -25,6 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryProperties;
+import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryNamespaceValidator.ValidatedPatterns;
 import org.springaicommunity.agentcore.memory.longterm.AgentCoreLongTermMemoryStrategyDiscovery.DiscoveredStrategy;
 import org.springaicommunity.agentcore.memory.longterm.strategy.EpisodicMemoryStrategyHandler;
 import org.springaicommunity.agentcore.memory.longterm.strategy.SemanticMemoryStrategyHandler;
@@ -111,29 +112,8 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@ConditionalOnMissingBean
 	@Conditional(AnyStrategyConfiguredCondition.class)
 	AgentCoreLongTermMemoryRetriever agentCoreLongTermMemoryRetriever(BedrockAgentCoreClient client,
-			AgentCoreMemoryProperties memoryConfig, AgentCoreLongTermMemoryProperties longTermMemoryProperties,
-			Supplier<BedrockAgentCoreControlClient> controlClientFactory) {
-		String memoryId = memoryConfig.memoryId();
-
-		if (!longTermMemoryProperties.autoDiscovery()) {
-			Map<String, AgentCoreLongTermMemoryStrategyType> typesByStrategy = collectTypesByStrategy(
-					longTermMemoryProperties);
-			Map<String, List<String>> namespacesByStrategy = this.collectNamespacesByStrategy(longTermMemoryProperties);
-			Map<String, String> reflectionNamespacesByStrategy = this
-				.collectReflectionNamespacesByStrategy(longTermMemoryProperties);
-			if (!namespacesByStrategy.isEmpty() || !reflectionNamespacesByStrategy.isEmpty()) {
-				try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
-					AgentCoreLongTermMemoryNamespaceRegistrar registrar = new AgentCoreLongTermMemoryNamespaceRegistrar(
-							controlClient);
-					AgentCoreLongTermMemoryNamespaceValidator validator = new AgentCoreLongTermMemoryNamespaceValidator(
-							controlClient, registrar, longTermMemoryProperties.namespace().autoRegister(),
-							typesByStrategy);
-					validator.validateNamespaces(memoryId, namespacesByStrategy, reflectionNamespacesByStrategy);
-				}
-			}
-		}
-
-		return new AgentCoreLongTermMemoryRetriever(client, memoryId);
+			AgentCoreMemoryProperties memoryConfig) {
+		return new AgentCoreLongTermMemoryRetriever(client, memoryConfig.memoryId());
 	}
 
 	// ==================== Autodiscovery Mode ====================
@@ -170,17 +150,50 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 
 	// ==================== Explicit Configuration Mode ====================
 
+	/**
+	 * Validates the explicitly configured namespace patterns against the memory at
+	 * startup. The advisors below are built with the validated patterns, which follow the
+	 * trailing slash of the memory's namespaces.
+	 * @param memoryConfig the memory configuration
+	 * @param longTermMemoryProperties the long-term memory configuration
+	 * @param controlClientFactory creates the control-plane client for validation
+	 * @return the validated patterns
+	 */
+	@Bean
+	@Conditional(AnyStrategyConfiguredCondition.class)
+	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
+			havingValue = "false", matchIfMissing = true)
+	ValidatedPatterns agentCoreLongTermMemoryValidatedPatterns(AgentCoreMemoryProperties memoryConfig,
+			AgentCoreLongTermMemoryProperties longTermMemoryProperties,
+			Supplier<BedrockAgentCoreControlClient> controlClientFactory) {
+		Map<String, AgentCoreLongTermMemoryStrategyType> typesByStrategy = collectTypesByStrategy(
+				longTermMemoryProperties);
+		Map<String, List<String>> namespacesByStrategy = this.collectNamespacesByStrategy(longTermMemoryProperties);
+		Map<String, String> reflectionNamespacesByStrategy = this
+			.collectReflectionNamespacesByStrategy(longTermMemoryProperties);
+		if (namespacesByStrategy.isEmpty() && reflectionNamespacesByStrategy.isEmpty()) {
+			return ValidatedPatterns.NONE;
+		}
+		try (BedrockAgentCoreControlClient controlClient = controlClientFactory.get()) {
+			AgentCoreLongTermMemoryNamespaceRegistrar registrar = new AgentCoreLongTermMemoryNamespaceRegistrar(
+					controlClient);
+			AgentCoreLongTermMemoryNamespaceValidator validator = new AgentCoreLongTermMemoryNamespaceValidator(
+					controlClient, registrar, longTermMemoryProperties.namespace().autoRegister(), typesByStrategy);
+			return validator.validate(memoryConfig.memoryId(), namespacesByStrategy, reflectionNamespacesByStrategy);
+		}
+	}
+
 	@Bean
 	@ConditionalOnMissingBean(name = "semanticAdvisor")
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.Semantic.CONFIG_PREFIX, name = "strategy-id")
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
 			havingValue = "false", matchIfMissing = true)
 	AgentCoreLongTermMemoryAdvisor semanticAdvisor(AgentCoreLongTermMemoryRetriever retriever,
-			AgentCoreLongTermMemoryProperties config) {
+			AgentCoreLongTermMemoryProperties config, ValidatedPatterns patterns) {
 		var c = config.semantic();
 		var handler = SemanticMemoryStrategyHandler.builder()
 			.strategyId(c.strategyId())
-			.namespacePattern(c.resolveNamespacePattern())
+			.namespacePattern(patterns.namespacePattern(c.strategyId(), c.resolveNamespacePattern()))
 			.topK(c.topK())
 			.contextLabel(AgentCoreLongTermMemoryStrategyType.SEMANTIC.contextLabel())
 			.build();
@@ -197,11 +210,11 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
 			havingValue = "false", matchIfMissing = true)
 	AgentCoreLongTermMemoryAdvisor userPreferenceAdvisor(AgentCoreLongTermMemoryRetriever retriever,
-			AgentCoreLongTermMemoryProperties config) {
+			AgentCoreLongTermMemoryProperties config, ValidatedPatterns patterns) {
 		var c = config.userPreference();
 		var handler = UserPreferenceMemoryStrategyHandler.builder()
 			.strategyId(c.strategyId())
-			.namespacePattern(c.resolveNamespacePattern())
+			.namespacePattern(patterns.namespacePattern(c.strategyId(), c.resolveNamespacePattern()))
 			.contextLabel(AgentCoreLongTermMemoryStrategyType.USER_PREFERENCE.contextLabel())
 			.build();
 		return AgentCoreLongTermMemoryAdvisor.builder(retriever)
@@ -216,11 +229,11 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
 			havingValue = "false", matchIfMissing = true)
 	AgentCoreLongTermMemoryAdvisor summaryAdvisor(AgentCoreLongTermMemoryRetriever retriever,
-			AgentCoreLongTermMemoryProperties config) {
+			AgentCoreLongTermMemoryProperties config, ValidatedPatterns patterns) {
 		var c = config.summary();
 		var handler = SummaryMemoryStrategyHandler.builder()
 			.strategyId(c.strategyId())
-			.namespacePattern(c.resolveNamespacePattern())
+			.namespacePattern(patterns.namespacePattern(c.strategyId(), c.resolveNamespacePattern()))
 			.topK(c.topK())
 			.contextLabel(AgentCoreLongTermMemoryStrategyType.SUMMARY.contextLabel())
 			.build();
@@ -236,11 +249,11 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 	@ConditionalOnProperty(prefix = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX, name = "auto-discovery",
 			havingValue = "false", matchIfMissing = true)
 	AgentCoreLongTermMemoryAdvisor episodicAdvisor(AgentCoreLongTermMemoryRetriever retriever,
-			AgentCoreLongTermMemoryProperties config) {
+			AgentCoreLongTermMemoryProperties config, ValidatedPatterns patterns) {
 		var c = config.episodic();
+		String episodesPattern = patterns.namespacePattern(c.strategyId(), c.resolveNamespacePattern());
 		var handlerBuilder = EpisodicMemoryStrategyHandler.builder()
 			.strategyId(c.strategyId())
-			.namespacePattern(c.resolveNamespacePattern())
 			.episodesTopK(c.episodesTopK())
 			.reflectionsTopK(c.reflectionsTopK());
 
@@ -248,15 +261,21 @@ public class AgentCoreLongTermMemoryAutoConfiguration {
 		// separate-strategy path only when no namespace override is set.
 		String reflectionsPattern = c.resolveReflectionsNamespacePattern();
 		if (reflectionsPattern != null) {
-			handlerBuilder.reflectionsNamespacePattern(reflectionsPattern);
+			handlerBuilder
+				.reflectionsNamespacePattern(patterns.reflectionNamespacePattern(c.strategyId(), reflectionsPattern));
 		}
 		else if (c.reflectionsStrategyId() != null && !c.reflectionsStrategyId().isEmpty()) {
 			handlerBuilder.reflectionsStrategyId(c.reflectionsStrategyId());
+			// The legacy strategy is read with the episodes pattern too. If its namespace
+			// differs in the trailing slash, only the form without one matches both.
+			if (!episodesPattern.equals(patterns.namespacePattern(c.reflectionsStrategyId(), episodesPattern))) {
+				episodesPattern = AgentCoreLongTermMemoryNamespaceValidator.stripTrailingSlashes(episodesPattern);
+			}
 		}
 
 		return AgentCoreLongTermMemoryAdvisor.builder(retriever)
 			.memoryStrategy(AgentCoreLongTermMemoryStrategyType.EPISODIC)
-			.handler(handlerBuilder.build())
+			.handler(handlerBuilder.namespacePattern(episodesPattern).build())
 			.build();
 	}
 

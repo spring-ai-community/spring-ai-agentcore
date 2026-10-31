@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import org.mockito.ArgumentCaptor;
 import org.springaicommunity.agentcore.memory.AgentCoreMemoryException;
 import org.springaicommunity.agentcore.memory.session.AgentCoreSessionMemory;
 import org.springaicommunity.agentcore.memory.session.AgentCoreSessionMissingDepDiagnostics;
@@ -31,6 +32,8 @@ import org.springaicommunity.agentcore.memory.session.AgentCoreSessionRepository
 import org.springaicommunity.agentcore.memory.session.AgentCoreSessionRepositoryAutoConfiguration;
 import org.springaicommunity.agentcore.memory.shortterm.AgentCoreShortTermMemoryRepositoryAutoConfiguration;
 import software.amazon.awssdk.services.bedrockagentcore.BedrockAgentCoreClient;
+import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryRecordsRequest;
+import software.amazon.awssdk.services.bedrockagentcore.model.RetrieveMemoryRecordsResponse;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.BedrockAgentCoreControlClient;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryRequest;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.GetMemoryResponse;
@@ -38,9 +41,13 @@ import software.amazon.awssdk.services.bedrockagentcorecontrol.model.Memory;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategy;
 import software.amazon.awssdk.services.bedrockagentcorecontrol.model.MemoryStrategyType;
 
+import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.api.CallAdvisorChain;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.session.DefaultSessionService;
 import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -52,7 +59,9 @@ import org.springframework.core.Ordered;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 
 /**
  * Unit tests for {@link AgentCoreLongTermMemoryAutoConfiguration}.
@@ -205,6 +214,52 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				var config = context.getBean(AgentCoreLongTermMemoryProperties.class);
 				assertThat(config.semantic().namespace()).isEqualTo(AgentCoreLongTermMemoryNamespace.SESSION);
 				assertThat(config.semantic().resolveNamespacePattern()).isEqualTo(SESSION_NAMESPACE);
+			});
+	}
+
+	@Test
+	@DisplayName("Should send retrieval requests in the matched memory namespace's form")
+	void shouldSendRequestsInTheMemoryNamespaceForm() {
+		// The memory's template ends with '/'; the configured ACTOR pattern does not
+		this.contextRunner.withUserConfiguration(TrailingSlashSemanticConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, SEMANTIC_STRATEGY_PROP)
+			.run((context) -> {
+				BedrockAgentCoreClient client = context.getBean(BedrockAgentCoreClient.class);
+				given(client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
+					.willReturn(RetrieveMemoryRecordsResponse.builder().build());
+
+				context.getBean("semanticAdvisor", AgentCoreLongTermMemoryAdvisor.class)
+					.adviseCall(userRequest("alice"), mock(CallAdvisorChain.class));
+
+				ArgumentCaptor<RetrieveMemoryRecordsRequest> captor = ArgumentCaptor
+					.forClass(RetrieveMemoryRecordsRequest.class);
+				then(client).should().retrieveMemoryRecords(captor.capture());
+				assertThat(captor.getValue().namespace()).isEqualTo("/strategies/semantic-123/actors/alice/");
+			});
+	}
+
+	@Test
+	@DisplayName("Should drop the trailing slash of an episodes pattern the legacy reflections strategy lacks")
+	void shouldDropTrailingSlashThatTheLegacyReflectionsStrategyLacks() {
+		// The episodes pattern also reads the legacy reflections strategy, whose
+		// namespace has no trailing slash
+		this.contextRunner.withUserConfiguration(LegacyReflectionsConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.episodic.strategy-id=episodic-abc",
+					"agentcore.memory.long-term.episodic.reflections-strategy-id=legacy-refl")
+			.run((context) -> {
+				BedrockAgentCoreClient client = context.getBean(BedrockAgentCoreClient.class);
+				given(client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
+					.willReturn(RetrieveMemoryRecordsResponse.builder().build());
+
+				context.getBean("episodicAdvisor", AgentCoreLongTermMemoryAdvisor.class)
+					.adviseCall(userRequest("alice"), mock(CallAdvisorChain.class));
+
+				ArgumentCaptor<RetrieveMemoryRecordsRequest> captor = ArgumentCaptor
+					.forClass(RetrieveMemoryRecordsRequest.class);
+				then(client).should(times(2)).retrieveMemoryRecords(captor.capture());
+				assertThat(captor.getAllValues()).extracting(RetrieveMemoryRecordsRequest::namespace)
+					.containsExactlyInAnyOrder("/strategies/episodic-abc/actors/alice",
+							"/strategies/legacy-refl/actors/alice");
 			});
 	}
 
@@ -562,6 +617,13 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 			});
 	}
 
+	private static ChatClientRequest userRequest(String conversationId) {
+		return ChatClientRequest.builder()
+			.prompt(new Prompt(List.of(new UserMessage("q"))))
+			.context(Map.of(ChatMemory.CONVERSATION_ID, conversationId))
+			.build();
+	}
+
 	@Configuration
 	static class MockClientConfiguration {
 
@@ -800,6 +862,64 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 						.strategyId("summary-456")
 						.type(MemoryStrategyType.SUMMARIZATION)
 						.namespaces(List.of(SESSION_NAMESPACE))
+						.build()))
+					.build())
+				.build();
+
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class LegacyReflectionsConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			String actor = AgentCoreLongTermMemoryNamespace.ACTOR.getPattern();
+			MemoryStrategy episodic = MemoryStrategy.builder()
+				.strategyId("episodic-abc")
+				.namespaces(List.of(actor + "/"))
+				.build();
+			MemoryStrategy legacyReflections = MemoryStrategy.builder()
+				.strategyId("legacy-refl")
+				.namespaces(List.of(actor))
+				.build();
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder().strategies(List.of(episodic, legacyReflections)).build())
+				.build();
+
+			given(controlClient.getMemory(any(GetMemoryRequest.class))).willReturn(response);
+			return () -> controlClient;
+		}
+
+	}
+
+	@Configuration
+	static class TrailingSlashSemanticConfiguration {
+
+		@Bean
+		BedrockAgentCoreClient bedrockAgentCoreClient() {
+			return mock(BedrockAgentCoreClient.class);
+		}
+
+		@Bean
+		Supplier<BedrockAgentCoreControlClient> controlClientFactory() {
+			BedrockAgentCoreControlClient controlClient = mock(BedrockAgentCoreControlClient.class);
+
+			GetMemoryResponse response = GetMemoryResponse.builder()
+				.memory(Memory.builder()
+					.strategies(List.of(MemoryStrategy.builder()
+						.strategyId("semantic-123")
+						.namespaces(List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern() + "/"))
 						.build()))
 					.build())
 				.build();

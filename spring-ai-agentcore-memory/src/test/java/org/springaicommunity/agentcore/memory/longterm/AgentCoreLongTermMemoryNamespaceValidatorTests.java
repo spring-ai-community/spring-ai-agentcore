@@ -338,6 +338,95 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 	}
 
 	@Test
+	@DisplayName("Should pass validation when the memory namespaces end with a slash")
+	void shouldPassValidationWhenMemoryNamespacesEndWithSlash() {
+		// Given - templates that end with a slash
+		MemoryStrategy semantic = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}/"))
+			.build();
+		MemoryStrategy summary = MemoryStrategy.builder()
+			.strategyId("summary-456")
+			.namespaces(List.of("/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}/"))
+			.build();
+
+		this.mockGetMemoryResponse(List.of(semantic, summary));
+
+		// When/Then - no exception
+		this.validator.validateNamespaces("test-memory",
+				Map.of("semantic-123", List.of(AgentCoreLongTermMemoryNamespace.ACTOR.getPattern()), "summary-456",
+						List.of(AgentCoreLongTermMemoryNamespace.SESSION.getPattern())));
+	}
+
+	@Test
+	@DisplayName("Should return each pattern in the form of the memory namespace it matched")
+	void shouldReturnPatternsInTheFormOfTheMatchedMemoryNamespaces() {
+		// Given - AgentCore Memory stores namespaces as written in the template, with or
+		// without a trailing slash
+		String actor = AgentCoreLongTermMemoryNamespace.ACTOR.getPattern();
+		String session = AgentCoreLongTermMemoryNamespace.SESSION.getPattern();
+		EpisodicReflectionConfiguration reflections = EpisodicReflectionConfiguration.builder()
+			.namespaces(List.of("/episodes/{actorId}/"))
+			.build();
+		MemoryStrategy semantic = MemoryStrategy.builder()
+			.strategyId("semantic-123")
+			.namespaces(List.of(actor + "/"))
+			.build();
+		MemoryStrategy summary = MemoryStrategy.builder()
+			.strategyId("summary-456")
+			.namespaces(List.of(session))
+			.build();
+		MemoryStrategy episodic = MemoryStrategy.builder()
+			.strategyId("episodic-789")
+			.namespaces(List.of("/episodes/{actorId}/{sessionId}"))
+			.configuration(StrategyConfiguration.builder()
+				.reflection(ReflectionConfiguration.builder().episodicReflectionConfiguration(reflections).build())
+				.build())
+			.build();
+		this.mockGetMemoryResponse(List.of(semantic, summary, episodic));
+
+		// When - the semantic and reflection patterns lack the memory's slash, and the
+		// summary pattern has one the memory lacks
+		var validated = this.validator.validate(
+				"test-memory", Map.of("semantic-123", List.of(actor), "summary-456", List.of(session + "/"),
+						"episodic-789", List.of("/episodes/{actorId}/{sessionId}")),
+				Map.of("episodic-789", "/episodes/{actorId}"));
+
+		// Then
+		assertThat(validated.namespacesByStrategy()).containsOnly(Map.entry("semantic-123", List.of(actor + "/")),
+				Map.entry("summary-456", List.of(session)),
+				Map.entry("episodic-789", List.of("/episodes/{actorId}/{sessionId}")));
+		assertThat(validated.reflectionNamespacesByStrategy())
+			.containsOnly(Map.entry("episodic-789", "/episodes/{actorId}/"));
+	}
+
+	@Test
+	@DisplayName("Should validate episodes and reflections that share a pattern separately")
+	void shouldValidateEpisodesAndReflectionsSharingAPatternSeparately() {
+		// Given - only the reflection namespace ends with a slash
+		String pattern = "/episodes/{actorId}";
+		EpisodicReflectionConfiguration reflections = EpisodicReflectionConfiguration.builder()
+			.namespaces(List.of(pattern + "/"))
+			.build();
+		MemoryStrategy episodic = MemoryStrategy.builder()
+			.strategyId("episodic-789")
+			.namespaces(List.of(pattern))
+			.configuration(StrategyConfiguration.builder()
+				.reflection(ReflectionConfiguration.builder().episodicReflectionConfiguration(reflections).build())
+				.build())
+			.build();
+		this.mockGetMemoryResponse(List.of(episodic));
+
+		// When
+		var validated = this.validator.validate("test-memory", Map.of("episodic-789", List.of(pattern)),
+				Map.of("episodic-789", pattern));
+
+		// Then
+		assertThat(validated.namespacePattern("episodic-789", null)).isEqualTo(pattern);
+		assertThat(validated.reflectionNamespacePattern("episodic-789", null)).isEqualTo(pattern + "/");
+	}
+
+	@Test
 	@DisplayName("Should pass validation for custom namespace pattern")
 	void shouldPassValidationForCustomNamespacePattern() {
 		// Given - custom namespace pattern in both AWS and config
@@ -520,6 +609,26 @@ class AgentCoreLongTermMemoryNamespaceValidatorTests {
 
 			// Then
 			then(this.registrar).should().registerNamespace("test-memory", "semantic-123", expectedPattern);
+		}
+
+		@Test
+		@DisplayName("Should return a registered pattern as configured")
+		void shouldReturnRegisteredPatternAsConfigured() {
+			// Given - the memory stores namespaces as the registered pattern writes them
+			MemoryStrategy strategy = MemoryStrategy.builder()
+				.strategyId("semantic-123")
+				.namespaces(List.of("/wrong/namespace/{actorId}"))
+				.build();
+			AgentCoreLongTermMemoryNamespaceValidatorTests.this.mockGetMemoryResponse(List.of(strategy));
+			String configured = "/custom/{actorId}/";
+
+			// When
+			var validated = this.validatorWithAutoRegister.validate("test-memory",
+					Map.of("semantic-123", List.of(configured)), Map.of());
+
+			// Then
+			assertThat(validated.namespacePattern("semantic-123", null)).isEqualTo(configured);
+			then(this.registrar).should().registerNamespace("test-memory", "semantic-123", configured);
 		}
 
 		@Test

@@ -407,6 +407,15 @@ agentcore:
 | `ACTOR` | `/strategies/{memoryStrategyId}/actors/{actorId}` | Search across all sessions for the user |
 | `SESSION` | `/strategies/{memoryStrategyId}/actors/{actorId}/sessions/{sessionId}` | Search only current session |
 
+AgentCore Memory matches the namespace of a retrieval request as a string prefix. It stores namespaces as written in the strategy's template, with or without a trailing `/`, and a request that ends with `/` matches nothing in a memory whose namespaces don't. So requests follow the memory's form: auto-discovery uses the memory's templates as patterns, and with explicit configuration, startup validation gives each configured pattern the trailing slash of the memory namespace it matched.
+
+The trailing slash decides what a request can match:
+
+- If the template ends with `/`, as AWS [recommends](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/specify-long-term-memory-organization.html#memory-namespace-format) (for example `/strategies/{memoryStrategyId}/actors/{actorId}/`), the request for actor `alice` is `/strategies/abc123/actors/alice/` and matches only the records of `alice`.
+- If it doesn't (for example `/strategies/{memoryStrategyId}/actors/{actorId}`), the request `/strategies/abc123/actors/alice` also matches the records of actors such as `alice2` and `alice-admin`. The library drops them after retrieval, but they still count toward `top-k` and toward the 200 records a listing reads, so a request can return fewer than `top-k` of the records of `alice`, or none.
+
+AWS documents the values of a `bedrock-agentcore:namespace` condition in IAM policies with the trailing slash. For the template `/strategies/{memoryStrategyId}/actors/{actorId}/`, a condition for actor `alice` uses `/strategies/abc123/actors/alice/`, the namespace the library sends, or `/strategies/abc123/actors/alice/*` to include the namespaces below it.
+
 #### Custom Namespace Patterns
 
 You can override the default namespace patterns with custom ones using the `namespace-pattern` property:
