@@ -163,6 +163,22 @@ class AgentCoreLongTermMemoryRetrieverTests {
 	}
 
 	@Test
+	void shouldSendPatternEndingWithSlashAsWritten() {
+		// Startup validation gives a pattern the trailing slash of the memory namespace
+		given(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
+			.willReturn(RetrieveMemoryRecordsResponse.builder().build());
+
+		// When
+		this.retriever.searchMemories("strategy-123", "user-456", null, "query", 5, "/users/{actorId}/");
+
+		// Then
+		ArgumentCaptor<RetrieveMemoryRecordsRequest> captor = ArgumentCaptor
+			.forClass(RetrieveMemoryRecordsRequest.class);
+		then(this.client).should().retrieveMemoryRecords(captor.capture());
+		assertThat(captor.getValue().namespace()).isEqualTo("/users/user-456/");
+	}
+
+	@Test
 	void shouldListMemoriesInSessionScopedNamespace() {
 		String sessionNamespace = "/strategies/strategy-123/actors/user-456/sessions/session-1";
 		var summary = MemoryRecordSummary.builder()
@@ -373,6 +389,24 @@ class AgentCoreLongTermMemoryRetrieverTests {
 			.isInstanceOf(AgentCoreMemoryException.RetrievalException.class)
 			.hasMessageContaining("Failed to list memories")
 			.hasCauseInstanceOf(ThrottledException.class);
+	}
+
+	@Test
+	void shouldKeepOwnRecordsForRequestEndingWithSlash() {
+		// Given: the memory's template ends with '/', and so does the validated pattern
+		var own = record("own", ACTOR_NAMESPACE + "/");
+		var ownSession = record("own-session", SESSION_NAMESPACE + "/");
+		var otherActor = record("other", "/strategies/strategy-123/actors/user-4567/");
+
+		given(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class))).willReturn(
+				RetrieveMemoryRecordsResponse.builder().memoryRecordSummaries(own, ownSession, otherActor).build());
+
+		// When
+		List<MemoryRecord> records = this.retriever.searchMemories("strategy-123", "user-456", null, "query", 5,
+				AgentCoreLongTermMemoryNamespace.ACTOR.getPattern() + "/");
+
+		// Then
+		assertThat(records).extracting(MemoryRecord::id).containsExactly("own", "own-session");
 	}
 
 	@Test
