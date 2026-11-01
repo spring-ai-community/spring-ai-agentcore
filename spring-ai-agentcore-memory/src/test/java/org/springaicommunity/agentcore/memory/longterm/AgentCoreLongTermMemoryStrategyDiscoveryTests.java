@@ -106,6 +106,69 @@ class AgentCoreLongTermMemoryStrategyDiscoveryTests {
 	}
 
 	@Test
+	void shouldFallBackToStrategyNamespaceTemplates() {
+		// AWS marks the strategy's namespaces field as legacy too
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("sem-2")
+			.type(MemoryStrategyType.SEMANTIC)
+			.namespaceTemplates(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/"))
+			.build();
+
+		this.mockGetMemory(List.of(strategy));
+
+		List<DiscoveredStrategy> discovered = new AgentCoreLongTermMemoryStrategyDiscovery(this.controlClient)
+			.discoverStrategies("mem-1");
+
+		assertThat(discovered).singleElement()
+			.satisfies((ds) -> assertThat(ds.namespaces())
+				.containsExactly("/strategy/{memoryStrategyId}/actor/{actorId}/"));
+	}
+
+	@Test
+	void shouldPreferStrategyNamespaceTemplatesOverLegacyNamespaces() {
+		// The legacy field may stop being updated, so the templates win
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("sem-3")
+			.type(MemoryStrategyType.SEMANTIC)
+			.namespaceTemplates(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/"))
+			.namespaces(List.of("/legacy/{actorId}/"))
+			.build();
+
+		this.mockGetMemory(List.of(strategy));
+
+		DiscoveredStrategy ds = new AgentCoreLongTermMemoryStrategyDiscovery(this.controlClient)
+			.discoverStrategies("mem-1")
+			.get(0);
+
+		assertThat(ds.namespaces()).containsExactly("/strategy/{memoryStrategyId}/actor/{actorId}/");
+	}
+
+	@Test
+	void shouldPreferReflectionNamespaceTemplatesOverLegacyNamespaces() {
+		MemoryStrategy strategy = MemoryStrategy.builder()
+			.strategyId("ep-6")
+			.type(MemoryStrategyType.EPISODIC)
+			.namespaces(List.of("/strategy/{memoryStrategyId}/actor/{actorId}/session/{sessionId}/"))
+			.configuration(StrategyConfiguration.builder()
+				.reflection(ReflectionConfiguration.builder()
+					.episodicReflectionConfiguration(EpisodicReflectionConfiguration.builder()
+						.namespaceTemplates("/strategy/{memoryStrategyId}/actor/{actorId}/")
+						.namespaces("/legacy/{actorId}/")
+						.build())
+					.build())
+				.build())
+			.build();
+
+		this.mockGetMemory(List.of(strategy));
+
+		DiscoveredStrategy ds = new AgentCoreLongTermMemoryStrategyDiscovery(this.controlClient)
+			.discoverStrategies("mem-1")
+			.get(0);
+
+		assertThat(ds.reflectionsNamespaces()).containsExactly("/strategy/{memoryStrategyId}/actor/{actorId}/");
+	}
+
+	@Test
 	void shouldReturnEmptyReflectionsForEpisodicWithoutReflectionConfig() {
 		MemoryStrategy strategy = MemoryStrategy.builder()
 			.strategyId("ep-2")

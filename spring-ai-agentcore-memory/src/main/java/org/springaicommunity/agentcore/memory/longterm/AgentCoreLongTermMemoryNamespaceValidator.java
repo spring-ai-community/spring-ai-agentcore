@@ -190,8 +190,8 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 		MemoryStrategy strategy = findStrategy(memoryId, strategies, strategyId);
 		this.requireConfiguredType(memoryId, strategy);
 
-		List<String> actualNamespaces = strategy.namespaces();
-		if (actualNamespaces == null || actualNamespaces.isEmpty()) {
+		List<String> actualNamespaces = AgentCoreLongTermMemoryStrategyDiscovery.strategyNamespaces(strategy);
+		if (actualNamespaces.isEmpty()) {
 			throw new AgentCoreMemoryException.ConfigurationException(
 					"Strategy '" + strategyId + "' has no namespaces configured.");
 		}
@@ -287,7 +287,7 @@ public class AgentCoreLongTermMemoryNamespaceValidator {
 		CustomReflectionConfiguration custom = (reflection != null) ? reflection.customReflectionConfiguration() : null;
 		EpisodicReflectionOverride override = (custom != null) ? custom.episodicReflectionOverride() : null;
 		return (override != null) ? AgentCoreLongTermMemoryStrategyDiscovery
-			.namespacesOrTemplates(override.namespaces(), override.namespaceTemplates()) : List.of();
+			.templatesOrNamespaces(override.namespaceTemplates(), override.namespaces()) : List.of();
 	}
 
 	// Placeholders are filled at retrieval time, so a placeholder only matches the same
