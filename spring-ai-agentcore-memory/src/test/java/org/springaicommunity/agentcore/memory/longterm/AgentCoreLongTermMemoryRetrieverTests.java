@@ -101,6 +101,23 @@ class AgentCoreLongTermMemoryRetrieverTests {
 	}
 
 	@Test
+	void shouldAskForTopKResultsInOneCall() {
+		// Given: without maxResults the service returns at most 20 records per call
+		given(this.client.retrieveMemoryRecords(any(RetrieveMemoryRecordsRequest.class)))
+			.willReturn(RetrieveMemoryRecordsResponse.builder().build());
+
+		// When
+		this.retriever.searchMemories("strategy-123", "user-456", "query", 30);
+
+		// Then
+		ArgumentCaptor<RetrieveMemoryRecordsRequest> captor = ArgumentCaptor
+			.forClass(RetrieveMemoryRecordsRequest.class);
+		then(this.client).should().retrieveMemoryRecords(captor.capture());
+		assertThat(captor.getValue().searchCriteria().topK()).isEqualTo(30);
+		assertThat(captor.getValue().maxResults()).isEqualTo(30);
+	}
+
+	@Test
 	void shouldSearchSummariesWithSessionNamespace() {
 		// Given
 		var summary = MemoryRecordSummary.builder()
