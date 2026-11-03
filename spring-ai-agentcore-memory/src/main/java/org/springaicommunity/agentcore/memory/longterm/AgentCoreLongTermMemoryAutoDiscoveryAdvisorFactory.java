@@ -37,6 +37,11 @@ import org.springaicommunity.agentcore.memory.longterm.strategy.UserPreferenceMe
  * advisor wrapping it. When explicit configuration for the same {@code strategyId} is
  * present, it wins; otherwise the discovered namespaces are used as defaults.
  *
+ * <p>
+ * A discovered namespace without {@code {actorId}} is shared by all actors, so its
+ * records would reach every user's prompt. Such a strategy gets no advisor, and such a
+ * reflection namespace is not used, unless explicit configuration names it.
+ *
  * @author Andrei Shakirin
  */
 class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
@@ -64,7 +69,10 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 	List<AgentCoreLongTermMemoryAdvisor> createAdvisors(List<DiscoveredStrategy> discovered) {
 		List<AgentCoreLongTermMemoryAdvisor> advisors = new ArrayList<>();
 		for (DiscoveredStrategy strategy : discovered) {
-			advisors.add(this.createAdvisor(strategy));
+			AgentCoreLongTermMemoryAdvisor advisor = this.createAdvisor(strategy);
+			if (advisor != null) {
+				advisors.add(advisor);
+			}
 		}
 		logger.info("Created {} advisors from autodiscovery", advisors.size());
 		return advisors;
@@ -77,6 +85,9 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 		AgentCoreLongTermMemoryStrategy effectiveExplicit = (configMatches) ? explicitConfig : null;
 
 		String namespace = this.resolveNamespace(discovered, effectiveExplicit);
+		if (namespace == null) {
+			return null;
+		}
 		MemoryStrategyHandler handler = this.buildHandler(discovered, effectiveExplicit, namespace,
 				strategy.contextLabel());
 
@@ -158,6 +169,17 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 					+ "fill, skipping reflections", discovered.strategyId(), discoveredReflections, unfilled);
 			return;
 		}
+		if (discoveredReflections != null && !AgentCoreLongTermMemoryNamespace.isActorScoped(discoveredReflections)) {
+			// Reflections shared by all actors would reach every user's prompt; keep the
+			// episodes without them
+			logger.warn("Strategy '{}': reflections namespace '{}' does not contain {actorId}, so reflections from "
+					+ "all users would be added to every user's prompt, skipping reflections. To use them anyway, set "
+					+ "{}.strategy-id={} and {}.reflections-namespace-pattern={}", discovered.strategyId(),
+					discoveredReflections, AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX,
+					discovered.strategyId(), AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX,
+					discoveredReflections);
+			return;
+		}
 		if (discoveredReflections != null) {
 			b.reflectionsNamespacePattern(discoveredReflections);
 			logger.debug("Strategy '{}': using discovered reflections namespace '{}'", discovered.strategyId(),
@@ -168,6 +190,15 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 	private String resolveNamespace(DiscoveredStrategy discovered, AgentCoreLongTermMemoryStrategy explicitConfig) {
 		if (explicitConfig == null || explicitConfig.namespacePattern() == null) {
 			String namespace = discovered.defaultNamespace();
+			if (!AgentCoreLongTermMemoryNamespace.isActorScoped(namespace)) {
+				String prefix = AgentCoreLongTermMemoryNamespaceValidator.configPrefix(discovered.type());
+				String message = "Strategy '{}' namespace '{}' does not contain {actorId}, so its records would be "
+						+ "added to every user's prompt, skipping. To use it anyway, set {}.strategy-id={} and "
+						+ "{}.namespace-pattern={}";
+				logger.warn(message, discovered.strategyId(), namespace, prefix, discovered.strategyId(), prefix,
+						namespace);
+				return null;
+			}
 			logger.debug("Strategy '{}': using discovered namespace '{}'", discovered.strategyId(), namespace);
 			return namespace;
 		}
@@ -179,7 +210,10 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 			return configuredNamespace;
 		}
 
-		if (this.registrar != null) {
+		// Registering a namespace without {actorId} would make all actors share it, which
+		// the namespace validator refuses in explicit mode too
+		boolean registrable = AgentCoreLongTermMemoryNamespace.isActorScoped(configuredNamespace);
+		if (this.registrar != null && registrable) {
 			this.registrar.registerNamespace(this.memoryId, discovered.strategyId(), configuredNamespace);
 			logger.info("Strategy '{}': auto-registered new namespace '{}'", discovered.strategyId(),
 					configuredNamespace);
@@ -188,7 +222,8 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 
 		throw new AgentCoreMemoryException.ConfigurationException("Configured namespace '" + configuredNamespace
 				+ "' for strategy '" + discovered.strategyId() + "' does not match any discovered namespace. "
-				+ "Available namespaces: " + discovered.namespaces());
+				+ "Available namespaces: " + discovered.namespaces()
+				+ ((this.registrar != null) ? ". It is not registered because it does not contain {actorId}." : ""));
 	}
 
 }
