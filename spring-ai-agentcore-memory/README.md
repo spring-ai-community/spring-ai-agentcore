@@ -339,7 +339,8 @@ agentcore:
 **Autodiscovery behavior:**
 - Queries AWS to discover all strategies configured in your memory
 - Creates advisors only for supported types: `SEMANTIC`, `SUMMARIZATION`, `USER_PREFERENCE`, `EPISODIC`
-- Skips `CUSTOM` strategy types (not supported by autodiscovery)
+- Treats a `CUSTOM` strategy as the built-in type it overrides (`SEMANTIC_OVERRIDE`, `SUMMARY_OVERRIDE`, `USER_PREFERENCE_OVERRIDE` or `EPISODIC_OVERRIDE`), including the reflection namespaces of an episodic override
+- Skips `CUSTOM` strategies that are self-managed (`SELF_MANAGED`), which have no built-in retrieval
 - Uses the first namespace if a strategy has multiple namespaces
 - Uses default `topK` values for each strategy type
 
