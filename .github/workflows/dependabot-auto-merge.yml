@@ -1,0 +1,24 @@
+name: Dependabot auto-merge
+
+# Enables auto-merge on every Dependabot PR. A code owner still has to approve;
+# once approved, the merge queue re-runs the required checks and merges the PR.
+# Requires the repository setting "Allow auto-merge".
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Enable auto-merge
+        run: gh pr merge --auto "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

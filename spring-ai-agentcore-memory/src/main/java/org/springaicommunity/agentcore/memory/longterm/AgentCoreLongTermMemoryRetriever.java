@@ -167,11 +167,15 @@ public class AgentCoreLongTermMemoryRetriever {
 		logger.debug("Searching: namespace={}, query={}, topK={}", namespace, query, topK);
 
 		try {
+			// Without maxResults the service returns at most 20 records per call,
+			// whatever
+			// topK asks for
 			RetrieveMemoryRecordsRequest request = RetrieveMemoryRecordsRequest.builder()
 				.memoryId(this.memoryId)
 				.namespace(namespace)
 				.searchCriteria(
 						SearchCriteria.builder().searchQuery(query).memoryStrategyId(strategyId).topK(topK).build())
+				.maxResults(topK)
 				.build();
 
 			RetrieveMemoryRecordsResponse response = this.client.retrieveMemoryRecords(request);

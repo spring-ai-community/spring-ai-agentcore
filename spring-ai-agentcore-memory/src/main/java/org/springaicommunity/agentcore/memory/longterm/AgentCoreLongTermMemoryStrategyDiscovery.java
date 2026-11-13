@@ -130,8 +130,8 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 			return null;
 		}
 
-		var namespaces = strategy.namespaces();
-		if (namespaces == null || namespaces.isEmpty()) {
+		var namespaces = strategyNamespaces(strategy);
+		if (namespaces.isEmpty()) {
 			logger.warn("Strategy '{}' has no namespaces, skipping", strategy.strategyId());
 			return null;
 		}
@@ -204,18 +204,30 @@ public class AgentCoreLongTermMemoryStrategyDiscovery {
 		}
 		EpisodicReflectionConfiguration episodic = reflection.episodicReflectionConfiguration();
 		if (episodic != null) {
-			return namespacesOrTemplates(episodic.namespaces(), episodic.namespaceTemplates());
+			return templatesOrNamespaces(episodic.namespaceTemplates(), episodic.namespaces());
 		}
 		CustomReflectionConfiguration custom = reflection.customReflectionConfiguration();
 		EpisodicReflectionOverride override = (custom != null) ? custom.episodicReflectionOverride() : null;
-		return (override != null) ? namespacesOrTemplates(override.namespaces(), override.namespaceTemplates())
+		return (override != null) ? templatesOrNamespaces(override.namespaceTemplates(), override.namespaces())
 				: List.of();
 	}
 
-	// AWS marks the reflection namespaces field as legacy in favor of
-	// namespaceTemplates, so fall back to the templates when it is empty.
-	static List<String> namespacesOrTemplates(List<String> namespaces, List<String> namespaceTemplates) {
-		List<String> chosen = (namespaces != null && !namespaces.isEmpty()) ? namespaces : namespaceTemplates;
+	/**
+	 * The namespaces of a strategy, from its {@code namespaceTemplates} or else its
+	 * legacy {@code namespaces} field. The namespace validator calls it as well.
+	 * @param strategy the AWS memory strategy descriptor
+	 * @return the strategy's namespaces, or empty when it reports none
+	 */
+	static List<String> strategyNamespaces(MemoryStrategy strategy) {
+		return templatesOrNamespaces(strategy.namespaceTemplates(), strategy.namespaces());
+	}
+
+	// AWS marks the namespaces fields of strategies and reflections as legacy in favor
+	// of namespaceTemplates. The templates win, since the legacy field could go stale
+	// if AWS stops updating it; it is read only when the templates are empty.
+	static List<String> templatesOrNamespaces(List<String> namespaceTemplates, List<String> namespaces) {
+		List<String> chosen = (namespaceTemplates != null && !namespaceTemplates.isEmpty()) ? namespaceTemplates
+				: namespaces;
 		return (chosen != null) ? List.copyOf(chosen) : List.of();
 	}
 
