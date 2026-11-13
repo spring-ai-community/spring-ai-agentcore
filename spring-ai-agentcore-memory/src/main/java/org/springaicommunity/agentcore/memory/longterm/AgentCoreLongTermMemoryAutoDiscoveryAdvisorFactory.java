@@ -40,7 +40,8 @@ import org.springaicommunity.agentcore.memory.longterm.strategy.UserPreferenceMe
  * <p>
  * A discovered namespace without {@code {actorId}} is shared by all actors, so its
  * records would reach every user's prompt. Such a strategy gets no advisor, and such a
- * reflection namespace is not used, unless explicit configuration names it.
+ * reflection namespace is not used, unless explicit configuration names it or
+ * {@code namespace.allow-shared} is set, which logs a warning per shared namespace.
  *
  * @author Andrei Shakirin
  */
@@ -48,6 +49,9 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 
 	private static final Logger logger = LoggerFactory
 		.getLogger(AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory.class);
+
+	private static final String ALLOW_SHARED_PROPERTY = AgentCoreLongTermMemoryProperties.CONFIG_PREFIX
+			+ ".namespace.allow-shared";
 
 	private final AgentCoreLongTermMemoryRetriever retriever;
 
@@ -170,15 +174,24 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 			return;
 		}
 		if (discoveredReflections != null && !AgentCoreLongTermMemoryNamespace.isActorScoped(discoveredReflections)) {
-			// Reflections shared by all actors would reach every user's prompt; keep the
-			// episodes without them
-			logger.warn("Strategy '{}': reflections namespace '{}' does not contain {actorId}, so reflections from "
-					+ "all users would be added to every user's prompt, skipping reflections. To use them anyway, set "
-					+ "{}.strategy-id={} and {}.reflections-namespace-pattern={}", discovered.strategyId(),
-					discoveredReflections, AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX,
-					discovered.strategyId(), AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX,
-					discoveredReflections);
-			return;
+			if (this.config.namespace().allowShared()) {
+				logger.warn(
+						"Strategy '{}': reflections namespace '{}' does not contain {actorId}, so reflections from "
+								+ "all users are added to every user's prompt; using it because {}=true",
+						discovered.strategyId(), discoveredReflections, ALLOW_SHARED_PROPERTY);
+			}
+			else {
+				// Reflections shared by all actors would reach every user's prompt; keep
+				// the episodes without them
+				logger.warn("Strategy '{}': reflections namespace '{}' does not contain {actorId}, so reflections "
+						+ "from all users would be added to every user's prompt, skipping reflections. To use them "
+						+ "anyway, set {}.strategy-id={} and {}.reflections-namespace-pattern={}, or {}=true",
+						discovered.strategyId(), discoveredReflections,
+						AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX, discovered.strategyId(),
+						AgentCoreLongTermMemoryProperties.Episodic.CONFIG_PREFIX, discoveredReflections,
+						ALLOW_SHARED_PROPERTY);
+				return;
+			}
 		}
 		if (discoveredReflections != null) {
 			b.reflectionsNamespacePattern(discoveredReflections);
@@ -191,12 +204,18 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory {
 		if (explicitConfig == null || explicitConfig.namespacePattern() == null) {
 			String namespace = discovered.defaultNamespace();
 			if (!AgentCoreLongTermMemoryNamespace.isActorScoped(namespace)) {
+				if (this.config.namespace().allowShared()) {
+					String message = "Strategy '{}' namespace '{}' does not contain {actorId}, so its records are "
+							+ "added to every user's prompt; using it because {}=true";
+					logger.warn(message, discovered.strategyId(), namespace, ALLOW_SHARED_PROPERTY);
+					return namespace;
+				}
 				String prefix = AgentCoreLongTermMemoryNamespaceValidator.configPrefix(discovered.type());
 				String message = "Strategy '{}' namespace '{}' does not contain {actorId}, so its records would be "
 						+ "added to every user's prompt, skipping. To use it anyway, set {}.strategy-id={} and "
-						+ "{}.namespace-pattern={}";
+						+ "{}.namespace-pattern={}, or {}=true";
 				logger.warn(message, discovered.strategyId(), namespace, prefix, discovered.strategyId(), prefix,
-						namespace);
+						namespace, ALLOW_SHARED_PROPERTY);
 				return null;
 			}
 			logger.debug("Strategy '{}': using discovered namespace '{}'", discovered.strategyId(), namespace);

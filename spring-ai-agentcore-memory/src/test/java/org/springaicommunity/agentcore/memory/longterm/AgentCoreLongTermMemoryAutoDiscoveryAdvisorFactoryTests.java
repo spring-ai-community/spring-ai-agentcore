@@ -237,7 +237,22 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 		verify(this.retriever, never()).searchMemories(anyString(), anyString(), anyString(), anyString(), anyInt(),
 				eq(SHARED_NS));
 		assertThat(output).contains("reflections namespace '" + SHARED_NS + "' does not contain {actorId}")
-			.contains("agentcore.memory.long-term.episodic.reflections-namespace-pattern=" + SHARED_NS);
+			.contains("agentcore.memory.long-term.episodic.reflections-namespace-pattern=" + SHARED_NS)
+			.contains("agentcore.memory.long-term.namespace.allow-shared=true");
+	}
+
+	@Test
+	void episodicUsesDiscoveredReflectionsWithoutActorIdWhenSharingIsAllowed(CapturedOutput output) {
+		DiscoveredStrategy discovered = episodicWithReflections(DISCOVERED_EPISODES_NS, SHARED_NS);
+
+		var advisor = this.factory(propertiesAllowingShared()).createAdvisors(List.of(discovered)).get(0);
+		this.stubEmptyMemories();
+		advisor.adviseCall(userRequest("q"), this.chain);
+
+		verify(this.retriever).searchMemories(eq(STRATEGY_ID), anyString(), anyString(), eq("q"), anyInt(),
+				eq(SHARED_NS));
+		assertThat(output).contains("reflections namespace '" + SHARED_NS + "' does not contain {actorId}")
+			.contains("using it because agentcore.memory.long-term.namespace.allow-shared=true");
 	}
 
 	// ------------------------------------------------------------------
@@ -254,7 +269,22 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 		assertThat(advisors).isEmpty();
 		assertThat(output).contains("Strategy 'sem-1' namespace '" + SHARED_NS + "' does not contain {actorId}")
 			.contains("agentcore.memory.long-term.semantic.strategy-id=sem-1")
-			.contains("agentcore.memory.long-term.semantic.namespace-pattern=" + SHARED_NS);
+			.contains("agentcore.memory.long-term.semantic.namespace-pattern=" + SHARED_NS)
+			.contains("agentcore.memory.long-term.namespace.allow-shared=true");
+	}
+
+	@Test
+	void discoveredNamespaceWithoutActorIdIsUsedWhenSharingIsAllowed(CapturedOutput output) {
+		DiscoveredStrategy discovered = new DiscoveredStrategy("sem-1", AgentCoreLongTermMemoryStrategyType.SEMANTIC,
+				List.of(SHARED_NS), List.of());
+
+		var advisors = this.factory(propertiesAllowingShared()).createAdvisors(List.of(discovered));
+		this.stubEmptyMemories();
+		advisors.get(0).adviseCall(userRequest("q"), this.chain);
+
+		verify(this.retriever).searchMemories(eq("sem-1"), anyString(), anyString(), eq("q"), anyInt(), eq(SHARED_NS));
+		assertThat(output).contains("Strategy 'sem-1' namespace '" + SHARED_NS + "' does not contain {actorId}")
+			.contains("using it because agentcore.memory.long-term.namespace.allow-shared=true");
 	}
 
 	@Test
@@ -277,6 +307,21 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 		DiscoveredStrategy discovered = new DiscoveredStrategy("sem-1", AgentCoreLongTermMemoryStrategyType.SEMANTIC,
 				List.of(DISCOVERED_REFLECTIONS_NS), List.of());
 		AgentCoreLongTermMemoryProperties config = propertiesWithSemantic(new Semantic("sem-1", 5, null, SHARED_NS));
+		var factory = new AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory(this.retriever, config, MEMORY_ID,
+				this.registrar);
+
+		assertThatThrownBy(() -> factory.createAdvisors(List.of(discovered)))
+			.isInstanceOf(AgentCoreMemoryException.ConfigurationException.class)
+			.hasMessageContaining("not registered because it does not contain {actorId}");
+		verify(this.registrar, never()).registerNamespace(anyString(), anyString(), anyString());
+	}
+
+	@Test
+	void configuredNamespaceWithoutActorIdIsNotRegisteredEvenWhenSharingIsAllowed() {
+		DiscoveredStrategy discovered = new DiscoveredStrategy("sem-1", AgentCoreLongTermMemoryStrategyType.SEMANTIC,
+				List.of(DISCOVERED_REFLECTIONS_NS), List.of());
+		AgentCoreLongTermMemoryProperties config = new AgentCoreLongTermMemoryProperties(true,
+				new Namespace(false, true), null, new Semantic("sem-1", 5, null, SHARED_NS), null, null);
 		var factory = new AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactory(this.retriever, config, MEMORY_ID,
 				this.registrar);
 
@@ -339,15 +384,19 @@ class AgentCoreLongTermMemoryAutoDiscoveryAdvisorFactoryTests {
 	}
 
 	private static AgentCoreLongTermMemoryProperties propertiesWithEpisodic(Episodic episodic) {
-		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false), episodic, null, null, null);
+		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false, false), episodic, null, null, null);
 	}
 
 	private static AgentCoreLongTermMemoryProperties propertiesWithSemantic(Semantic semantic) {
-		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false), null, semantic, null, null);
+		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false, false), null, semantic, null, null);
+	}
+
+	private static AgentCoreLongTermMemoryProperties propertiesAllowingShared() {
+		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false, true), null, null, null, null);
 	}
 
 	private static AgentCoreLongTermMemoryProperties propertiesWithoutEpisodicExplicit() {
-		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false), null, null, null, null);
+		return new AgentCoreLongTermMemoryProperties(true, new Namespace(false, false), null, null, null, null);
 	}
 
 	private static ChatClientRequest userRequest(String text) {

@@ -342,7 +342,7 @@ agentcore:
 - Skips `CUSTOM` strategy types (not supported by autodiscovery)
 - Uses the first namespace if a strategy has multiple namespaces
 - Uses default `topK` values for each strategy type
-- Skips a strategy whose namespace does not contain `{actorId}`, and an episodic reflection namespace without it (the episodes are still used), because their records are shared by all actors and would be added to every user's prompt. To use such a namespace on purpose, set the strategy's `strategy-id` with `namespace-pattern` or `reflections-namespace-pattern`; the startup warning shows the values
+- Skips a strategy whose namespace does not contain `{actorId}`, and an episodic reflection namespace without it (the episodes are still used), because their records are shared by all actors and would be added to every user's prompt. To use such a namespace on purpose, set the strategy's `strategy-id` with `namespace-pattern` or `reflections-namespace-pattern` (the startup warning shows the values), or set `agentcore.memory.long-term.namespace.allow-shared=true` to use all shared namespaces; a warning is then logged for each one at startup
 
 **Overriding discovered defaults:**
 

@@ -497,6 +497,18 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 	}
 
 	@Test
+	@DisplayName("Autodiscovery: Should bind namespace.allow-shared")
+	void autodiscoveryShouldBindAllowShared() {
+		this.contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.namespace.allow-shared=true")
+			.run((context) -> {
+				assertThat(context).hasNotFailed();
+				assertThat(context.getBean(AgentCoreLongTermMemoryProperties.class).namespace().allowShared()).isTrue();
+			});
+	}
+
+	@Test
 	@DisplayName("Autodiscovery: Should use explicit namespace when it matches discovered namespace")
 	void autodiscoveryShouldUseExplicitNamespaceWhenMatching() {
 		this.contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
