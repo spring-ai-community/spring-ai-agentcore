@@ -558,7 +558,7 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
 					"agentcore.memory.long-term.namespace.auto-register=true",
 					"agentcore.memory.long-term.semantic.strategy-id=discovered-semantic",
-					"agentcore.memory.long-term.semantic.namespace-pattern=/new/namespace/pattern")
+					"agentcore.memory.long-term.semantic.namespace-pattern=/new/namespace/{actorId}")
 			.run((context) -> {
 				// Should not fail - namespace should be auto-registered
 				assertThat(context).hasNotFailed();
@@ -566,6 +566,18 @@ class AgentCoreLongTermMemoryAutoConfigurationTests {
 				@SuppressWarnings("unchecked")
 				List<AgentCoreLongTermMemoryAdvisor> advisors = context.getBean("autoDiscoveredAdvisors", List.class);
 				assertThat(advisors).hasSize(3);
+			});
+	}
+
+	@Test
+	@DisplayName("Autodiscovery: Should bind namespace.allow-shared")
+	void autodiscoveryShouldBindAllowShared() {
+		this.contextRunner.withUserConfiguration(AutodiscoveryMockConfiguration.class)
+			.withPropertyValues(MEMORY_ID_PROP, "agentcore.memory.long-term.auto-discovery=true",
+					"agentcore.memory.long-term.namespace.allow-shared=true")
+			.run((context) -> {
+				assertThat(context).hasNotFailed();
+				assertThat(context.getBean(AgentCoreLongTermMemoryProperties.class).namespace().allowShared()).isTrue();
 			});
 	}
 

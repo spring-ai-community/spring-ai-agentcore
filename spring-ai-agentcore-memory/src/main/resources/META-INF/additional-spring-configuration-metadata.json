@@ -93,6 +93,12 @@
         "level": "warning",
         "reason": "Replaces the namespace of the memory strategy in AWS at startup. Configure namespace-pattern to match the memory, or use auto-discovery. Removal scheduled for 3.0.0. See https://github.com/spring-ai-community/spring-ai-agentcore/issues/264."
       }
+    },
+    {
+      "name": "agentcore.memory.long-term.namespace.allow-shared",
+      "type": "java.lang.Boolean",
+      "description": "Whether auto-discovery uses strategy and episodic reflection namespaces without {actorId}. Their records are shared by all actors and added to every user's prompt; a warning is logged per shared namespace at startup. When false, such strategies and reflections are skipped. A namespace without {actorId} is never auto-registered.",
+      "defaultValue": false
     }
   ]
 }

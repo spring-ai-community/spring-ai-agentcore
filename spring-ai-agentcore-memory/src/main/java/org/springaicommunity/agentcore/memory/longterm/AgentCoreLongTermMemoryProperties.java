@@ -44,7 +44,7 @@ public class AgentCoreLongTermMemoryProperties {
 	public AgentCoreLongTermMemoryProperties(boolean autoDiscovery, Namespace namespace, Episodic episodic,
 			Semantic semantic, Summary summary, UserPreference userPreference) {
 		this.autoDiscovery = autoDiscovery;
-		this.namespace = (namespace != null) ? namespace : new Namespace(false);
+		this.namespace = (namespace != null) ? namespace : new Namespace(false, false);
 		this.episodic = episodic;
 		this.semantic = semantic;
 		this.summary = summary;
@@ -240,7 +240,15 @@ public class AgentCoreLongTermMemoryProperties {
 
 	}
 
-	public record Namespace(boolean autoRegister) {
+	/**
+	 * Namespace settings.
+	 *
+	 * @param autoRegister whether a mismatching namespace is written to the memory
+	 * strategy at startup (deprecated)
+	 * @param allowShared whether auto-discovery uses strategy and reflection namespaces
+	 * without {@code {actorId}}, whose records are shared by all actors
+	 */
+	public record Namespace(boolean autoRegister, boolean allowShared) {
 
 		private static final Logger logger = LoggerFactory.getLogger(Namespace.class);
 
