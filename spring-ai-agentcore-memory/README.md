@@ -427,7 +427,7 @@ AgentCore rejects a request whose actor ID or session ID breaks the rules below 
 
 This module checks a few rules before calling AgentCore. Long-term memory rejects an actor ID that contains `/` or `*`, because the namespace of actor `bob/x` would sit beneath that of actor `bob`. The Session API repository rejects control characters and empty parts (such as a leading colon) up front. Everything else is left to AgentCore.
 
-User IDs from identity providers often break these rules: e-mail addresses contain `@` and `.`, and subjects such as `auth0|123` contain `|`. Map such a subject to a safe, stable value before using it as the actor ID, for example your application's internal user ID or a hex-encoded SHA-256 hash of the subject. Use the same mapped value everywhere the user ID appears, including `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY`.
+User IDs from identity providers often break these rules: e-mail addresses contain `@` and `.`, and subjects such as `auth0|123` contain `|`. Map such a subject to a safe, stable value before using it as the actor ID, for example your application's internal user ID or a hex-encoded SHA-256 hash of the subject. Use the same mapped value everywhere the user ID appears: in the conversation ID of the ChatMemory stack and in the actor segment of Session API session IDs, from which `AgentCoreSessionRepository` derives the session's principal.
 
 ## Error Handling
 

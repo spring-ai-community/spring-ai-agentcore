@@ -21,6 +21,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Iterator;
@@ -352,8 +353,9 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * ({@code "userId:sessionId"}) so they round-trip through {@link #findById(String)}
 	 * and {@link #findEvents(String, EventFilter)}. {@code createdAt} comes from each
 	 * {@code SessionSummary}; {@code expiresAt} is {@code null}. An unknown user yields
-	 * an empty list rather than an exception. Sessions are in the order AgentCore lists
-	 * them, not necessarily oldest first.
+	 * an empty list rather than an exception. Sessions are returned oldest first, by
+	 * creation time and then id; a session without a creation time sorts as
+	 * {@link #SYNTHETIC_CREATED_AT}.
 	 * @param name the metadata key
 	 * @param value the user id (AgentCore actor); must not be blank
 	 * @return the user's sessions, possibly empty
@@ -395,6 +397,9 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 				nextToken = response.nextToken();
 			}
 			while (nextToken != null);
+			// The SPI requires oldest first (creation time, then id); AgentCore lists
+			// sessions in its own order
+			sessions.sort(Comparator.comparing(Session::createdAt).thenComparing(Session::id));
 			return List.copyOf(sessions);
 		}
 		catch (SdkException ex) {

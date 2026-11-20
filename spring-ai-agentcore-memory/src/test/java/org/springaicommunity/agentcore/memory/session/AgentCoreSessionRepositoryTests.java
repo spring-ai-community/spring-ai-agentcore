@@ -280,6 +280,30 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
+	void findByPrincipalReturnsSessionsOldestFirstThenById() {
+		// The SPI requires oldest first (creation time, then id); AgentCore pages arrive
+		// in its own order.
+		Instant older = Instant.parse("2026-01-01T00:00:00Z");
+		Instant newer = Instant.parse("2026-03-01T00:00:00Z");
+		given(this.client.listSessions(any(ListSessionsRequest.class)))
+			.willReturn(ListSessionsResponse.builder()
+				.sessionSummaries(SessionSummary.builder().sessionId("conv-c").actorId(ACTOR).createdAt(newer).build(),
+						SessionSummary.builder().sessionId("conv-b").actorId(ACTOR).createdAt(older).build())
+				.nextToken("p2")
+				.build())
+			.willReturn(ListSessionsResponse.builder()
+				.sessionSummaries(SessionSummary.builder().sessionId("conv-a").actorId(ACTOR).createdAt(older).build(),
+						SessionSummary.builder().sessionId("conv-x").actorId(ACTOR).build())
+				.build());
+
+		List<Session> sessions = this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, ACTOR);
+
+		// conv-x has no creation time and sorts as the EPOCH sentinel
+		assertThat(sessions).extracting(Session::id)
+			.containsExactly("alice:conv-x", "alice:conv-a", "alice:conv-b", "alice:conv-c");
+	}
+
+	@Test
 	void findByPrincipalEmptyResultReturnsEmptyList() {
 		given(this.client.listSessions(any(ListSessionsRequest.class)))
 			.willReturn(ListSessionsResponse.builder().sessionSummaries(List.of()).build());
