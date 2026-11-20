@@ -69,7 +69,7 @@ Browser automation example using AgentCore Browser. Features:
 - Local mode (Playwright) and AgentCore mode support
 
 ### spring-ai-payments
-AgentCore Payments example: an agent paying for x402 APIs on a testnet. Demonstrates:
+AgentCore Payments example: an agent paying for x402 and MPP APIs on testnets. Demonstrates:
 - Paying through a `RestClient` interceptor in a domain tool
 - The generic `paidHttpRequest` tool and payment query tools
 - An own integration with the JDK `HttpClient` and `AgentCorePaymentsClient`

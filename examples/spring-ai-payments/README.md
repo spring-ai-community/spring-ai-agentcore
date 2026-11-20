@@ -1,14 +1,14 @@
 # Spring AI AgentCore Payments Example
 
-An AgentCore Runtime agent that pays for x402-protected APIs through [AgentCore Payments](../../spring-ai-agentcore-payments/), on the Base Sepolia testnet (no real money). One agent shows the three integration approaches side by side; the request field `approach` selects one.
+An AgentCore Runtime agent that pays for paid APIs through [AgentCore Payments](../../spring-ai-agentcore-payments/), on testnets (no real money): x402 merchants on Base Sepolia and an MPP merchant on Tempo Moderato. The merchant's `402` decides the protocol; the agent code is the same for both. One agent shows the three integration approaches side by side; the request field `approach` selects one.
 
 | `approach` | Way | Code | Paid endpoint |
 |---|---|---|---|
 | `interceptor` (default) | 1. HTTP client interceptor: domain tool on a `RestClient` with `AgentCorePaymentsClientHttpRequestInterceptor` | [`MarketRecapTools`](src/main/java/com/unicorn/payments/MarketRecapTools.java), [`PaymentsConfiguration`](src/main/java/com/unicorn/payments/PaymentsConfiguration.java) | market recap |
-| `tool` | 2. `paidHttpRequest` tool plus payment query tools; the prompt names the URL | auto-configured `AgentCorePaymentsTools`, enabled for the two test merchants in `application.properties` | URL from the prompt, allowed hosts only |
+| `tool` | 2. `paidHttpRequest` tool plus payment query tools; the prompt names the URL | auto-configured `AgentCorePaymentsTools`, enabled for the three test merchants in `application.properties` | URL from the prompt, allowed hosts only: the x402 merchants or the MPP merchant `mpp.dev` |
 | `custom` | 3. Own integration: domain tool on the JDK `HttpClient` calling `AgentCorePaymentsClient.generatePaymentHeader(...)` | [`FortuneTools`](src/main/java/com/unicorn/payments/FortuneTools.java) | fortune reading |
 
-All three pay from the budget of the conversation: [`PaymentsAgent`](src/main/java/com/unicorn/payments/PaymentsAgent.java) calls `PaymentSessionRegistry.getOrCreate(userId, runtimeSessionId)` once per invocation (0.10 USD for 30 minutes, see `application.properties`) and passes user and payment session to the tools through the tool context.
+All three pay from the budget of the conversation: [`PaymentsAgent`](src/main/java/com/unicorn/payments/PaymentsAgent.java) calls `PaymentSessionRegistry.getOrCreate(userId, runtimeSessionId)` once per invocation (0.50 USD for 30 minutes, see `application.properties`) and passes user and payment session to the tools through the tool context.
 
 ```
 POST /invocations ──► PaymentsAgent ── getOrCreate(user, runtime session) ──► payment session (budget)
@@ -20,7 +20,7 @@ POST /invocations ──► PaymentsAgent ── getOrCreate(user, runtime sessi
 ## Prerequisites
 
 - Java 17+, Maven, AWS credentials with access to Amazon Bedrock and AgentCore Payments.
-- A payment manager, connector and a **funded** payment instrument (wallet) with signing delegated to the agent. [`terraform/`](terraform/README.md) sets them up in seven steps (Stripe Privy, test USDC from the Circle faucet).
+- A payment manager, connector and a **funded** payment instrument (wallet) with signing delegated to the agent. [`terraform/`](terraform/README.md) sets them up in seven steps: the Privy app and keys, the AgentCore resources, the wallet, funding (test USDC on Base Sepolia for x402, test pathUSD on Tempo Moderato for MPP) and "Connect agent" in the Privy frontend.
 
 ## Running
 
@@ -47,6 +47,15 @@ curl -X POST http://localhost:8080/invocations \
   -d '{"prompt":"Give me a short recap of recent prediction-market activity.","approach":"interceptor"}'
 ```
 
+To pay the MPP merchant, ask the `tool` approach for its URL:
+
+```bash
+curl -X POST http://localhost:8080/invocations \
+  -H 'Content-Type: application/json' \
+  -H 'X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: example-session-0000000000000001' \
+  -d '{"prompt":"Fetch https://mpp.dev/api/ping/paid and tell me what it returned.","approach":"tool"}'
+```
+
 The log shows each payment, for example `GET https://drvd12nxpcyd5.cloudfront.net/market-recap requires payment, paying through AgentCore Payments`. Requests with the same runtime session id share one budget; the `tool` approach can report the remaining budget through the `getPaymentSession` tool.
 
 ## Configuration
@@ -55,8 +64,8 @@ The log shows each payment, for example `GET https://drvd12nxpcyd5.cloudfront.ne
 agentcore.payments.payment-manager-arn=${PAYMENT_MANAGER_ARN}
 agentcore.payments.payment-instrument-id=${PAYMENT_INSTRUMENT_ID}
 agentcore.payments.paid-http-tool.enabled=true
-agentcore.payments.paid-http-tool.allowed-hosts=drvd12nxpcyd5.cloudfront.net,sandbox.node4all.com
-agentcore.payments.session.max-spend=0.10     # budget per conversation (USD)
+agentcore.payments.paid-http-tool.allowed-hosts=drvd12nxpcyd5.cloudfront.net,sandbox.node4all.com,mpp.dev
+agentcore.payments.session.max-spend=0.50     # budget per conversation (USD); the MPP merchant costs 0.10
 agentcore.payments.session.expiry=30m
 app.payments.region=${PAYMENT_REGION:us-east-1}
 spring.ai.bedrock.converse.chat.options.model=global.anthropic.claude-sonnet-4-5-20250929-v1:0

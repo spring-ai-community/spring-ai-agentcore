@@ -17,6 +17,7 @@
 package org.springaicommunity.agentcore.payments.core;
 
 import org.jspecify.annotations.Nullable;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.springframework.http.HttpHeaders;
 
@@ -32,5 +33,16 @@ public record PaymentRequired(int statusCode, HttpHeaders headers, @Nullable Str
 
 	/** HTTP status code for Payment Required. */
 	public static final int PAYMENT_REQUIRED_STATUS = 402;
+
+	/**
+	 * Whether the response offers a valid MPP challenge
+	 * ({@code WWW-Authenticate: Payment ...}). Paying it sends the credential in the
+	 * {@code Authorization} header of the retried request, replacing any credential the
+	 * request already carries.
+	 * @return {@code true} if an MPP challenge is offered
+	 */
+	public boolean offersMpp() {
+		return !MppChallenge.parse(this.headers, JsonMapper.shared()).isEmpty();
+	}
 
 }

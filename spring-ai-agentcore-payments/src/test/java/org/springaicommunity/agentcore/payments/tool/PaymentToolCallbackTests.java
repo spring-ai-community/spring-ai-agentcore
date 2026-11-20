@@ -16,8 +16,10 @@
 
 package org.springaicommunity.agentcore.payments.tool;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -177,6 +179,23 @@ class PaymentToolCallbackTests {
 
 		assertThatExceptionOfType(ToolExecutionException.class).isThrownBy(() -> this.paying(tool).call("{}"))
 			.withMessageContaining("no 'headers' object");
+		then(this.payments).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void doesNotPayMppWhenToolInputHasItsOwnAuthorizationHeader() {
+		String request = Base64.getUrlEncoder()
+			.withoutPadding()
+			.encodeToString("{\"methodDetails\":{\"chainId\":42431}}".getBytes(StandardCharsets.UTF_8));
+		String mppRequired = PaymentToolCallback.PAYMENT_REQUIRED_MARKER
+				+ "{\"statusCode\":402,\"headers\":{\"WWW-Authenticate\":\"Payment id=\\\"c1\\\", "
+				+ "realm=\\\"m\\\", method=\\\"tempo\\\", intent=\\\"charge\\\", request=\\\"" + request
+				+ "\\\"\"},\"body\":null}";
+		RecordingTool tool = new RecordingTool((input) -> mppRequired);
+
+		assertThatExceptionOfType(ToolExecutionException.class)
+			.isThrownBy(() -> this.paying(tool).call("{\"headers\":{\"authorization\":\"Bearer api-token\"}}"))
+			.withMessageContaining("already sends an Authorization header");
 		then(this.payments).shouldHaveNoInteractions();
 	}
 

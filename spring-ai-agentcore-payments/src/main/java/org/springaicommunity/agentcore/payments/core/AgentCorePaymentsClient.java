@@ -16,6 +16,7 @@
 
 package org.springaicommunity.agentcore.payments.core;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -37,6 +38,7 @@ import software.amazon.awssdk.services.bedrockagentcore.model.CryptoX402PaymentO
 import software.amazon.awssdk.services.bedrockagentcore.model.Currency;
 import software.amazon.awssdk.services.bedrockagentcore.model.GetPaymentInstrumentBalanceResponse;
 import software.amazon.awssdk.services.bedrockagentcore.model.InstrumentBalanceToken;
+import software.amazon.awssdk.services.bedrockagentcore.model.MppPaymentInput;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInput;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInstrument;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInstrumentSummary;
@@ -57,7 +59,10 @@ import org.springframework.util.Assert;
  * Thin wrapper over the Amazon Bedrock AgentCore Payments data plane, bound to one
  * payment manager. Besides payment instruments and sessions it turns an HTTP
  * {@code 402 Payment Required} response into the header that pays for the retried request
- * ({@link #generatePaymentHeader}). Supports the x402 protocol, versions 1 and 2.
+ * ({@link #generatePaymentHeader}). Supports the x402 protocol, versions 1 and 2, and the
+ * {@code charge} intent of the Machine Payments Protocol (MPP). When a response offers
+ * both, MPP is paid; x402 is used only if no MPP challenge can be paid by the payment
+ * instrument.
  * <p>
  * Thread-safe. AWS SDK exceptions propagate unchanged, except two
  * {@code ValidationException}s of {@code ProcessPayment}, recognized by their message
@@ -71,6 +76,9 @@ import org.springframework.util.Assert;
 public class AgentCorePaymentsClient {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCorePaymentsClient.class);
+
+	/** MPP version sent to ProcessPayment. */
+	private static final String MPP_VERSION = "1";
 
 	private static final Pattern PERMIT2_ALLOWANCE_LIMIT = Pattern.compile("[0-9]{1,78}");
 
@@ -102,6 +110,8 @@ public class AgentCorePaymentsClient {
 
 	private final @Nullable String permit2AllowanceLimit;
 
+	private final @Nullable Boolean buyerPaysGasFees;
+
 	// Exact decimals: a double would lose digits of an amount, and an out-of-range number
 	// such as 1e348 would become Infinity, which cannot be sent to the service.
 	private final JsonMapper jsonMapper = JsonMapper.builder()
@@ -132,6 +142,25 @@ public class AgentCorePaymentsClient {
 	 */
 	public AgentCorePaymentsClient(BedrockAgentCoreClient client, String paymentManagerArn, @Nullable String agentName,
 			List<String> networkPreferences, @Nullable String permit2AllowanceLimit) {
+		this(client, paymentManagerArn, agentName, networkPreferences, permit2AllowanceLimit, null);
+	}
+
+	/**
+	 * Creates a client.
+	 * @param client the AgentCore data plane client
+	 * @param paymentManagerArn the payment manager ARN
+	 * @param agentName agent name sent with data plane calls, may be {@code null}
+	 * @param networkPreferences network identifiers used to choose between payment
+	 * options, most preferred first
+	 * @param permit2AllowanceLimit the Permit2 allowance for the x402 {@code upto}
+	 * scheme, in the asset's smallest unit; {@code null} to not grant one
+	 * @param buyerPaysGasFees MPP only: {@code true} lets the service charge blockchain
+	 * network fees to the user's wallet when the merchant does not sponsor them;
+	 * {@code null} to not send the flag
+	 */
+	public AgentCorePaymentsClient(BedrockAgentCoreClient client, String paymentManagerArn, @Nullable String agentName,
+			List<String> networkPreferences, @Nullable String permit2AllowanceLimit,
+			@Nullable Boolean buyerPaysGasFees) {
 		Assert.notNull(client, "client must not be null");
 		Assert.hasText(paymentManagerArn, "paymentManagerArn must not be empty");
 		Assert.notNull(networkPreferences, "networkPreferences must not be null");
@@ -142,6 +171,7 @@ public class AgentCorePaymentsClient {
 		this.agentName = agentName;
 		this.networkPreferences = List.copyOf(networkPreferences);
 		this.permit2AllowanceLimit = permit2AllowanceLimit;
+		this.buyerPaysGasFees = buyerPaysGasFees;
 	}
 
 	/**
@@ -330,11 +360,13 @@ public class AgentCorePaymentsClient {
 	/**
 	 * Pays for a resource that answered {@code 402 Payment Required} and returns the
 	 * header to send when retrying the request. Selects the payment option matching the
-	 * instrument's network and the configured preferences, then signs it through
-	 * {@code ProcessPayment} within the session budget.
+	 * instrument's network and the configured preferences (an MPP challenge if one can be
+	 * paid, otherwise an x402 option), then signs it through {@code ProcessPayment}
+	 * within the session budget.
 	 * @param context user, payment instrument and payment session to pay with
 	 * @param response the {@code 402} response
-	 * @return {@code X-PAYMENT} (x402 v1) or {@code PAYMENT-SIGNATURE} (x402 v2) header
+	 * @return {@code X-PAYMENT} (x402 v1), {@code PAYMENT-SIGNATURE} (x402 v2) or
+	 * {@code Authorization: Payment ...} (MPP) header
 	 * @throws PaymentConfigurationException if user, instrument or session is missing
 	 * @throws PaymentException if the response cannot be paid
 	 */
@@ -352,7 +384,8 @@ public class AgentCorePaymentsClient {
 	 * @param context user, payment instrument and payment session to pay with
 	 * @param response the {@code 402} response
 	 * @param clientToken the idempotency token of this purchase
-	 * @return {@code X-PAYMENT} (x402 v1) or {@code PAYMENT-SIGNATURE} (x402 v2) header
+	 * @return {@code X-PAYMENT} (x402 v1), {@code PAYMENT-SIGNATURE} (x402 v2) or
+	 * {@code Authorization: Payment ...} (MPP) header
 	 * @throws PaymentConfigurationException if user, instrument or session is missing
 	 * @throws PaymentException if the response cannot be paid
 	 */
@@ -367,10 +400,19 @@ public class AgentCorePaymentsClient {
 		String paymentInstrumentId = context.requirePaymentInstrumentId();
 		String paymentSessionId = context.requirePaymentSessionId();
 
-		X402PaymentRequirements requirements = X402PaymentRequirements.parse(response, this.jsonMapper);
+		List<MppChallenge> challenges = MppChallenge.parse(response.headers(), this.jsonMapper);
+		X402PaymentRequirements requirements = (challenges.isEmpty())
+				? X402PaymentRequirements.parse(response, this.jsonMapper) : null;
 		String instrumentNetwork = this.instrumentNetworks.get(paymentInstrumentId,
 				(id) -> instrumentNetwork(this.getPaymentInstrument(userId, id)));
 		try {
+			if (requirements == null) {
+				MppChallenge challenge = this.selectMppChallenge(challenges, instrumentNetwork, response);
+				if (challenge != null) {
+					return this.payMpp(challenge, userId, paymentInstrumentId, paymentSessionId, clientToken);
+				}
+				requirements = X402PaymentRequirements.parse(response, this.jsonMapper);
+			}
 			return this.pay(requirements, instrumentNetwork, userId, paymentInstrumentId, paymentSessionId,
 					clientToken);
 		}
@@ -412,6 +454,53 @@ public class AgentCorePaymentsClient {
 		}
 		JsonNode proof = DocumentConverter.toJsonNode(output.payload());
 		return requirements.buildHeader(accept, proof);
+	}
+
+	// Selects the MPP challenge to pay, or returns null when none can be paid but the
+	// response also offers x402. Falling back is only allowed here, before
+	// ProcessPayment:
+	// after a payment was submitted, paying x402 could charge twice.
+	private @Nullable MppChallenge selectMppChallenge(List<MppChallenge> challenges, String instrumentNetwork,
+			PaymentRequired response) {
+		try {
+			return MppChallenge.select(challenges, instrumentNetwork, this.networkPreferences, Instant.now());
+		}
+		catch (MppChallenge.MppSelectionException ex) {
+			if (!this.offersX402(response)) {
+				throw ex;
+			}
+			logger.info("{}; paying the x402 option of the same 402 response instead", ex.getMessage());
+			return null;
+		}
+	}
+
+	private boolean offersX402(PaymentRequired response) {
+		try {
+			X402PaymentRequirements.parse(response, this.jsonMapper);
+			return true;
+		}
+		catch (PaymentException ex) {
+			return false;
+		}
+	}
+
+	private PaymentHeader payMpp(MppChallenge challenge, String userId, String paymentInstrumentId,
+			String paymentSessionId, String clientToken) {
+		MppPaymentInput.Builder input = MppPaymentInput.builder()
+			.version(MPP_VERSION)
+			.wwwAuthenticateHeaders(challenge.raw());
+		if (this.buyerPaysGasFees != null) {
+			input.buyerPaysGasFees(this.buyerPaysGasFees);
+		}
+		logger.debug("Paying MPP challenge {} (method {}, network {}) for user {}", challenge.id(), challenge.method(),
+				challenge.network(), userId);
+		ProcessPaymentResponse payment = this.processPayment((builder) -> builder.userId(userId)
+			.clientToken(clientToken)
+			.paymentSessionId(paymentSessionId)
+			.paymentInstrumentId(paymentInstrumentId)
+			.paymentType(PaymentType.MPP)
+			.paymentInput(PaymentInput.fromMpp(input.build())));
+		return challenge.buildHeader((payment.paymentOutput() != null) ? payment.paymentOutput().mpp() : null);
 	}
 
 	private static String instrumentNetwork(PaymentInstrument instrument) {

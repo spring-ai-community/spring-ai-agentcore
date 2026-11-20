@@ -1,6 +1,6 @@
 # AgentCore Payments test setup (Terraform)
 
-Creates the AgentCore Payments resources the example needs, with Stripe Privy as wallet provider and the Base Sepolia testnet (no real money). Steps marked **manual** cannot be automated: they create the Privy app or are consent steps of the wallet owner.
+Creates the AgentCore Payments resources the example needs, with Stripe Privy as wallet provider and testnets only (no real money): Base Sepolia for the x402 merchants, Tempo Moderato for the MPP merchant. Steps marked **manual** cannot be automated: they create the Privy app or are consent steps of the wallet owner.
 
 | Step | | What |
 |---|---|---|
@@ -55,7 +55,14 @@ Prints the wallet address, the instrument id and the environment variables for s
 
 ## 4. Fund the wallet and connect the agent (manual)
 
-1. **Fund**: [faucet.circle.com](https://faucet.circle.com) → *USDC*, *Base Sepolia*, paste the wallet address of step 3. No ETH is needed. The Privy dashboard lists testnet wallets with a balance of $0.00; `./check-wallet.sh` (step 5) shows the real balance.
+1. **Fund**:
+   - x402 merchants: [faucet.circle.com](https://faucet.circle.com) → *USDC*, *Base Sepolia*, paste the wallet address of step 3. No ETH is needed.
+   - MPP merchant (`mpp.dev`): pathUSD on the Tempo Moderato testnet, same wallet address. The merchant pays the network fee, so nothing else is needed:
+     ```bash
+     curl -X POST https://tempo.com/developers/api/faucet -H 'Content-Type: application/json' \
+       -d '{"address": "<wallet address of step 3>"}'
+     ```
+   The Privy dashboard lists testnet wallets with a balance of $0.00; `./check-wallet.sh` (step 5) shows the real balances. Only Stripe Privy wallets can sign Tempo payments; Coinbase wallets cannot.
 2. **Connect the agent** (grants signing permission to the authorization key) with the reference frontend of AWS and Privy:
    ```bash
    git clone https://github.com/privy-io/aws-agentcore-sdk   # once
@@ -82,7 +89,7 @@ Prints the wallet address, the instrument id and the environment variables for s
 ./check-wallet.sh <instrument-id>
 ```
 
-Shows status and balance. Missing signing permission only shows when paying: `403 Privy credentials are invalid` means step 4.2 is missing.
+Shows status and both balances (USDC on Base Sepolia, pathUSD on Tempo Moderato). Missing signing permission only shows when paying: `403 Privy credentials are invalid` means step 4.2 is missing.
 
 ## 6. Run the example
 

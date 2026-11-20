@@ -1,8 +1,8 @@
 # Spring AI AgentCore Payments
 
-Spring Boot integration for the [Amazon Bedrock AgentCore Payments](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments.html) **data plane**. It lets Spring AI agents pay for paid APIs, MCP servers and content that answer `HTTP 402 Payment Required`, using the [x402](https://www.x402.org/) protocol (versions 1 and 2) and stablecoin wallets, within the spending limits of a payment session.
+Spring Boot integration for the [Amazon Bedrock AgentCore Payments](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments.html) **data plane**. It lets Spring AI agents pay for paid APIs, MCP servers and content that answer `HTTP 402 Payment Required`, using the [x402](https://www.x402.org/) protocol (versions 1 and 2) or the [Machine Payments Protocol](https://mpp.dev) (MPP) and stablecoin wallets, within the spending limits of a payment session.
 
-> **Preview.** x402 only; APIs and properties may change in future releases. See [Next steps](#next-steps).
+> **Preview.** x402 and the MPP `charge` intent; APIs and properties may change in future releases. See [Next steps](#next-steps).
 
 ## Dependency
 
@@ -35,8 +35,9 @@ The module is enabled by setting the payment manager ARN.
 | `agentcore.payments.session.expiry` | `60m` | Lifetime of those sessions, 15 to 480 minutes |
 | `agentcore.payments.session.max-entries` | `10000` | Maximum number of sessions the registry remembers |
 | `agentcore.payments.agent-name` | — | Agent name sent with data plane calls |
-| `agentcore.payments.network-preferences` | Solana / Base mainnets first, then testnets | Order used to choose between the networks a merchant accepts |
+| `agentcore.payments.network-preferences` | Solana / Base mainnets first, then testnets | Order used to choose between the networks a merchant accepts. MPP challenges are matched as `eip155:<chainId>` (EVM, Tempo) or `solana-mainnet` / `solana-devnet` / `solana-testnet`; unlisted networks still pay when nothing listed is offered |
 | `agentcore.payments.permit2-allowance-limit` | — | Permit2 allowance for the x402 `upto` scheme, in the asset's smallest unit |
+| `agentcore.payments.buyer-pays-gas-fees` | — | MPP only. `true` lets AgentCore Payments charge blockchain network fees to the user's wallet, on top of the amount, when the merchant does not sponsor them (`methodDetails.feePayer` not `true`); unset or `false`, such challenges are rejected by the service |
 | `agentcore.payments.post-payment-delay` | `3s` | Blocking wait before the paid request is sent again. x402 authorizations carry a `validAfter` time; merchants that settle on chain right away can reject an authorization that is not valid yet. `0` disables the wait |
 | `agentcore.payments.paid-http-tool.enabled` | `false` | Register the `paidHttpRequest` tool; requires `allowed-hosts` |
 | `agentcore.payments.paid-http-tool.allowed-hosts` | — | Hosts the tool may call and pay: exact hostnames (case-insensitive, port ignored) or `*.example.com` for subdomains. Startup fails if the tool is enabled without it |
@@ -139,6 +140,20 @@ Every call is a new purchase with a random idempotency token. If your own code r
 
 `PaymentToolCallback` (`AgentCorePaymentsToolCallbacks.wrap(...)`) is a fallback for tools that cannot use the interceptor: the tool returns `PAYMENT_REQUIRED: {"statusCode":402,"headers":{...},"body":...}` on `402` and must declare a `headers` object in its input, which receives the payment header; tools without it are not paid.
 
+### Protocols: x402 and MPP
+
+The merchant's `402` decides the protocol; nothing is configured per protocol, and every way above pays both.
+
+| | x402 | MPP (`charge` intent) |
+|---|---|---|
+| Merchant sends | `Payment-Required` header (v2) or JSON body (v1) with `accepts` | `WWW-Authenticate: Payment id=.., method=.., intent=charge, request=..` |
+| Retry header | `PAYMENT-SIGNATURE` (v2) or `X-PAYMENT` (v1) | `Authorization: Payment <credential>` |
+| Wallets | Ethereum (Base) and Solana | `evm` and `tempo` methods: Ethereum wallets; `solana`: Solana wallets. Tempo is signed by Stripe Privy wallets only |
+
+When a `402` offers both, MPP is paid, as in the AWS SDK for Python. x402 is used only when no MPP challenge can be paid with the wallet (expired, another intent, or a method of another blockchain), and only before anything is signed: a payment that fails after signing is never retried with the other protocol.
+
+MPP sends the credential in the `Authorization` header. If the request already has one, for example an API token, the interceptor and `PaymentToolCallback` do not pay and throw a `PaymentException`: the payment would replace the request's own credential.
+
 ### Who pays: user, instrument and session
 
 All ways resolve a `PaymentContext` (user, payment instrument, payment session). Defaults come from the `agentcore.payments.*` properties; tool context values override them per request:
@@ -185,7 +200,7 @@ The registry knows when a session expires because it sets the expiry itself; it 
 
 ### Errors
 
-Payment failures are `PaymentException`s: `InsufficientBudgetException` (the session budget is used up), `PaymentSessionNotFoundException` (the session has expired, was deleted or never existed; AgentCore does not tell these apart), `PaymentConfigurationException` (missing user, instrument or session) or `PaymentException`, for example for a `402` that uses the Machine Payments Protocol, which is not supported yet. Raised inside a tool, they reach Spring AI as `ToolExecutionException`; by default Spring AI returns the message to the model. Set `spring.ai.tools.throw-exception-on-error=true` to handle them in the application.
+Payment failures are `PaymentException`s: `InsufficientBudgetException` (the session budget is used up), `PaymentSessionNotFoundException` (the session has expired, was deleted or never existed; AgentCore does not tell these apart), `PaymentConfigurationException` (missing user, instrument or session) or `PaymentException`, for example when no payment option of the `402` fits the wallet. Raised inside a tool, they reach Spring AI as `ToolExecutionException`; by default Spring AI returns the message to the model. Set `spring.ai.tools.throw-exception-on-error=true` to handle them in the application.
 
 When the budget is used up, every further payment of the conversation fails until the application grants a new one. Recommended pattern:
 
@@ -208,7 +223,7 @@ AgentCore Payments reports a used-up budget and a missing session only in the er
 
 ## End-to-end test (Stripe Privy, Base Sepolia testnet)
 
-`AgentCorePaymentsIT` pays a real x402 merchant through AgentCore Payments with testnet USDC (no real money). It follows the AWS [quick start](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-getting-started.html) with Stripe Privy as wallet provider. Coinbase works the same way but additionally requires the AWS Marketplace subscription *Coinbase Wallets for AgentCore Payments*.
+`AgentCorePaymentsIT` pays a real merchant through AgentCore Payments with testnet stablecoins (no real money); the merchant's `402` decides between x402 and MPP. It follows the AWS [quick start](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/payments-getting-started.html) with Stripe Privy as wallet provider. Coinbase works the same way but additionally requires the AWS Marketplace subscription *Coinbase Wallets for AgentCore Payments*.
 
 ### Components
 
@@ -286,7 +301,24 @@ AGENTCORE_PAYMENTS_URL=https://sandbox.node4all.com/v1/x402-test \
 mvn verify -Pintegration -pl spring-ai-agentcore-payments
 ```
 
-Test merchants on Base Sepolia: `https://sandbox.node4all.com/v1/x402-test` (AWS quick start sandbox, 0.002 USDC) and `https://drvd12nxpcyd5.cloudfront.net/market-recap` (0.001 USDC). Each payment appears on chain as a USDC transfer from the wallet to the merchant, submitted by the merchant's facilitator (EIP-3009 `transferWithAuthorization`). It is listed under *Token transfers* of the wallet address in the [Base Sepolia explorer](https://sepolia.basescan.org), not as a transaction sent by the wallet. The Privy dashboard shows mainnet balances only; query testnet balance and transfers with the Privy API:
+For MPP, set `AGENTCORE_PAYMENTS_URL=https://mpp.dev/api/ping/paid`; the wallet needs pathUSD on Tempo Moderato (see below).
+
+Test merchants:
+
+| URL | Protocol | Network | Price |
+|---|---|---|---|
+| `https://sandbox.node4all.com/v1/x402-test` | x402 v2 | Base Sepolia | 0.002 USDC (AWS quick start sandbox) |
+| `https://drvd12nxpcyd5.cloudfront.net/market-recap` | x402 v2 | Base Sepolia | 0.001 USDC |
+| `https://mpp.dev/api/ping/paid` | MPP `tempo` | Tempo Moderato testnet (chain 42431) | 0.1 pathUSD, network fee paid by the merchant |
+
+The MPP merchant is paid in pathUSD on Tempo Moderato, not in USDC on Base Sepolia. The Privy wallet uses the same address on both chains; fund it once from the Tempo faucet:
+
+```bash
+curl -X POST https://tempo.com/developers/api/faucet -H 'Content-Type: application/json' \
+  -d '{"address": "<wallet address>"}'
+```
+
+On Base Sepolia,  each payment appears on chain as a USDC transfer from the wallet to the merchant, submitted by the merchant's facilitator (EIP-3009 `transferWithAuthorization`). It is listed under *Token transfers* of the wallet address in the [Base Sepolia explorer](https://sepolia.basescan.org), not as a transaction sent by the wallet. The Privy dashboard shows mainnet balances only; query testnet balance and transfers with the Privy API:
 
 ```bash
 curl -u "$PRIVY_APP_ID:$PRIVY_APP_SECRET" -H "privy-app-id: $PRIVY_APP_ID" \
@@ -297,6 +329,7 @@ curl -u "$PRIVY_APP_ID:$PRIVY_APP_SECRET" -H "privy-app-id: $PRIVY_APP_ID" \
 
 Since 2.3.0:
 
+- MPP (`charge` intent) is supported next to x402; the previous "MPP is not supported yet" error is gone. New property `agentcore.payments.buyer-pays-gas-fees`, which adds a component to the `AgentCorePaymentsProperties` record.
 - `AgentCorePaymentsTemplate` is renamed to `AgentCorePaymentsClient`, in line with Spring's `RestClient` and `ChatClient`. The old name remains as a deprecated subclass until 3.0.0, and the auto-configured bean can be injected under either name.
 
 Changes against earlier snapshots of this preview module:
@@ -314,8 +347,7 @@ Differences from the configuration proposed in [#230](https://github.com/spring-
 
 ## Next steps
 
-- **MPP** (Machine Payments Protocol, `WWW-Authenticate: Payment` / `Authorization: Payment`): challenge parsing and selection, `buyerPaysGasFees`, fallback to x402 when no MPP challenge is payable.
-- **MCP Gateway tools**: paid tools behind AgentCore Gateway report x402 requirements in `structuredContent`, which Spring AI's MCP `ToolCallback` drops; needs a callback over `McpSyncClient`.
+- **MCP Gateway tools**: paid tools behind AgentCore Gateway report x402 requirements in `structuredContent` (MPP challenges in `responseHeaders`), which Spring AI's MCP `ToolCallback` drops; needs a callback over `McpSyncClient`.
 - **Runtime session from AgentCore Runtime**: once the runtime starter offers the current runtime session and user, `PaymentSessionRegistry` can take them automatically.
 - **Onboarding helper** (opt-in): when the user has no payment instrument, find or create one and return an onboarding link (Coinbase `redirectUrl` or a configured Privy frontend URL) so the user can fund the wallet and connect the agent; map Privy's "credentials are invalid" (missing delegation) to the same message.
 - **CUSTOM_JWT** authorizer (bearer token instead of SigV4).

@@ -16,6 +16,15 @@ X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: example-session-0000000000000001
 { "prompt" : "Fetch https://sandbox.node4all.com/v1/x402-test and summarize it in one sentence. Then tell me the remaining budget of my payment session.", "approach" : "tool" }
 
 
+### Way 2 with MPP: the same tool pays the Machine Payments Protocol merchant (Tempo Moderato testnet)
+
+POST http://localhost:8080/invocations
+Content-Type: application/json
+X-Amzn-Bedrock-AgentCore-Runtime-Session-Id: example-session-0000000000000001
+
+{ "prompt" : "Fetch https://mpp.dev/api/ping/paid and tell me what it returned.", "approach" : "tool" }
+
+
 ### Way 3: own integration (domain tool on the JDK HttpClient paying through AgentCorePaymentsClient)
 
 POST http://localhost:8080/invocations
