@@ -32,7 +32,7 @@ PATH_USD_HEX=$(curl -s https://rpc.moderato.tempo.xyz -H 'Content-Type: applicat
 PATH_USD=$(printf '%d' "0x${PATH_USD_HEX:-0}")
 echo "Wallet $WALLET: balance $(awk "BEGIN { printf \"%.6f\", $PATH_USD / 1000000 }") pathUSD (Tempo Moderato)"
 if [ "$PATH_USD" = "0" ]; then
-  echo "Fund the wallet with pathUSD on Tempo Moderato (for MPP): README.md, step 4"
+  echo "Fund the wallet with pathUSD on Tempo Moderato (for MPP): ../README.md, Setup step 4"
 fi
 echo "Signing permission cannot be checked here: if payments fail with 'Privy credentials are invalid',"
-echo "click \"Connect agent\" in the Privy frontend (README.md, step 4)."
+echo "click \"Connect agent\" in the Privy frontend (../README.md, Setup step 4)."
