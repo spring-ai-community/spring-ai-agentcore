@@ -29,7 +29,7 @@ spring-ai-agentcore/
 | `memory` | Spring AI ChatMemory + Session API integration | `AgentCoreShortTermMemoryRepositoryAutoConfiguration.java`, `AgentCoreLongTermMemoryAutoConfiguration.java`, `AgentCoreSessionRepositoryAutoConfiguration.java` |
 | `browser` | Browser automation tools | `AgentCoreBrowserAutoConfiguration.java` |
 | `codeinterpreter` | Code execution tools | `AgentCoreCodeInterpreterAutoConfiguration.java` |
-| `payments` | x402 payments: `AgentCorePaymentsTemplate`, `AgentCorePaymentsClientHttpRequestInterceptor` (RestClient), `paidHttpRequest` + query tools, `PaymentToolCallback` | `AgentCorePaymentsAutoConfiguration.java` |
+| `payments` | x402 payments: `AgentCorePaymentsClient`, `AgentCorePaymentsClientHttpRequestInterceptor` (RestClient), `paidHttpRequest` + query tools, `PaymentToolCallback` | `AgentCorePaymentsAutoConfiguration.java` |
 
 ### Artifact Store Classes
 

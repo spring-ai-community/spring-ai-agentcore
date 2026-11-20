@@ -19,7 +19,7 @@ package org.springaicommunity.agentcore.payments.client;
 import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
-import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import org.springaicommunity.agentcore.payments.core.PaymentException;
 import org.springaicommunity.agentcore.payments.core.PaymentHeader;
@@ -58,7 +58,7 @@ class AgentCorePaymentsClientHttpRequestInterceptorTests {
 
 	private static final PaymentContext DEFAULTS = new PaymentContext("user-1", "instrument-1", "session-1");
 
-	private final AgentCorePaymentsTemplate payments = mock(AgentCorePaymentsTemplate.class);
+	private final AgentCorePaymentsClient payments = mock(AgentCorePaymentsClient.class);
 
 	private final RestClient.Builder builder = RestClient.builder()
 		.requestInterceptor(

@@ -24,7 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariables;
 import org.springaicommunity.agentcore.payments.client.AgentCorePaymentsClientHttpRequestInterceptor;
-import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.NetworkPreferences;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import org.springaicommunity.agentcore.payments.core.PaymentSessionRegistry;
@@ -65,7 +65,7 @@ class AgentCorePaymentsIT {
 		String userId = System.getenv("AGENTCORE_PAYMENTS_USER_ID");
 		String instrumentId = System.getenv("AGENTCORE_PAYMENTS_INSTRUMENT_ID");
 		try (BedrockAgentCoreClient client = BedrockAgentCoreClient.builder().region(Region.of(region)).build()) {
-			AgentCorePaymentsTemplate payments = new AgentCorePaymentsTemplate(client,
+			AgentCorePaymentsClient payments = new AgentCorePaymentsClient(client,
 					System.getenv("AGENTCORE_PAYMENTS_MANAGER_ARN"), "spring-ai-agentcore-it",
 					NetworkPreferences.DEFAULT, null);
 			PaymentSessionRegistry sessions = new PaymentSessionRegistry(payments, "1.00", Duration.ofMinutes(15), 10);

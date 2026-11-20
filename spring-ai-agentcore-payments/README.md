@@ -19,7 +19,7 @@ Payment resources are created outside the application (AgentCore console, CLI, o
 
 1. **Payment manager** with a **payment connector** (Coinbase CDP or Stripe Privy credentials, stored in AgentCore Identity).
 2. **Payment instrument** (embedded crypto wallet) per user. The end user must fund it and grant signing permission, for Coinbase via the `redirectUrl` returned on creation.
-3. **Payment session** per conversation or task: maximum spend (USD) and expiry (15–480 minutes), created by the application with `AgentCorePaymentsTemplate.createPaymentSession(...)`.
+3. **Payment session** per conversation or task: maximum spend (USD) and expiry (15–480 minutes), created by the application with `AgentCorePaymentsClient.createPaymentSession(...)`.
 
 ## Configuration
 
@@ -54,13 +54,13 @@ There are three ways to put this into your agent:
 |---|---|---|
 | 1 | **HTTP client interceptor** (recommended) | Your own tools for known paid APIs, built on Spring `RestClient` / `RestTemplate` / `@HttpExchange` |
 | 2 | **`paidHttpRequest` tool** | Agents that fetch arbitrary URLs chosen by the model |
-| 3 | **Template or tool wrapper** | Tools using any other HTTP client (OkHttp, JDK `HttpClient`, vendor SDKs) |
+| 3 | **Payments client or tool wrapper** | Tools using any other HTTP client (OkHttp, JDK `HttpClient`, vendor SDKs) |
 
 ```
  1. interceptor    model ──► your tool ──► RestClient + interceptor ──► paid API
  2. paidHttpRequest  model ──► paidHttpRequest ──► RestClient + interceptor ──► any URL
  3. other clients  model ──► your tool ──► any HTTP client ──► paid API
-                                │  402 → template.generatePaymentHeader(...) → retry
+                                │  402 → payments.generatePaymentHeader(...) → retry
                                 └─ or: return PAYMENT_REQUIRED marker, PaymentToolCallback pays
 ```
 
@@ -125,7 +125,7 @@ Use the tool with care: the model chooses the URLs, builds requests without an A
 
 ### 3. Other HTTP clients
 
-**Call the template** when your code receives the `402`:
+**Call `AgentCorePaymentsClient`** when your code receives the `402`:
 
 ```java
 PaymentHeader header = payments.generatePaymentHeader(
@@ -181,7 +181,7 @@ String chat(String question, AgentCoreContext context) {
 | New budget, for example after the user approved more spending | `renew(userId, runtimeSessionId, alias)` |
 | Conversation ended | `remove(userId, runtimeSessionId)` (optional; entries also disappear when their session expires) |
 
-The registry knows when a session expires because it sets the expiry itself; it uses the creation time and expiry returned by AgentCore Payments and drops an entry one minute before. An exhausted budget is not renewed automatically. The registry is in memory per application instance, which fits AgentCore Runtime where a runtime session stays on one instance. Applications that keep conversation state themselves can create sessions with `AgentCorePaymentsTemplate.createPaymentSession(...)` and store the id instead.
+The registry knows when a session expires because it sets the expiry itself; it uses the creation time and expiry returned by AgentCore Payments and drops an entry one minute before. An exhausted budget is not renewed automatically. The registry is in memory per application instance, which fits AgentCore Runtime where a runtime session stays on one instance. Applications that keep conversation state themselves can create sessions with `AgentCorePaymentsClient.createPaymentSession(...)` and store the id instead.
 
 ### Errors
 
@@ -204,7 +204,7 @@ catch (ToolExecutionException ex) {
 
 AgentCore Payments reports a used-up budget and a missing session only in the error message of a `ValidationException` ("Insufficient budget for session ..." and "Payment session not found: ..."; an expired session gets the latter too). The module maps these two messages; other validation errors, for example a wallet without enough funds, propagate unchanged as AWS SDK `ValidationException` and are logged at DEBUG.
 
-`AgentCorePaymentsTemplate` is thread-safe and uses the synchronous AWS client. AWS SDK exceptions propagate unchanged, except the budget and session-not-found rejections of `ProcessPayment` (see [Errors](#errors)).
+`AgentCorePaymentsClient` is thread-safe and uses the synchronous AWS client. AWS SDK exceptions propagate unchanged, except the budget and session-not-found rejections of `ProcessPayment` (see [Errors](#errors)).
 
 ## End-to-end test (Stripe Privy, Base Sepolia testnet)
 
@@ -294,6 +294,10 @@ curl -u "$PRIVY_APP_ID:$PRIVY_APP_SECRET" -H "privy-app-id: $PRIVY_APP_ID" \
 ```
 
 ## Changes
+
+Since 2.3.0:
+
+- `AgentCorePaymentsTemplate` is renamed to `AgentCorePaymentsClient`, in line with Spring's `RestClient` and `ChatClient`. The old name remains as a deprecated subclass until 3.0.0, and the auto-configured bean can be injected under either name.
 
 Changes against earlier snapshots of this preview module:
 

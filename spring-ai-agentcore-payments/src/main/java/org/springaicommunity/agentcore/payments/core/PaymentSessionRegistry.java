@@ -54,7 +54,7 @@ public class PaymentSessionRegistry {
 
 	private static final Duration MAX_EXPIRY = Duration.ofMinutes(480);
 
-	private final AgentCorePaymentsTemplate payments;
+	private final AgentCorePaymentsClient payments;
 
 	private final String defaultMaxSpendUsd;
 
@@ -64,18 +64,18 @@ public class PaymentSessionRegistry {
 
 	/**
 	 * Creates a registry.
-	 * @param payments the payments template used to create sessions
+	 * @param payments the payments client used to create sessions
 	 * @param defaultMaxSpendUsd the budget of new sessions in USD, for example
 	 * {@code "1.00"}
 	 * @param defaultExpiry the lifetime of new sessions, 15 to 480 minutes
 	 * @param maximumSize the maximum number of remembered sessions
 	 */
-	public PaymentSessionRegistry(AgentCorePaymentsTemplate payments, String defaultMaxSpendUsd, Duration defaultExpiry,
+	public PaymentSessionRegistry(AgentCorePaymentsClient payments, String defaultMaxSpendUsd, Duration defaultExpiry,
 			long maximumSize) {
 		this(payments, defaultMaxSpendUsd, defaultExpiry, maximumSize, Ticker.systemTicker());
 	}
 
-	PaymentSessionRegistry(AgentCorePaymentsTemplate payments, String defaultMaxSpendUsd, Duration defaultExpiry,
+	PaymentSessionRegistry(AgentCorePaymentsClient payments, String defaultMaxSpendUsd, Duration defaultExpiry,
 			long maximumSize, Ticker ticker) {
 		Assert.notNull(payments, "payments must not be null");
 		validateMaxSpend(defaultMaxSpendUsd);

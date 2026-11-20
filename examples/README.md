@@ -72,7 +72,7 @@ Browser automation example using AgentCore Browser. Features:
 AgentCore Payments example: an agent paying for x402 APIs on a testnet. Demonstrates:
 - Paying through a `RestClient` interceptor in a domain tool
 - The generic `paidHttpRequest` tool and payment query tools
-- An own integration with the JDK `HttpClient` and `AgentCorePaymentsTemplate`
+- An own integration with the JDK `HttpClient` and `AgentCorePaymentsClient`
 - One budget per conversation with `PaymentSessionRegistry`
 
 ### spring-ai-sse-chat-client

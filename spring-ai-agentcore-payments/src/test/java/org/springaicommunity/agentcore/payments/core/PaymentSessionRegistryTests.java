@@ -42,7 +42,7 @@ import static org.mockito.Mockito.never;
  */
 class PaymentSessionRegistryTests {
 
-	private final AgentCorePaymentsTemplate payments = mock(AgentCorePaymentsTemplate.class);
+	private final AgentCorePaymentsClient payments = mock(AgentCorePaymentsClient.class);
 
 	private final AtomicLong nanos = new AtomicLong();
 
