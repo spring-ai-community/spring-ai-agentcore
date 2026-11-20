@@ -120,15 +120,10 @@ class AgentCoreSessionRepositoryAutoConfigurationTests {
 	}
 
 	@Test
-	void defaultUserIdBindsToBuilder() {
+	void createsTheSessionMemoryAdvisor() {
 		this.contextRunner.withUserConfiguration(MockClientConfiguration.class)
-			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true",
-					"agentcore.memory.session.default-user-id=alice")
-			.run((context) -> {
-				AgentCoreSessionProperties props = context.getBean(AgentCoreSessionProperties.class);
-				assertThat(props.defaultUserId()).isEqualTo("alice");
-				assertThat(context).hasSingleBean(SessionMemoryAdvisor.class);
-			});
+			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true")
+			.run((context) -> assertThat(context).hasSingleBean(SessionMemoryAdvisor.class));
 	}
 
 	@Test
@@ -211,9 +206,8 @@ class AgentCoreSessionRepositoryAutoConfigurationTests {
 			.withPropertyValues("agentcore.memory.memory-id=test-memory", "agentcore.memory.session.enabled=true")
 			.run((context) -> {
 				assertThat(context).hasNotFailed();
-				assertThat(output.getOut())
-					.contains("'org.springaicommunity:spring-ai-session' is not on the classpath")
-					.contains("renamed from spring-ai-session-management");
+				assertThat(output.getOut()).contains("org.springframework.ai:spring-ai-session is not on the classpath")
+					.contains("replace the community org.springaicommunity:spring-ai-session artifact");
 			});
 	}
 

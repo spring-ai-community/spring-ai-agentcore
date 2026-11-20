@@ -109,7 +109,7 @@ This fixes: import ordering, `this.` qualifiers, lambda formatting, inner type p
 ## Key Dependencies
 
 - Spring Boot 4.x
-- Spring AI 2.0.0
+- Spring AI 2.1.0 (including the Session API: `spring-ai-session`, `spring-ai-session-advisor`)
 - AWS SDK v2 (`software.amazon.awssdk:bedrockagentcore`, `bedrockagentcorecontrol`)
 
 ## Integration Test Environment Variables

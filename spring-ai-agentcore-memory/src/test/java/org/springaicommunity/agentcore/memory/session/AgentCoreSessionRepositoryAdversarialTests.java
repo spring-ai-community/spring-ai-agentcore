@@ -18,7 +18,6 @@ package org.springaicommunity.agentcore.memory.session;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,7 +43,6 @@ import software.amazon.awssdk.services.bedrockagentcore.model.Role;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.session.EventFilter;
 import org.springframework.ai.session.SessionEvent;
-import org.springframework.ai.session.compaction.CompactionPlan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -249,18 +247,19 @@ class AgentCoreSessionRepositoryAdversarialTests {
 	}
 
 	@Test
-	void applyCompactionAlwaysThrowsUnsupportedOperation() {
-		// AgentCore events are immutable and the log has no CAS; applyCompaction always
-		// throws, regardless of arguments (including a null plan, a negative or stale
+	void appendEventsAlwaysThrowsUnsupportedOperation() {
+		// The AgentCore log has no CAS and no atomic batch write; appendEvents always
+		// throws, regardless of arguments (including a null batch, a negative or stale
 		// version, and an invalid sessionId), and never touches the client.
-		CompactionPlan empty = new CompactionPlan(Set.of(), List.of());
-		assertThatThrownBy(() -> this.repository.applyCompaction("alice:conv", empty, 0L))
+		List<SessionEvent> batch = List
+			.of(SessionEvent.builder().sessionId("alice:conv").message(new UserMessage("hi")).build());
+		assertThatThrownBy(() -> this.repository.appendEvents("alice:conv", batch, 0L))
 			.isInstanceOf(UnsupportedOperationException.class);
-		assertThatThrownBy(() -> this.repository.applyCompaction("alice:conv", null, -1L))
+		assertThatThrownBy(() -> this.repository.appendEvents("alice:conv", null, -1L))
 			.isInstanceOf(UnsupportedOperationException.class);
-		assertThatThrownBy(() -> this.repository.applyCompaction(null, empty, Long.MAX_VALUE))
+		assertThatThrownBy(() -> this.repository.appendEvents(null, batch, Long.MAX_VALUE))
 			.isInstanceOf(UnsupportedOperationException.class);
-		assertThatThrownBy(() -> this.repository.applyCompaction("", empty, 0L))
+		assertThatThrownBy(() -> this.repository.appendEvents("", batch, 0L))
 			.isInstanceOf(UnsupportedOperationException.class);
 		then(this.client).shouldHaveNoInteractions();
 	}

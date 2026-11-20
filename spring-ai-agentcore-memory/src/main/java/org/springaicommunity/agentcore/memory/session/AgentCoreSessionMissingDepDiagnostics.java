@@ -16,40 +16,61 @@
 
 package org.springaicommunity.agentcore.memory.session;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springframework.beans.factory.BeanClassLoaderAware;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.util.ClassUtils;
 
 /**
  * Startup diagnostic that emits a WARN when the operator has opted into the Session API
- * stack ({@code agentcore.memory.session.enabled=true}) but the
- * {@code org.springaicommunity:spring-ai-session} artifact (0.10.x; renamed from
- * {@code spring-ai-session-management} in 0.6.0) is not on the classpath. Prevents the
- * silent no-op that would otherwise result from
- * {@code @ConditionalOnClass(SessionRepository.class)} on the main session auto-config.
- * See issue #152 (finding I6).
+ * stack ({@code agentcore.memory.session.enabled=true}) but
+ * {@code org.springframework.ai:spring-ai-session} or
+ * {@code org.springframework.ai:spring-ai-session-advisor} is not on the classpath.
+ * Prevents the silent no-op that would otherwise result from {@code @ConditionalOnClass}
+ * on the main session auto-config. See issue #152 (finding I6).
  *
  * @author Spring AI Community
  */
 @AutoConfiguration
-@ConditionalOnMissingClass("org.springframework.ai.session.SessionRepository")
 @ConditionalOnProperty(prefix = AgentCoreSessionProperties.CONFIG_PREFIX, name = "enabled", havingValue = "true")
-public class AgentCoreSessionMissingDepDiagnostics implements InitializingBean {
+public class AgentCoreSessionMissingDepDiagnostics implements InitializingBean, BeanClassLoaderAware {
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreSessionMissingDepDiagnostics.class);
 
+	// The application's class loader, which the session auto-config conditions use too
+	private ClassLoader classLoader = AgentCoreSessionMissingDepDiagnostics.class.getClassLoader();
+
+	@Override
+	public void setBeanClassLoader(ClassLoader classLoader) {
+		this.classLoader = classLoader;
+	}
+
 	@Override
 	public void afterPropertiesSet() {
-		logger.warn("Property 'agentcore.memory.session.enabled=true' is set but "
-				+ "'org.springaicommunity:spring-ai-session' is not on the classpath. "
+		ClassLoader loader = this.classLoader;
+		List<String> missing = new ArrayList<>();
+		if (!ClassUtils.isPresent("org.springframework.ai.session.SessionRepository", loader)) {
+			missing.add("org.springframework.ai:spring-ai-session");
+		}
+		if (!ClassUtils.isPresent("org.springframework.ai.session.advisor.SessionMemoryAdvisor", loader)) {
+			missing.add("org.springframework.ai:spring-ai-session-advisor");
+		}
+		if (missing.isEmpty()) {
+			return;
+		}
+		logger.warn("Property 'agentcore.memory.session.enabled=true' is set but {} {} not on the classpath. "
 				+ "No session beans (AgentCoreSessionRepository, DefaultSessionService, SessionMemoryAdvisor) "
-				+ "will be created. Add org.springaicommunity:spring-ai-session 0.10.x to your pom.xml; "
-				+ "the artifact was renamed from spring-ai-session-management, so replace any old declaration. See "
-				+ "https://github.com/spring-ai-community/spring-ai-agentcore/issues/152");
+				+ "will be created. Add {} (versions managed by org.springframework.ai:spring-ai-bom 2.1); they "
+				+ "replace the community org.springaicommunity:spring-ai-session artifact. See "
+				+ "https://github.com/spring-ai-community/spring-ai-agentcore/issues/152",
+				String.join(" and ", missing), (missing.size() == 1) ? "is" : "are", String.join(" and ", missing));
 	}
 
 }

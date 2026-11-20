@@ -23,14 +23,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>
  * <strong>User id convention.</strong> The AgentCore-backed
- * {@link AgentCoreSessionRepository} derives {@code Session.userId} from the actor
+ * {@link AgentCoreSessionRepository} derives the session's principal from the actor
  * segment of the sessionId (parsed by
- * {@link org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser}).
- * Callers using {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY} must use the sessionId
- * format {@code "userId:sessionSuffix"} and pass that same user id under
- * {@code USER_ID_CONTEXT_KEY}. A mismatch triggers an {@link IllegalStateException} from
- * the advisor on the second turn. Both values are client-supplied input; derive them from
- * the authenticated principal (see the {@link AgentCoreSessionRepository} security note).
+ * {@link org.springaicommunity.agentcore.memory.AgentCoreMemoryConversationIdParser}), so
+ * sessions of users use the format {@code "userId:sessionSuffix"}. The sessionId is
+ * client-supplied input; derive its user segment from the authenticated principal (see
+ * the {@link AgentCoreSessionRepository} security note).
  *
  * <p>
  * <strong>Session-scoped tunables.</strong> {@code totalEventsLimit}, {@code pageSize},
@@ -43,8 +41,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @param enabled opt-in switch for the session-backed memory stack; defaults to
  * {@code false}
- * @param defaultUserId optional override for the {@code SessionMemoryAdvisor} built-in
- * default user id
  * @param totalEventsLimit session-scoped override for the maximum events to retrieve;
  * {@code null} falls back to short-term/legacy/default
  * @param pageSize session-scoped override for the AgentCore listEvents page size;
@@ -56,8 +52,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @author Spring AI Community
  */
 @ConfigurationProperties(AgentCoreSessionProperties.CONFIG_PREFIX)
-public record AgentCoreSessionProperties(Boolean enabled, String defaultUserId, Integer totalEventsLimit,
-		Integer pageSize, Boolean ignoreUnknownRoles, String defaultSession) {
+public record AgentCoreSessionProperties(Boolean enabled, Integer totalEventsLimit, Integer pageSize,
+		Boolean ignoreUnknownRoles, String defaultSession) {
 
 	/**
 	 * Configuration prefix for the session-backed memory stack.

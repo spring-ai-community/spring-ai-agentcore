@@ -53,10 +53,12 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.session.EventFilter;
+import org.springframework.ai.session.EventQuery;
+import org.springframework.ai.session.EventType;
 import org.springframework.ai.session.Session;
+import org.springframework.ai.session.SessionAttributes;
 import org.springframework.ai.session.SessionEvent;
 import org.springframework.ai.session.SessionRepository;
-import org.springframework.ai.session.compaction.CompactionPlan;
 
 /**
  * AgentCore-backed {@link SessionRepository}. Wraps an AgentCore memory resource; each
@@ -64,31 +66,21 @@ import org.springframework.ai.session.compaction.CompactionPlan;
  * sessionId, eventTimestamp).
  *
  * <h3>User id and session id</h3> AgentCore has no session-metadata store, so this
- * repository cannot persist the userId supplied on {@code CreateSessionRequest} across
- * restarts. It derives {@code Session.userId} from the actor segment of the sessionId
- * (parsed by {@link AgentCoreMemoryConversationIdParser}). When you also set
- * {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY}, use the sessionId format
- * {@code "userId:sessionSuffix"} and pass that same user id under the context key. On the
- * second turn the advisor compares {@code USER_ID_CONTEXT_KEY} against
- * {@code Session.userId()}; if the actor segment does not match,
- * {@code SessionMemoryAdvisor.before()} throws {@link IllegalStateException} with the
- * message "Session '...' does not belong to user '...'. Access denied." Callers that rely
- * only on the advisor's {@code defaultUserId} (no per-request context key) are
- * unaffected. This repository validates its own sessionId seam eagerly: null/blank ids
- * and empty segments (a leading colon, a trailing colon, whitespace-only segments) are
- * rejected up front with a clear {@link IllegalArgumentException}.
+ * repository cannot persist the metadata supplied on {@code CreateSessionRequest} across
+ * restarts. It derives the session's principal ({@link SessionAttributes#PRINCIPAL_NAME})
+ * from the actor segment of the sessionId (parsed by
+ * {@link AgentCoreMemoryConversationIdParser}), so use the sessionId format
+ * {@code "userId:sessionSuffix"} when sessions belong to users. This repository validates
+ * its own sessionId seam eagerly: null/blank ids and empty segments (a leading colon, a
+ * trailing colon, whitespace-only segments) are rejected up front with a clear
+ * {@link IllegalArgumentException}.
  *
  * <p>
- * <strong>Security.</strong> The sessionId (and therefore the derived
- * {@code Session.userId}) is client-supplied input. A caller that controls the
- * conversationId chooses the actor, and the advisor's ownership check compares two values
- * derived from that same string, so it does not by itself stop a hostile caller from
- * reading another user's session. Where an authenticated principal exists, the
+ * <strong>Security.</strong> The sessionId (and therefore the derived principal) is
+ * client-supplied input. A caller that controls the conversationId chooses the actor, so
+ * it can read another user's session. Where an authenticated principal exists, the
  * application layer must build the conversationId's actor segment from the principal,
- * never from unvalidated request input. Deriving only the {@code USER_ID_CONTEXT_KEY}
- * value from the principal is not enough: the advisor's ownership check runs only when
- * the target session already exists, so a first write to a fresh sessionId passes
- * regardless of the context key. See the module README security section.
+ * never from unvalidated request input. See the module README security section.
  *
  * <h3>Divergences from the {@link SessionRepository} contract</h3>
  * <ul>
@@ -97,9 +89,11 @@ import org.springframework.ai.session.compaction.CompactionPlan;
  * {@code session.withMetadata(...)}) is not persisted and will not be visible on a
  * subsequent {@link #findById(String)}. Do not rely on this method for metadata
  * persistence.</li>
- * <li>{@link #findByUserId(String)} maps {@code userId} to the AgentCore actor and lists
- * that actor's sessions. It returns compound ids of the form {@code "userId:sessionId"}
- * so the results round-trip through the other methods.</li>
+ * <li>{@link #findByMetadata(String, String)} answers only for
+ * {@link SessionAttributes#PRINCIPAL_NAME} and {@value #ACTOR_ID_METADATA_KEY}: it maps
+ * the value to the AgentCore actor and lists that actor's sessions, with compound ids of
+ * the form {@code "userId:sessionId"} so the results round-trip through the other
+ * methods. Any other key yields an empty list, because no other metadata is stored.</li>
  * <li>{@link #saveIfAbsent(Session)} returns {@code false} when the session already has
  * events and {@code true} otherwise, without persisting anything (like
  * {@link #save(Session)}). The check is not atomic: AgentCore has no compare-and-set, so
@@ -112,58 +106,57 @@ import org.springframework.ai.session.compaction.CompactionPlan;
  * <li>{@link #appendEvent(SessionEvent)} does not throw when the session has zero prior
  * events. AgentCore has no notion of session existence separate from events, so the first
  * appendEvent implicitly creates the session server-side. This deviates from the SPI
- * Javadoc. Synthetic events (framework generated, for example compaction summaries) are
- * never persisted; they are skipped with a DEBUG log.</li>
+ * Javadoc. Only {@link EventType#MESSAGE} events with a message are stored; other event
+ * types are rejected with {@link IllegalArgumentException}, because AgentCore events hold
+ * conversation messages. Synthetic events (framework generated) are never persisted; they
+ * are skipped with a DEBUG log.</li>
  * <li>{@link #appendEvent(SessionEvent)} is idempotent by {@code SessionEvent.getId()} on
  * a best-effort basis only: the id feeds a deterministic CreateEvent {@code clientToken},
  * and AgentCore deduplicates tokens within an undocumented window rather than against the
  * whole log. See the method Javadoc for the exact differences.</li>
- * <li>{@link #applyCompaction(String, CompactionPlan, long)} throws
- * {@link UnsupportedOperationException}. AgentCore events are immutable (there is no
- * update API, so an event cannot be marked archived in place) and the event log has no
- * compare-and-set, so any client-side compaction (delete-then-recreate, or a
- * branch-plus-pointer swap) is inherently racy: a concurrent {@code appendEvent} can be
- * silently lost and a mid-flight failure can leave a partial log. Do not configure a
- * {@code compactionTrigger} or {@code compactionStrategy} on {@code SessionMemoryAdvisor}
- * with this repository. The AgentCore-native way to bound context is read-windowing
- * ({@code EventFilter.lastN(int)} on the advisor, or {@code totalEventsLimit}) plus
- * long-term memory extraction, not in-place log rewriting. The event log is append-only
- * here: {@link #appendEvent(SessionEvent)} and {@link #delete(String)} are the only write
- * paths, and neither needs locking. Because nothing is ever archived, every event read
- * back reports {@code isArchived() == false}, so {@code EventFilter.active()} and
- * {@code excludeArchived} are always satisfied.</li>
+ * <li>{@link #appendEvents(String, List, long)} throws
+ * {@link UnsupportedOperationException}. It must append a batch atomically and only at an
+ * expected log version, which is how a compaction is recorded; the AgentCore event log
+ * has no compare-and-set and no atomic multi-event write, so a client-side emulation
+ * could interleave with a concurrent {@code appendEvent} or leave a partial batch. Do not
+ * configure compaction on the session advisors with this repository. The AgentCore-native
+ * way to bound context is read-windowing ({@code EventFilter.lastN(int)}, or
+ * {@code totalEventsLimit}) plus long-term memory extraction. Since no
+ * {@link EventType#COMPACTION} boundary is ever written, the active view
+ * ({@code EventFilter.active()}) is the whole log.</li>
  * <li>{@link #getEventVersion(String)} throws {@link UnsupportedOperationException} for
  * the same reason: its only SPI purpose is supplying the {@code expectedVersion} for
- * {@code applyCompaction}, so a count here would suggest an optimistic-lock capability
- * the backend does not have.</li>
+ * {@code appendEvents}, so a count here would suggest an optimistic-lock capability the
+ * backend does not have.</li>
  * <li>{@link #findById(String)} returns {@code null} when the session has no events,
  * because AgentCore has no notion of an empty session.</li>
  * <li>Events read back by {@link #findEvents(String, EventFilter)} are rebuilt from the
  * stored text: their id is the AgentCore eventId (not the id they were written with), and
  * tool calls, tool responses, media and message metadata are not persisted.</li>
- * <li>With {@code totalEventsLimit} set, every read without {@code lastN} sees only the
- * newest {@code totalEventsLimit} events of the session. That includes keyword and
- * pattern searches and {@code CrossSessionRecallTools}, which then silently miss older
- * matches; prefer {@code EventFilter.lastN(int)} on the advisor to bound context when
- * recall tools are in use.</li>
+ * <li>With {@code totalEventsLimit} set, every read without a last-N window sees only the
+ * newest {@code totalEventsLimit} events of the session. That includes
+ * {@code searchEvents}, which uses the SPI default on top of
+ * {@link #findEvents(String, EventFilter)} and then silently misses older matches; prefer
+ * {@code EventFilter.lastN(int)} to bound context when searches are in use.</li>
  * </ul>
  *
  * <h3>Synthesized {@link Session} fields</h3> On {@link #findById(String)} we synthesize
  * a {@link Session} from the event-log tail:
  * <ul>
  * <li>{@code id} = the requested sessionId string.</li>
- * <li>{@code userId} = actor segment of the sessionId (see convention above).</li>
+ *
  * <li>{@code createdAt} = the timestamp of the most recent event (a real, non-sentinel
  * value already fetched for the tail read); only when that event carries no timestamp
  * does it fall back to {@link #SYNTHETIC_CREATED_AT}. {@code findById} intentionally does
  * not call {@code ListSessions} to read {@code SessionSummary.createdAt}: that would add
  * an O(all-sessions) scan and the {@code ListSessions} IAM permission to the common read
- * path for a field most callers ignore. {@link #findByUserId(String)} still surfaces the
- * true {@code SessionSummary.createdAt}. The most recent event timestamp is also exposed
- * under metadata key {@value #LAST_EVENT_AT_METADATA_KEY}.</li>
+ * path for a field most callers ignore. {@link #findByMetadata(String, String)} still
+ * surfaces the true {@code SessionSummary.createdAt}. The most recent event timestamp is
+ * also exposed under metadata key {@value #LAST_EVENT_AT_METADATA_KEY}.</li>
  * <li>{@code expiresAt} = {@code null}: AgentCore has no per-session TTL.</li>
- * <li>{@code metadata} = {@link Map} with keys {@value #ACTOR_ID_METADATA_KEY},
- * {@value #SESSION_METADATA_KEY}, and {@value #LAST_EVENT_AT_METADATA_KEY}.</li>
+ * <li>{@code metadata} = {@link Map} with keys {@link SessionAttributes#PRINCIPAL_NAME}
+ * (the actor segment), {@value #ACTOR_ID_METADATA_KEY}, {@value #SESSION_METADATA_KEY},
+ * and {@value #LAST_EVENT_AT_METADATA_KEY}.</li>
  * </ul>
  *
  * @author Spring AI Community
@@ -189,22 +182,21 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 
 	private static final int SERVICE_MAX_RESULTS = 100;
 
-	private static final String COMPACTION_GUIDANCE = " Do not configure compactionTrigger or compactionStrategy on"
-			+ " SessionMemoryAdvisor with AgentCoreSessionRepository; bound context via read-windowing"
-			+ " (EventFilter.lastN on the advisor, or totalEventsLimit) plus AgentCore long-term memory extraction"
-			+ " instead of rewriting the log.";
+	private static final String COMPACTION_GUIDANCE = " Do not configure compaction on the session advisors with"
+			+ " AgentCoreSessionRepository; bound context via read-windowing (EventFilter.lastN, or totalEventsLimit)"
+			+ " plus AgentCore long-term memory extraction instead of rewriting the log.";
 
 	// Versioned domain prefix of the CreateEvent clientToken; bump it only together with
 	// a deliberate change of the token scheme (the golden-vector test pins it).
 	private static final String CLIENT_TOKEN_SCHEME = "agentcore-session-v1";
 
-	private static final String APPLY_COMPACTION_UNSUPPORTED = "applyCompaction is unsupported: AgentCore events are"
-			+ " immutable (an event cannot be marked archived in place) and the event log has no compare-and-set,"
-			+ " so any client-side compaction risks losing a concurrent appendEvent or leaving a partial log on"
-			+ " mid-flight failure." + COMPACTION_GUIDANCE;
+	private static final String APPEND_EVENTS_UNSUPPORTED = "appendEvents is unsupported: it must append a batch"
+			+ " atomically at an expected log version, and the AgentCore event log has no compare-and-set and no"
+			+ " atomic multi-event write, so an emulation could interleave with a concurrent appendEvent or leave a"
+			+ " partial batch." + COMPACTION_GUIDANCE;
 
 	private static final String GET_EVENT_VERSION_UNSUPPORTED = "getEventVersion is unsupported: its only SPI"
-			+ " purpose is supplying the expectedVersion for applyCompaction, which this repository does not support"
+			+ " purpose is supplying the expectedVersion for appendEvents, which this repository does not support"
 			+ " (AgentCore has no compare-and-set). Use findEvents to read the log." + COMPACTION_GUIDANCE;
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCoreSessionRepository.class);
@@ -323,6 +315,7 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 			}
 			Event tail = events.get(0);
 			Map<String, Object> metadata = new HashMap<>();
+			metadata.put(SessionAttributes.PRINCIPAL_NAME, actorAndSession.actor());
 			metadata.put(ACTOR_ID_METADATA_KEY, actorAndSession.actor());
 			metadata.put(SESSION_METADATA_KEY, actorAndSession.session());
 			if (tail.eventTimestamp() != null) {
@@ -333,11 +326,10 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 			// the tail carries no timestamp. findById does NOT call ListSessions: paying
 			// an O(all-sessions) scan to synthesize a field most callers ignore is not
 			// worth it, and it keeps the ListSessions IAM permission off the common read
-			// path (findByUserId is the only method that needs it).
+			// path (findByMetadata is the only method that needs it).
 			Instant createdAt = (tail.eventTimestamp() != null) ? tail.eventTimestamp() : SYNTHETIC_CREATED_AT;
 			Session synthesized = Session.builder()
 				.id(sessionId)
-				.userId(actorAndSession.actor())
 				.createdAt(createdAt)
 				.expiresAt(null)
 				.metadata(metadata)
@@ -352,21 +344,35 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	}
 
 	/**
-	 * Lists the sessions belonging to a user by mapping {@code userId} to the AgentCore
-	 * actor and paginating {@code ListSessions}. Returned {@link Session} ids are
-	 * compound ({@code "userId:sessionId"}) so they round-trip through
-	 * {@link #findById(String)} and {@link #findEvents(String, EventFilter)}.
-	 * {@code createdAt} comes from each {@code SessionSummary}; {@code expiresAt} is
-	 * {@code null}. An unknown user yields an empty list rather than an exception.
-	 * @param userId the user id (AgentCore actor); must not be blank
+	 * Lists the sessions whose principal is {@code value}. Answers for
+	 * {@link SessionAttributes#PRINCIPAL_NAME} and {@value #ACTOR_ID_METADATA_KEY} by
+	 * mapping the value to the AgentCore actor and paginating {@code ListSessions}; any
+	 * other key yields an empty list, because this repository stores no other metadata
+	 * (see {@link #save(Session)}). Returned {@link Session} ids are compound
+	 * ({@code "userId:sessionId"}) so they round-trip through {@link #findById(String)}
+	 * and {@link #findEvents(String, EventFilter)}. {@code createdAt} comes from each
+	 * {@code SessionSummary}; {@code expiresAt} is {@code null}. An unknown user yields
+	 * an empty list rather than an exception. Sessions are in the order AgentCore lists
+	 * them, not necessarily oldest first.
+	 * @param name the metadata key
+	 * @param value the user id (AgentCore actor); must not be blank
 	 * @return the user's sessions, possibly empty
 	 */
 	@Override
-	public List<Session> findByUserId(String userId) {
-		if (userId == null || userId.trim().isEmpty()) {
-			throw new IllegalArgumentException("userId must not be null or empty");
+	public List<Session> findByMetadata(String name, String value) {
+		if (name == null || name.isBlank()) {
+			throw new IllegalArgumentException("name must not be null or empty");
 		}
-		String actorId = userId.trim();
+		if (value == null || value.trim().isEmpty()) {
+			throw new IllegalArgumentException("value must not be null or empty");
+		}
+		if (!SessionAttributes.PRINCIPAL_NAME.equals(name) && !ACTOR_ID_METADATA_KEY.equals(name)) {
+			logger.debug("findByMetadata({}) returns no sessions: only {} and {} are known for AgentCore sessions",
+					name, SessionAttributes.PRINCIPAL_NAME, ACTOR_ID_METADATA_KEY);
+			return List.of();
+		}
+		String userId = value;
+		String actorId = value.trim();
 		int maxResults = Math.min(Math.max(this.pageSize, 1), SERVICE_MAX_RESULTS);
 		try {
 			List<Session> sessions = new ArrayList<>();
@@ -395,21 +401,6 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 			logger.error("Failed to list AgentCore sessions for userId: {}", userId, ex);
 			throw new AgentCoreMemoryException.RetrievalException("Failed to list sessions for userId: " + userId, ex);
 		}
-	}
-
-	/**
-	 * Uses the SPI default: {@link #findByUserId(String)}, then
-	 * {@link #findEvents(String, EventFilter)} without the window per session, merged by
-	 * timestamp with the window applied to the combined result. AgentCore has no
-	 * cross-session event query, so this costs one {@code ListEvents} scan per session of
-	 * the user.
-	 * @param userId the user whose sessions are searched
-	 * @param filter the filter; its window applies to the combined result
-	 * @return the matching events, oldest first
-	 */
-	@Override
-	public List<SessionEvent> findEventsByUserId(String userId, EventFilter filter) {
-		return SessionRepository.super.findEventsByUserId(userId, filter);
 	}
 
 	/**
@@ -463,11 +454,12 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * explicit-existence semantics, call {@link #findById(String)} first.
 	 *
 	 * <p>
-	 * Synthetic events (framework generated, for example compaction summaries) are never
-	 * persisted; they are skipped with a DEBUG log. Messages already carrying the
-	 * {@value #EVENT_ID_METADATA_KEY} metadata key are treated as previously persisted
-	 * and silently skipped (delta-append behavior); this lets a caller re-append a loaded
-	 * event stream without producing duplicates.
+	 * Only {@link EventType#MESSAGE} events with a message are stored; other event types
+	 * are rejected with {@link IllegalArgumentException}. Synthetic events (framework
+	 * generated) are never persisted; they are skipped with a DEBUG log. Messages already
+	 * carrying the {@value #EVENT_ID_METADATA_KEY} metadata key are treated as previously
+	 * persisted and silently skipped (delta-append behavior); this lets a caller
+	 * re-append a loaded event stream without producing duplicates.
 	 *
 	 * <p>
 	 * <strong>Idempotency (best effort, expected rather than verified).</strong> The
@@ -499,6 +491,7 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * {@value #EVENT_ID_METADATA_KEY} stamp) is not deduplicated.</li>
 	 * </ul>
 	 * @param event the event to append
+	 * @throws IllegalArgumentException if the event is not a message event
 	 */
 	@Override
 	public void appendEvent(SessionEvent event) {
@@ -508,6 +501,10 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		String sessionId = event.getSessionId();
 		validateSessionId(sessionId);
 
+		if (!EventType.MESSAGE.equals(event.getType()) || !event.hasMessage()) {
+			throw new IllegalArgumentException("AgentCoreSessionRepository stores only MESSAGE events with a message,"
+					+ " got an event of type " + event.getType() + " for sessionId " + sessionId);
+		}
 		Message message = event.getMessage();
 		if (event.isSynthetic()) {
 			logger.debug("Skipping synthetic SessionEvent {} for sessionId {}; synthetic events are not persisted",
@@ -577,34 +574,32 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	}
 
 	/**
-	 * Unsupported. AgentCore events are immutable, so an event cannot be marked archived
-	 * in place, and the event log has no compare-and-set, so neither the archive-and-swap
-	 * nor the {@code expectedVersion} check can be made atomic. A client-side emulation
-	 * (delete-then-recreate) would silently lose a concurrent
-	 * {@link #appendEvent(SessionEvent)} or leave a partial log on mid-flight failure.
-	 * Throws before any AgentCore call, whatever the arguments. Do not configure a
-	 * {@code compactionTrigger} or {@code compactionStrategy} on
-	 * {@code SessionMemoryAdvisor} with this repository; bound context with
-	 * read-windowing ({@code EventFilter.lastN(int)} on the advisor, or
-	 * {@code totalEventsLimit}) and AgentCore long-term memory extraction instead.
-	 * @param sessionId the session whose event log would be compacted
-	 * @param plan the events to archive and the summaries to insert
+	 * Unsupported. The SPI appends the batch atomically and only when the log is at
+	 * {@code expectedVersion}, which is how a compaction is recorded; the AgentCore event
+	 * log has no compare-and-set and no atomic multi-event write, so an emulation could
+	 * interleave with a concurrent {@link #appendEvent(SessionEvent)} or leave a partial
+	 * batch. Throws before any AgentCore call, whatever the arguments. Do not configure
+	 * compaction on the session advisors with this repository; bound context with
+	 * read-windowing ({@code EventFilter.lastN(int)}, or {@code totalEventsLimit}) and
+	 * AgentCore long-term memory extraction instead.
+	 * @param sessionId the session whose log would be appended to
+	 * @param events the events to append
 	 * @param expectedVersion the version the caller expects
 	 * @return never returns
 	 * @throws UnsupportedOperationException always
 	 */
 	@Override
-	public boolean applyCompaction(String sessionId, CompactionPlan plan, long expectedVersion) {
-		throw new UnsupportedOperationException(APPLY_COMPACTION_UNSUPPORTED);
+	public boolean appendEvents(String sessionId, List<SessionEvent> events, long expectedVersion) {
+		throw new UnsupportedOperationException(APPEND_EVENTS_UNSUPPORTED);
 	}
 
 	/**
 	 * Unsupported. The version's only SPI purpose is supplying the
-	 * {@code expectedVersion} for {@link #applyCompaction(String, CompactionPlan, long)},
-	 * which this repository does not support, so an event count here would suggest an
-	 * optimistic-lock capability that does not exist.
-	 * {@code DefaultSessionService.compact} calls this first, so a configured compaction
-	 * fails here. Use {@link #findEvents(String, EventFilter)} to read the log.
+	 * {@code expectedVersion} for {@link #appendEvents(String, List, long)}, which this
+	 * repository does not support, so an event count here would suggest an
+	 * optimistic-lock capability that does not exist. A configured compaction reads the
+	 * version first, so it fails here. Use {@link #findEvents(String, EventFilter)} to
+	 * read the log.
 	 * @param sessionId the session whose version would be computed
 	 * @return never returns
 	 * @throws UnsupportedOperationException always
@@ -618,17 +613,16 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * Fetches events for a session, applying the {@link EventFilter}.
 	 *
 	 * <p>
-	 * AgentCore's ListEvents offers no server-side time or content filtering, so the
-	 * predicates ({@code from}/{@code to}, message types, keywords, pattern, archived)
-	 * are applied client-side through {@link EventFilter#matches(SessionEvent)}. Because
-	 * the service returns events newest-first, a {@code lastN} query stops paginating as
-	 * soon as {@code lastN} matches back to the start of their turn are collected instead
-	 * of fetching the whole log, which keeps the common per-turn advisor read O(lastN),
-	 * not O(session). The window keeps turns whole as
-	 * {@link EventFilter#applyTurnAwareWindow(List)} defines. Paged queries and unbounded
-	 * queries (including keyword and pattern searches) fetch only the newest
-	 * {@code totalEventsLimit} events when it is configured, so older matches are not
-	 * returned.
+	 * AgentCore's ListEvents offers no server-side filtering, so the predicates (message
+	 * and event types, synthetic events) are applied client-side through
+	 * {@link EventFilter#matches(SessionEvent)}. Because the service returns events
+	 * newest-first, a last-N window stops paginating as soon as N matches back to the
+	 * start of their turn are collected instead of fetching the whole log, which keeps
+	 * the common per-turn advisor read O(N), not O(session). The window keeps turns whole
+	 * as {@link EventFilter#applyWindow(List)} defines. The active view is the whole log,
+	 * since no compaction boundary is ever written. Reads without a last-N window fetch
+	 * only the newest {@code totalEventsLimit} events when it is configured, so older
+	 * matches are not returned.
 	 * @param sessionId the session to read
 	 * @param filter the filter to apply (must not be null)
 	 * @return the matching events in chronological order
@@ -650,7 +644,7 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 			for (int i = matchedPerEvent.size() - 1; i >= 0; i--) {
 				matched.addAll(matchedPerEvent.get(i));
 			}
-			return filter.applyTurnAwareWindow(matched);
+			return filter.applyWindow(matched);
 		}
 		catch (SdkException ex) {
 			logger.error("Failed to fetch AgentCore events for sessionId: {}", sessionId, ex);
@@ -666,14 +660,27 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		}
 	}
 
+	/**
+	 * Uses the SPI default: reads the session's log through
+	 * {@link #findEvents(String, EventFilter)} and matches the query in memory, because
+	 * AgentCore's ListEvents has no text search. With {@code totalEventsLimit} set, only
+	 * the newest {@code totalEventsLimit} events are searched.
+	 * @param sessionId the session to search
+	 * @param query the search
+	 * @return the matching message events, oldest first, cut to the query's page
+	 */
+	@Override
+	public List<SessionEvent> searchEvents(String sessionId, EventQuery query) {
+		return SessionRepository.super.searchEvents(sessionId, query);
+	}
+
 	// Events arrive newest-first; collects matches grouped per event (newest first) so
-	// the early stop for lastN never splits one event's messages. EventFilter rejects
-	// lastN combined with page/pageSize at construction, so stopping early on lastN can
-	// never race the paged path.
+	// the early stop for a last-N window never splits one event's messages.
 	private List<List<SessionEvent>> collectMatchedPerEvent(
 			AgentCoreMemoryConversationIdParser.ActorAndSession actorAndSession, String sessionId, EventFilter filter) {
 		List<List<SessionEvent>> matchedPerEvent = new ArrayList<>();
 		int matchedCount = 0;
+		Integer lastN = (filter.window() instanceof EventFilter.Window.Last last) ? last.n() : null;
 		for (List<Event> page : this.eventPages(actorAndSession, true, true)) {
 			for (Event event : page) {
 				List<SessionEvent> matched = this.toMatchedSessionEvents(event, sessionId, filter);
@@ -681,8 +688,7 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 					matchedPerEvent.add(matched);
 					matchedCount += matched.size();
 				}
-				if (filter.lastN() != null && matchedCount >= filter.lastN()
-						&& lastNWindowIsComplete(matched, matchedCount, filter)) {
+				if (lastN != null && matchedCount >= lastN && lastNWindowIsComplete(matched, matchedCount, lastN)) {
 					return matchedPerEvent;
 				}
 			}
@@ -690,15 +696,10 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		return matchedPerEvent;
 	}
 
-	// The lastN window keeps turns whole (spring-ai-session 0.10): reading may stop once
-	// the oldest collected event holds a turn start at or before the window start, or
-	// when the filter searches text and the window is not extended.
-	private static boolean lastNWindowIsComplete(List<SessionEvent> oldestMatched, int matchedCount,
-			EventFilter filter) {
-		if (filter.hasTextCriteria()) {
-			return true;
-		}
-		int windowStart = matchedCount - filter.lastN();
+	// The last-N window keeps turns whole (EventFilter.applyWindow): reading may stop
+	// once the oldest collected event holds a turn start at or before the window start.
+	private static boolean lastNWindowIsComplete(List<SessionEvent> oldestMatched, int matchedCount, int lastN) {
+		int windowStart = matchedCount - lastN;
 		for (int i = 0; i < oldestMatched.size() && i <= windowStart; i++) {
 			if (oldestMatched.get(i).isTurnStart()) {
 				return true;
@@ -752,11 +753,11 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	private Session toSession(String actorId, SessionSummary summary) {
 		String compoundId = AgentCoreMemoryConversationIdParser.of(actorId, summary.sessionId());
 		Map<String, Object> metadata = new HashMap<>();
+		metadata.put(SessionAttributes.PRINCIPAL_NAME, actorId);
 		metadata.put(ACTOR_ID_METADATA_KEY, actorId);
 		metadata.put(SESSION_METADATA_KEY, summary.sessionId());
 		return Session.builder()
 			.id(compoundId)
-			.userId(actorId)
 			.createdAt((summary.createdAt() != null) ? summary.createdAt() : SYNTHETIC_CREATED_AT)
 			.expiresAt(null)
 			.metadata(metadata)
@@ -837,7 +838,7 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 			boolean includePayloads, boolean respectLimit) {
 		Integer limit = (respectLimit) ? this.totalEventsLimit : null;
 		int requestPageSize = (limit != null) ? Math.min(this.pageSize, limit) : this.pageSize;
-		// ListEvents accepts maxResults 1-100; clamp like findByUserId does for
+		// ListEvents accepts maxResults 1-100; clamp like findByMetadata does for
 		// ListSessions so an oversized page-size property degrades instead of failing.
 		int maxResults = Math.min(Math.max(requestPageSize, 1), SERVICE_MAX_RESULTS);
 		return () -> new EventPageIterator(actorAndSession, includePayloads, maxResults, limit);

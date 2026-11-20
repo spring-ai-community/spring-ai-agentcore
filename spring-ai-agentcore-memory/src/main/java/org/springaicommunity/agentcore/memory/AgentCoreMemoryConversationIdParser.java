@@ -41,15 +41,9 @@ package org.springaicommunity.agentcore.memory;
  * <strong>Ownership rule.</strong> The {@code actorId} segment is the user id. When this
  * conversationId doubles as a Session API sessionId (via
  * {@code SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY}),
- * {@code AgentCoreSessionRepository} derives {@code Session.userId} from the
- * {@code actorId} segment, because AgentCore has no session-metadata store to persist a
- * user id separately. So any caller that also sets
- * {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY} must use the
- * {@code "actorId:sessionId"} form and pass the same value as the {@code actorId}
- * segment. If the two disagree, {@code SessionMemoryAdvisor.before()} throws
- * {@link IllegalStateException} ("...does not belong to user...") on the second turn,
- * when the ownership check runs against the derived {@code Session.userId}. A caller that
- * never sets {@code USER_ID_CONTEXT_KEY} is unaffected.
+ * {@code AgentCoreSessionRepository} derives the session's principal
+ * ({@code SessionAttributes.PRINCIPAL_NAME}) from the {@code actorId} segment, because
+ * AgentCore has no session-metadata store to persist it separately.
  *
  * @author Yuriy Bezsonov
  */

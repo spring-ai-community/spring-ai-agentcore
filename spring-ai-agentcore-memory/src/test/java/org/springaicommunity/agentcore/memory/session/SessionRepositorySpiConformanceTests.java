@@ -24,18 +24,19 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import org.springframework.ai.session.EventQuery;
 import org.springframework.ai.session.Session;
+import org.springframework.ai.session.SessionEvent;
 import org.springframework.ai.session.SessionRepository;
-import org.springframework.ai.session.compaction.CompactionPlan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Guards against silent drift of the pre-1.0 {@link SessionRepository} SPI. Every minor
- * release of spring-ai-session so far has changed the SPI (0.5.0 to 0.8.0 replaced
- * {@code replaceEvents} with {@code compactEvents} and changed {@code findById}; 0.10.0
- * replaced {@code compactEvents} with {@code applyCompaction} and added
- * {@code saveIfAbsent}). An abstract addition fails compilation on its own, but a new
+ * Guards against silent drift of the {@link SessionRepository} SPI. The SPI changed
+ * between the community spring-ai-session releases and again when it moved into Spring AI
+ * 2.1 ({@code applyCompaction} and {@code findByUserId} were replaced by
+ * {@code appendEvents} and {@code findByMetadata}, and {@code searchEvents} was added as
+ * a default). An abstract addition fails compilation on its own, but a new
  * {@code default} method would compile and be silently inherited, even when its behavior
  * is wrong for an append-only AgentCore log. This test fails a dependency bump with the
  * exact method name so the new method gets an explicit AgentCore decision.
@@ -68,14 +69,20 @@ class SessionRepositorySpiConformanceTests {
 
 	@Test
 	void spiShapeMatchesTheVersionThisModuleIsBuiltFor() throws Exception {
-		// Pins the 0.10.0 shape that AgentCoreSessionRepository and the startup
+		// Pins the Spring AI 2.1 shape that AgentCoreSessionRepository and the startup
 		// compatibility check rely on.
 		assertThat(SessionRepository.class.getMethod("findById", String.class).getReturnType())
 			.isEqualTo(Session.class);
-		assertThat(SessionRepository.class.getMethod("applyCompaction", String.class, CompactionPlan.class, long.class)
-			.getReturnType()).isEqualTo(boolean.class);
+		assertThat(
+				SessionRepository.class.getMethod("appendEvents", String.class, List.class, long.class).getReturnType())
+			.isEqualTo(boolean.class);
+		assertThat(SessionRepository.class.getMethod("findByMetadata", String.class, String.class).getReturnType())
+			.isEqualTo(List.class);
+		assertThat(SessionRepository.class.getMethod("searchEvents", String.class, EventQuery.class).isDefault())
+			.isTrue();
 		assertThat(Arrays.stream(SessionRepository.class.getMethods()).map(Method::getName))
-			.doesNotContain("replaceEvents", "compactEvents", "findExpiredSessionIds");
+			.doesNotContain("applyCompaction", "findByUserId", "findEventsByUserId");
+		assertThat(SessionEvent.class.getMethod("getType")).isNotNull();
 	}
 
 }

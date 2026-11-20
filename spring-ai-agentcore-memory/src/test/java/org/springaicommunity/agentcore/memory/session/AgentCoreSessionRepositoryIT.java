@@ -19,7 +19,6 @@ package org.springaicommunity.agentcore.memory.session;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
@@ -43,9 +42,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.session.DefaultSessionService;
 import org.springframework.ai.session.EventFilter;
 import org.springframework.ai.session.SessionEvent;
-import org.springframework.ai.session.advisor.IdempotentSessionEventIdGenerator;
 import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
-import org.springframework.ai.session.compaction.CompactionPlan;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -151,19 +148,18 @@ class AgentCoreSessionRepositoryIT {
 	}
 
 	@Test
-	void applyCompactionIsUnsupported() {
-		// applyCompaction throws before any AWS call: AgentCore events are immutable and
-		// the log has no compare-and-set, so the repository refuses to rewrite the log.
+	void appendEventsIsUnsupported() {
+		// appendEvents throws before any AWS call: the AgentCore log has no
+		// compare-and-set and no atomic batch write, so no compaction is recorded.
 		String sessionId = "alice-it:compact-" + System.nanoTime();
 		List<SessionEvent> retained = List.of(SessionEvent.builder()
 			.sessionId(sessionId)
 			.message(UserMessage.builder().text("summary-1").build())
 			.build());
-		CompactionPlan plan = new CompactionPlan(Set.of(), List.of(new CompactionPlan.Insert(null, retained)));
 
-		assertThatThrownBy(() -> repository.applyCompaction(sessionId, plan, 1L))
+		assertThatThrownBy(() -> repository.appendEvents(sessionId, retained, 1L))
 			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("applyCompaction is unsupported");
+			.hasMessageContaining("appendEvents is unsupported");
 		assertThat(repository.findEvents(sessionId, EventFilter.all())).isEmpty();
 	}
 
@@ -229,20 +225,17 @@ class AgentCoreSessionRepositoryIT {
 	}
 
 	@Test
-	void idempotentAdvisorRetryStoresOneUserEvent() {
+	void advisorTurnsAreStoredAndReadBack() {
 		String sessionId = "alice-it:advisor-" + System.nanoTime();
-		IdempotentSessionEventIdGenerator ids = new IdempotentSessionEventIdGenerator();
 		SessionMemoryAdvisor advisor = SessionMemoryAdvisor
 			.builder(DefaultSessionService.builder().sessionRepository(repository).build())
-			.requestEventIdGenerator(ids)
-			.responseEventIdGenerator(ids)
 			.build();
 
 		advisor.before(userTurn(sessionId, "book a table"), null);
-		advisor.before(userTurn(sessionId, "book a table"), null);
+		advisor.before(userTurn(sessionId, "for two"), null);
 
 		assertThat(repository.findEvents(sessionId, EventFilter.all())).extracting((e) -> e.getMessage().getText())
-			.containsExactly("book a table");
+			.containsExactly("book a table", "for two");
 
 		repository.delete(sessionId);
 	}
