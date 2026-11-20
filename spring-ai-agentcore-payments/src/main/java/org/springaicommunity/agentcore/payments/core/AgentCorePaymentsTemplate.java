@@ -54,4 +54,23 @@ public class AgentCorePaymentsTemplate extends AgentCorePaymentsClient {
 		super(client, paymentManagerArn, agentName, networkPreferences, permit2AllowanceLimit);
 	}
 
+	/**
+	 * Creates a client.
+	 * @param client the AgentCore data plane client
+	 * @param paymentManagerArn the payment manager ARN
+	 * @param agentName agent name sent with data plane calls, may be {@code null}
+	 * @param networkPreferences network identifiers used to choose between payment
+	 * options, most preferred first
+	 * @param permit2AllowanceLimit the Permit2 allowance for the x402 {@code upto}
+	 * scheme, in the asset's smallest unit; {@code null} to not grant one
+	 * @param buyerPaysGasFees MPP only: {@code true} lets the service charge blockchain
+	 * network fees to the user's wallet when the merchant does not sponsor them;
+	 * {@code null} to not send the flag
+	 */
+	public AgentCorePaymentsTemplate(BedrockAgentCoreClient client, String paymentManagerArn,
+			@Nullable String agentName, List<String> networkPreferences, @Nullable String permit2AllowanceLimit,
+			@Nullable Boolean buyerPaysGasFees) {
+		super(client, paymentManagerArn, agentName, networkPreferences, permit2AllowanceLimit, buyerPaysGasFees);
+	}
+
 }

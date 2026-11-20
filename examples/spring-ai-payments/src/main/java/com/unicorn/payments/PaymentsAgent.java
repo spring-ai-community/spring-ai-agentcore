@@ -34,7 +34,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * AgentCore Runtime agent that pays for x402 APIs. The request selects how it pays:
+ * AgentCore Runtime agent that pays for x402 and MPP APIs. The request selects how it pays:
  * <ul>
  * <li>{@code interceptor}: domain tool on a RestClient with the payments interceptor
  * ({@link MarketRecapTools})</li>

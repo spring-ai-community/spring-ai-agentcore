@@ -39,6 +39,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * most preferred first
  * @param permit2AllowanceLimit the Permit2 allowance for the x402 {@code upto} scheme, in
  * the asset's smallest unit
+ * @param buyerPaysGasFees MPP only: {@code true} lets AgentCore Payments charge
+ * blockchain network fees to the user's wallet, on top of the amount, when the merchant
+ * does not sponsor them; unset or {@code false}, such challenges are not paid (the
+ * service would reject them) and another payment option is used
  * @param postPaymentDelay wait before retrying a paid request
  * @param paidHttpTool settings of the paid HTTP request tool
  * @param session defaults of payment sessions created by {@code PaymentSessionRegistry}
@@ -47,8 +51,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = AgentCorePaymentsProperties.PREFIX)
 public record AgentCorePaymentsProperties(@Nullable String paymentManagerArn, @Nullable String userId,
 		@Nullable String paymentInstrumentId, @Nullable String paymentSessionId, @Nullable String agentName,
-		List<String> networkPreferences, @Nullable String permit2AllowanceLimit, Duration postPaymentDelay,
-		PaidHttpTool paidHttpTool, Session session) {
+		List<String> networkPreferences, @Nullable String permit2AllowanceLimit, @Nullable Boolean buyerPaysGasFees,
+		Duration postPaymentDelay, PaidHttpTool paidHttpTool, Session session) {
 
 	/** Property prefix. */
 	public static final String PREFIX = "agentcore.payments";

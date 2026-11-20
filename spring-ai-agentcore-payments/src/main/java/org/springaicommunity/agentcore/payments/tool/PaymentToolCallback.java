@@ -126,6 +126,17 @@ public class PaymentToolCallback implements ToolCallback {
 			throw new ToolExecutionException(this.getToolDefinition(), new PaymentException("Tool '" + toolName
 					+ "' requires payment but its input has no 'headers' object for the payment header; not paying"));
 		}
+		if (paymentRequired.offersMpp() && hasAuthorizationHeader(toolInput)) {
+			// MPP sends its credential in the Authorization header, which would replace
+			// the tool's own credential: pay only x402. Checked before paying so that no
+			// budget is spent
+			if (!paymentRequired.offersX402()) {
+				throw new ToolExecutionException(this.getToolDefinition(), new PaymentException("Tool '" + toolName
+						+ "' already sends an Authorization header, and the 402 offers only MPP, which sends its "
+						+ "credential in that header; not paying"));
+			}
+			paymentRequired = paymentRequired.withoutMpp();
+		}
 		logger.info("Tool '{}' requires payment, paying through AgentCore Payments", toolName);
 
 		String paidInput;
@@ -217,6 +228,20 @@ public class PaymentToolCallback implements ToolCallback {
 			// object, map) varies by how the tool was defined
 			return JSON_MAPPER.readTree(inputSchema).path("properties").path("headers").isObject();
 		}
+		catch (JacksonException ex) {
+			return false;
+		}
+	}
+
+	private static boolean hasAuthorizationHeader(String toolInput) {
+		try {
+			return JSON_MAPPER.readTree(toolInput)
+				.path("headers")
+				.properties()
+				.stream()
+				.anyMatch((header) -> HttpHeaders.AUTHORIZATION.equalsIgnoreCase(header.getKey()));
+		}
+		// an input that is not JSON is reported when the payment header is added
 		catch (JacksonException ex) {
 			return false;
 		}

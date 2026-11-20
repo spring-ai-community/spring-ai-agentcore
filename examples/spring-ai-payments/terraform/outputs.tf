@@ -13,6 +13,6 @@ output "payment_connector_id" {
 output "next_steps" {
   value = <<-EOT
     Create a wallet for a user:   ./create-instrument.sh <email> [user-id]
-    Then connect the agent and fund the wallet as described in README.md.
+    Then connect the agent and fund the wallet as described in ../README.md (Setup).
   EOT
 }

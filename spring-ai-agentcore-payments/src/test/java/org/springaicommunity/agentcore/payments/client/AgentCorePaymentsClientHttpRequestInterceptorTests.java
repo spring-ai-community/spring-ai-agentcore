@@ -16,7 +16,9 @@
 
 package org.springaicommunity.agentcore.payments.client;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 
 import org.junit.jupiter.api.Test;
 import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
@@ -25,6 +27,7 @@ import org.springaicommunity.agentcore.payments.core.PaymentException;
 import org.springaicommunity.agentcore.payments.core.PaymentHeader;
 import org.springaicommunity.agentcore.payments.core.PaymentRequired;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -38,6 +41,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.headerDoesNotExist;
@@ -55,6 +59,16 @@ class AgentCorePaymentsClientHttpRequestInterceptorTests {
 	private static final String URL = "https://api.example.com/market-recap";
 
 	private static final String REQUIREMENTS = "{\"x402Version\":1,\"accepts\":[]}";
+
+	private static final String MPP_CHALLENGE = "Payment id=\"c1\", realm=\"merchant\", method=\"tempo\", "
+			+ "intent=\"charge\", request=\""
+			+ Base64.getUrlEncoder()
+				.withoutPadding()
+				.encodeToString("{\"methodDetails\":{\"chainId\":42431}}".getBytes(StandardCharsets.UTF_8))
+			+ "\"";
+
+	private static final String X402_REQUIREMENTS = "{\"x402Version\":1,\"accepts\":[{\"scheme\":\"exact\","
+			+ "\"network\":\"base-sepolia\"}]}";
 
 	private static final PaymentContext DEFAULTS = new PaymentContext("user-1", "instrument-1", "session-1");
 
@@ -84,6 +98,60 @@ class AgentCorePaymentsClientHttpRequestInterceptorTests {
 		then(this.payments).should()
 			.generatePaymentHeader(eq(DEFAULTS),
 					argThat((PaymentRequired required) -> REQUIREMENTS.equals(required.body())));
+	}
+
+	@Test
+	void retriesMppPaymentWithAuthorizationHeader() {
+		this.server.expect(once(), requestTo(URL))
+			.andRespond(withStatus(HttpStatus.PAYMENT_REQUIRED).header(HttpHeaders.WWW_AUTHENTICATE, MPP_CHALLENGE));
+		this.server.expect(once(), requestTo(URL))
+			.andExpect(header(HttpHeaders.AUTHORIZATION, "Payment credential"))
+			.andRespond(withSuccess("paid content", MediaType.TEXT_PLAIN));
+		given(this.payments.generatePaymentHeader(any(), any()))
+			.willReturn(new PaymentHeader(HttpHeaders.AUTHORIZATION, "Payment credential"));
+
+		assertThat(this.builder.build().get().uri(URL).retrieve().body(String.class)).isEqualTo("paid content");
+		this.server.verify();
+	}
+
+	@Test
+	void paysX402AndKeepsTheRequestsAuthorizationHeaderWhenBothProtocolsAreOffered() {
+		this.server.expect(once(), requestTo(URL))
+			.andRespond(withStatus(HttpStatus.PAYMENT_REQUIRED).header(HttpHeaders.WWW_AUTHENTICATE, MPP_CHALLENGE)
+				.contentType(MediaType.APPLICATION_JSON)
+				.body(X402_REQUIREMENTS));
+		this.server.expect(once(), requestTo(URL))
+			.andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer api-token"))
+			.andExpect(header("X-PAYMENT", "proof"))
+			.andRespond(withSuccess());
+		given(this.payments.generatePaymentHeader(any(), any())).willReturn(new PaymentHeader("X-PAYMENT", "proof"));
+
+		this.builder.build()
+			.get()
+			.uri(URL)
+			.header(HttpHeaders.AUTHORIZATION, "Bearer api-token")
+			.retrieve()
+			.toBodilessEntity();
+
+		this.server.verify();
+		then(this.payments).should()
+			.generatePaymentHeader(any(), argThat((PaymentRequired required) -> !required.offersMpp()));
+	}
+
+	@Test
+	void doesNotPayMppWhenTheRequestHasItsOwnAuthorizationHeader() {
+		this.server.expect(once(), requestTo(URL))
+			.andRespond(withStatus(HttpStatus.PAYMENT_REQUIRED).header(HttpHeaders.WWW_AUTHENTICATE, MPP_CHALLENGE));
+
+		assertThatExceptionOfType(PaymentException.class)
+			.isThrownBy(() -> this.builder.build()
+				.get()
+				.uri(URL)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer api-token")
+				.retrieve()
+				.toBodilessEntity())
+			.withMessageContaining("offers only MPP");
+		then(this.payments).should(never()).generatePaymentHeader(any(), any());
 	}
 
 	@Test

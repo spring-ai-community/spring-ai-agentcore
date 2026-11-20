@@ -37,6 +37,7 @@ import software.amazon.awssdk.services.bedrockagentcore.model.CryptoX402PaymentO
 import software.amazon.awssdk.services.bedrockagentcore.model.EmbeddedCryptoWallet;
 import software.amazon.awssdk.services.bedrockagentcore.model.GetPaymentInstrumentResponse;
 import software.amazon.awssdk.services.bedrockagentcore.model.InstrumentBalanceToken;
+import software.amazon.awssdk.services.bedrockagentcore.model.MppPaymentOutput;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInstrument;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentInstrumentDetails;
 import software.amazon.awssdk.services.bedrockagentcore.model.PaymentOutput;
@@ -48,6 +49,8 @@ import software.amazon.awssdk.services.bedrockagentcore.model.ValidationExceptio
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+
+import org.springframework.http.HttpHeaders;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -309,6 +312,109 @@ class AgentCorePaymentsClientTests {
 		assertThat(request.userId()).isEqualTo("user-1");
 		assertThat(request.limits().maxSpendAmount().value()).isEqualTo("0.50");
 		assertThat(request.expiryTimeInMinutes()).isEqualTo(15);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void paysMppChallengeAndForwardsItUnchanged() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(mppPayment("izsd_mxk"));
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
+
+		PaymentHeader header = payments.generatePaymentHeader(CONTEXT, mpp(MppChallengeTests.TEMPO_CHALLENGE, null));
+
+		assertThat(header).isEqualTo(new PaymentHeader("Authorization", "Payment eyJjcmVk"));
+		ProcessPaymentRequest request = this.capturedProcessPayment();
+		assertThat(request.paymentType()).isEqualTo(PaymentType.MPP);
+		assertThat(request.paymentInput().mpp().version()).isEqualTo("1");
+		assertThat(request.paymentInput().mpp().wwwAuthenticateHeaders())
+			.containsExactly(MppChallengeTests.TEMPO_CHALLENGE);
+		assertThat(request.paymentInput().mpp().buyerPaysGasFees()).isNull();
+		assertThat(request.paymentSessionId()).isEqualTo("session-1");
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void sendsBuyerPaysGasFeesWhenConfigured() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(mppPayment("izsd_mxk"));
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN, null,
+				NetworkPreferences.DEFAULT, null, true);
+
+		payments.generatePaymentHeader(CONTEXT, mpp(MppChallengeTests.TEMPO_CHALLENGE, null));
+
+		assertThat(this.capturedProcessPayment().paymentInput().mpp().buyerPaysGasFees()).isTrue();
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void prefersMppWhenBothProtocolsAreOffered() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(mppPayment("izsd_mxk"));
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
+
+		PaymentHeader header = payments.generatePaymentHeader(CONTEXT,
+				mpp(MppChallengeTests.TEMPO_CHALLENGE, X402PaymentRequirementsTests.V1_BODY));
+
+		assertThat(header.name()).isEqualTo("Authorization");
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void fallsBackToX402WhenNoMppChallengeCanBePaid() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class))).willReturn(paymentWithProof());
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
+
+		PaymentHeader header = payments.generatePaymentHeader(CONTEXT,
+				mpp(SOLANA_CHALLENGE, X402PaymentRequirementsTests.V1_BODY));
+
+		assertThat(header.name()).isEqualTo("X-PAYMENT");
+		assertThat(this.capturedProcessPayment().paymentType()).isEqualTo(PaymentType.CRYPTO_X402);
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void failsWithoutPayingWhenNoMppChallengeCanBePaidAndNoX402IsOffered() {
+		this.givenEthereumInstrument();
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
+
+		assertThatExceptionOfType(PaymentException.class)
+			.isThrownBy(() -> payments.generatePaymentHeader(CONTEXT, mpp(SOLANA_CHALLENGE, "{\"title\":\"Payment\"}")))
+			.withMessageContaining("Offered methods: solana");
+		then(this.client).should(never()).processPayment(any(Consumer.class));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void doesNotFallBackToX402WhenTheMppPaymentFails() {
+		this.givenEthereumInstrument();
+		given(this.client.processPayment(any(Consumer.class)))
+			.willThrow(ValidationException.builder().message("Tempo payment failed").build());
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
+
+		assertThatExceptionOfType(ValidationException.class).isThrownBy(() -> payments.generatePaymentHeader(CONTEXT,
+				mpp(MppChallengeTests.TEMPO_CHALLENGE, X402PaymentRequirementsTests.V1_BODY)));
+		then(this.client).should(times(1)).processPayment(any(Consumer.class));
+	}
+
+	private static final String SOLANA_CHALLENGE = "Payment id=\"sol\", realm=\"merchant\", method=\"solana\", "
+			+ "intent=\"charge\", request=\"" + MppChallengeTests.request("{}") + "\"";
+
+	private static PaymentRequired mpp(String challenge, String body) {
+		HttpHeaders headers = new HttpHeaders();
+		headers.add(HttpHeaders.WWW_AUTHENTICATE, challenge);
+		return new PaymentRequired(402, headers, body);
+	}
+
+	private static ProcessPaymentResponse mppPayment(String selectedPaymentId) {
+		return ProcessPaymentResponse.builder()
+			.paymentOutput(PaymentOutput.fromMpp(MppPaymentOutput.builder()
+				.version("1")
+				.selectedPaymentId(selectedPaymentId)
+				.paymentCredential("eyJjcmVk")
+				.build()))
+			.build();
 	}
 
 	@SuppressWarnings("unchecked")
