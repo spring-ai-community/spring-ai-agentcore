@@ -73,8 +73,14 @@
         </dependency>
 
         <dependency>
-            <groupId>org.springaicommunity</groupId>
+            <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-session</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-session-advisor</artifactId>
             <optional>true</optional>
         </dependency>
 

@@ -38,16 +38,8 @@ public class ChatController {
 	 * {@code AgentCoreSessionRepository} requires the {@code "userId:sessionSuffix"}
 	 * format. Here {@code "testActor"} is the user id (actor segment) and
 	 * {@code "testSession"} is the session suffix. AgentCore has no session-metadata
-	 * store, so the repository derives {@code Session.userId} from the {@code "testActor"}
-	 * prefix.
-	 *
-	 * <p>
-	 * If you also pass {@code SessionMemoryAdvisor.USER_ID_CONTEXT_KEY} on the request,
-	 * its value must equal the actor prefix ({@code "testActor"} here). If it differs, the
-	 * advisor's turn-2 ownership check throws
-	 * {@code IllegalStateException("...does not belong to user...")}. This controller does
-	 * not set {@code USER_ID_CONTEXT_KEY}, so the check passes; if you add it, keep the
-	 * actor prefix and the USER_ID value in sync.
+	 * store, so the repository derives the session's principal from the
+	 * {@code "testActor"} prefix.
 	 *
 	 * <p>
 	 * <strong>Security.</strong> This example hardcodes the id for brevity. In a real
@@ -71,9 +63,8 @@ public class ChatController {
 		String response = this.sessionChatClient.prompt()
 			.user(request.message())
 			.advisors(this.sessionMemory.advisors)
-			// SESSION_ID must be "userId:sessionSuffix"; the repository derives
-			// Session.userId from the "userId" prefix. If you also set
-			// USER_ID_CONTEXT_KEY here, it must equal that prefix (see SESSION_ID Javadoc).
+			// SESSION_ID must be "userId:sessionSuffix"; the repository derives the
+			// session's principal from the "userId" prefix.
 			.advisors(a -> a.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, SESSION_ID))
 			.call()
 			.content();

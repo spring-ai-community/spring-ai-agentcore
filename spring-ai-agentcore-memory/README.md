@@ -12,12 +12,12 @@ For quick start and usage examples, see the [main README](../README.md#agentcore
 - **Long-Term Memory**: 4 consolidation strategies (Semantic, User Preference, Summary, Episodic)
 - **Session API (incubating)**: Optional Spring AI Session API bean stack (opt-in via `agentcore.memory.session.enabled=true`)
 
-## Session API (spring-ai-session, incubating)
+## Session API (Spring AI 2.1 `spring-ai-session`, incubating)
 
-Since 2.2.0 the module ships an opt-in bean stack backed by the community
-`org.springaicommunity:spring-ai-session` artifact (0.10.x). When enabled, four beans
-are added to the context: `AgentCoreSessionRepository` (implements
-`org.springframework.ai.session.SessionRepository`), `DefaultSessionService`,
+The module ships an opt-in bean stack backed by the Spring AI Session API
+(`org.springframework.ai:spring-ai-session` and `spring-ai-session-advisor`, Spring AI
+2.1). When enabled, four beans are added to the context: `AgentCoreSessionRepository`
+(implements `org.springframework.ai.session.SessionRepository`), `DefaultSessionService`,
 `SessionMemoryAdvisor`, and `AgentCoreSessionMemory` (bundles the session advisor with
 any configured long-term memory advisors). The existing ChatMemory stack is unaffected;
 both stacks can coexist and are wired independently.
@@ -30,91 +30,49 @@ agentcore:
     memory-id: your-memory-id
     session:
       enabled: true
-      default-user-id: default-user   # optional
 ```
 
 The remaining `agentcore.memory.session.*` properties (`total-events-limit`, `page-size`,
 `ignore-unknown-roles`, `default-session`) are optional session-scoped overrides; when
 unset they fall back to the `agentcore.memory.short-term.*` (then legacy) values.
 
-**Required dependency.** The memory module declares `spring-ai-session` as an
-`optional` dependency, so consumers on the Session API path add it to their own
-`pom.xml`. If the artifact is missing while `agentcore.memory.session.enabled=true` is
-set, the module logs a startup WARN and creates no session beans.
+**Required dependencies.** The memory module declares both artifacts as `optional`
+dependencies, so consumers on the Session API path add them to their own `pom.xml`. Their
+versions come from `org.springframework.ai:spring-ai-bom`. If one is missing while
+`agentcore.memory.session.enabled=true` is set, the module logs a startup WARN and creates
+no session beans.
 
 ```xml
 <dependency>
-    <groupId>org.springaicommunity</groupId>
+    <groupId>org.springframework.ai</groupId>
     <artifactId>spring-ai-session</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-session-advisor</artifactId>
 </dependency>
 ```
 
-The snippet omits a `<version>` because the version is expected to come from the
-`spring-ai-session-bom`. This project already imports that BOM at the version pinned by
-the `spring-ai-session.version` property in the root `pom.xml`; standalone consumers should
-import the BOM in their own `dependencyManagement` and let it manage the version rather
-than pinning it inline:
+**Upgrading from the community `spring-ai-session` (0.10.x).** Spring AI 2.1 ships the
+Session API itself, in the same `org.springframework.ai.session` packages but with a
+changed API, so this module requires Spring AI 2.1 and no longer works with
+`org.springaicommunity:spring-ai-session`. To upgrade:
 
-```xml
-<dependencyManagement>
-    <dependencies>
-        <dependency>
-            <groupId>org.springaicommunity</groupId>
-            <artifactId>spring-ai-session-bom</artifactId>
-            <version>${spring-ai-session.version}</version>
-            <type>pom</type>
-            <scope>import</scope>
-        </dependency>
-    </dependencies>
-</dependencyManagement>
-```
-
-**Upgrading from spring-ai-session-management.** This release moves from
-`org.springaicommunity:spring-ai-session-management` 0.5.0 to
-`org.springaicommunity:spring-ai-session` 0.8.0. The artifact was renamed upstream in
-0.6.0 but still ships the `org.springframework.ai.session` packages, so the two jars
-cannot be mixed. To upgrade:
-
-1. Import `spring-ai-session-bom` 0.8.0, replace the `spring-ai-session-management`
-   dependency with `spring-ai-session`, and remove every old declaration, including
-   transitive ones (check with `mvn dependency:tree`).
-2. Update code that calls `AgentCoreSessionRepository` directly. `findById` returns
-   `null` instead of `Optional.empty()` for a session without events, and
-   `replaceEvents` is gone (0.8.0 replaces it with `compactEvents`, which this repository
-   rejects).
-3. Keep compaction off, as before. On a session whose turns persisted nothing (blank,
-   tool-only or unknown-role messages), a configured compaction now fails with
-   `IllegalArgumentException("Session not found: ...")` before it reaches the
-   configuration guidance.
-4. Note the new advisor order. The auto-configured `SessionMemoryAdvisor` now runs at
-   `Ordered.HIGHEST_PRECEDENCE + 200` instead of the upstream default
-   `HIGHEST_PRECEDENCE + 1000`, so it wraps the tool loop (see **Tool calling** below).
-   Without tools the prompt only changes if you have advisors ordered between those two
-   values. With tools, each call now stores only the user message and the final answer;
-   before, it also stored any text the model sent with a tool call.
-   A `SessionMemoryAdvisor` you build yourself keeps the upstream default unless you set
-   `.order(...)`.
-
-**Upgrading from spring-ai-session 0.8.x.** This release requires
-`spring-ai-session` 0.10.x (import `spring-ai-session-bom` 0.10.0). Changes visible to
-callers of `AgentCoreSessionRepository`:
-
-- Branches are gone from the SPI. Events are written without an AgentCore branch and read
-  without a branch filter.
-- `findExpiredSessionIds` is replaced by `deleteExpiredSessions`, which returns `0`
-  instead of throwing.
-- `compactEvents` is replaced by `applyCompaction`, which still throws
-  `UnsupportedOperationException`.
-- `saveIfAbsent` is new and backs `SessionService.create`: it fails with "Session already
-  exists" for a session that has events.
-- A `lastN` read keeps turns whole and can return more than N events.
-
-The `AgentCoreSessionRepository` constructor checks the classpath once. It fails with an
-`IllegalStateException` that names the fix when `spring-ai-session-management`, two
-different `spring-ai-session` versions, or a Session API that does not match 0.10.x is
-present, instead of failing on the first request with `NoSuchMethodError` or
-`AbstractMethodError`. A `spring-ai-session` version outside 0.10.x whose API still matches
-only logs a WARN, because pre-1.0 minor releases have changed the SPI every time so far.
+1. Remove `org.springaicommunity:spring-ai-session` (and any `spring-ai-session-management`)
+   and the `org.springaicommunity:spring-ai-session-bom` import; add the two
+   `org.springframework.ai` artifacts above. The `AgentCoreSessionRepository` constructor
+   fails fast with an `IllegalStateException` naming the fix if a community jar is still on
+   the classpath (check transitive ones with `mvn dependency:tree`).
+2. The property `agentcore.memory.session.default-user-id` is removed: the 2.1
+   `SessionMemoryAdvisor` has no user id and no ownership check
+   (`USER_ID_CONTEXT_KEY` is gone). The session's principal is derived from the sessionId.
+3. Code that calls `AgentCoreSessionRepository` directly: `findByUserId(userId)` becomes
+   `findByMetadata(SessionAttributes.PRINCIPAL_NAME, userId)`, `Session.userId()` becomes
+   `SessionAttributes.principalName(session)`, and keyword search moves from `EventFilter`
+   to `searchEvents(sessionId, EventQuery)`. `applyCompaction` is replaced by
+   `appendEvents`, which this repository rejects like before.
+4. Only message events are stored: `appendEvent` rejects events of another `EventType`
+   with `IllegalArgumentException`.
 
 **Usage.** `SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY` equals `ChatMemory.CONVERSATION_ID`,
 so the same conversation-id constant works for both stacks:
@@ -122,41 +80,27 @@ so the same conversation-id constant works for both stacks:
 ```java
 chatClient.prompt()
     .user("Hi")
-    .advisors(a -> a
-        .param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, "alice:conv-1")
-        .param(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, "alice"))
+    .advisors(a -> a.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, "alice:conv-1"))
     .call()
     .content();
 ```
 
 **User id and session id.** `AgentCoreSessionRepository` has no session-metadata store,
-so it derives `Session.userId` from the actor (userId) segment of the sessionId (parsed
-by `AgentCoreMemoryConversationIdParser`). The sessionId format is therefore
-`"userId:sessionSuffix"` (for example `"alice:conv-1"`, where `alice` is the userId).
-The sessionId is split at its last colon, so the userId may contain colons
-(`"tenant:alice:conv-1"`) but the suffix may not; see
+so it derives the session's principal (`SessionAttributes.PRINCIPAL_NAME`) from the actor
+(userId) segment of the sessionId (parsed by `AgentCoreMemoryConversationIdParser`). The
+sessionId format is therefore `"userId:sessionSuffix"` (for example `"alice:conv-1"`,
+where `alice` is the userId). The sessionId is split at its last colon, so the userId may
+contain colons (`"tenant:alice:conv-1"`) but the suffix may not; see
 [Conversation ID Format](#conversation-id-format) for the allowed characters.
-When you set `USER_ID_CONTEXT_KEY` per-request, pass the same value as the userId prefix,
-without surrounding whitespace: both segments of the sessionId are trimmed.
-On the second turn `SessionMemoryAdvisor.before()` runs an ownership check that compares
-`USER_ID_CONTEXT_KEY` against the derived `Session.userId`; a mismatch throws
-`IllegalStateException("...does not belong to user...")`. The usual way to hit this is
-reusing a sessionId while changing the advisor's user id. If you never set
-`USER_ID_CONTEXT_KEY`, the check passes.
 
-**Security.** The sessionId/conversationId, and therefore the derived `Session.userId`,
-is client-supplied input. The advisor's ownership check compares two values derived from
-that same client string, so it does not by itself stop a hostile caller from reading
-another user's session. Where an authenticated principal exists, the application must
-derive the conversationId's actor segment from the principal, never from unvalidated
-request input. Deriving only the `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` value from the
-principal is not sufficient: the advisor's ownership check runs only when the target
-session already exists, so a first write to a fresh sessionId passes regardless of the
-context key.
+**Security.** The sessionId/conversationId, and therefore the derived principal, is
+client-supplied input: a caller that controls it chooses whose session it reads. Where an
+authenticated principal exists, the application must derive the conversationId's actor
+segment from the principal, never from unvalidated request input.
 
 **Reads and writes.** The event log is append-only: `appendEvent` and `delete` are the
-only write paths, synthetic events (framework generated, for example compaction summaries)
-are never persisted, and `applyCompaction` and `getEventVersion` throw
+only write paths, only message events are stored, synthetic events (framework generated)
+are never persisted, and `appendEvents` and `getEventVersion` throw
 `UnsupportedOperationException` (see the table below). To bound the context sent to
 the model, give the advisor a read window instead of compaction and let AgentCore
 long-term memory extraction carry older facts. Define your own `SessionMemoryAdvisor`
@@ -172,19 +116,17 @@ SessionMemoryAdvisor sessionMemoryAdvisor(SessionService sessionService) {
 }
 ```
 
-`total-events-limit` is a coarser cap. It applies to every read without `lastN`,
-including keyword and pattern searches and `CrossSessionRecallTools`, which then see only
-the newest events of each session and silently miss older matches. Do not configure a
-`compactionTrigger` or `compactionStrategy` on `SessionMemoryAdvisor` with this
-repository: the compaction runs after the turn has been persisted and the model has
-answered, and then fails. `findEvents` applies every `EventFilter` predicate (time range,
-message types, `keyword`, `keywords`/`matchMode`, `pattern`, `excludeArchived`)
-client-side and stops paginating early for `lastN` queries. As the 0.10 SPI requires, a
-`lastN` window keeps turns whole: when the newest N events start mid-turn, the window
-extends back to the turn's user message, so the advisor may return more than N events. Keyword and pattern searches without `lastN` read the
-whole session log (up to `total-events-limit`), and `CrossSessionRecallTools` repeats
-that for every session of the user after a `ListSessions` scan, which also needs the
-`bedrock-agentcore:ListSessions` IAM permission.
+`total-events-limit` is a coarser cap. It applies to every read without a last-N
+window, including `searchEvents`, which then sees only the newest events of the session
+and silently misses older matches. Do not configure compaction on the session advisors
+(`SessionTurnAdvisor`, `SessionAdvisors`) with this repository: the compaction runs after
+the turn has been persisted and the model has answered, and then fails. `findEvents`
+applies every `EventFilter` predicate (message and event types, synthetic events)
+client-side and stops paginating early for last-N windows. A last-N window keeps turns
+whole: when the newest N events start mid-turn, the window extends back to the turn's
+user message, so the advisor may return more than N events. `searchEvents` uses the SPI
+default, which reads the whole session log (up to `total-events-limit`) and matches in
+memory, because AgentCore has no text search.
 
 **Tool calling.** This repository stores message text only, so tool calls and tool
 results are never persisted or read back, and `SessionMemoryAdvisor` has to wrap the tool
@@ -209,18 +151,19 @@ the session advisor's order below it.
 | Method / field | Behavior | Caller impact |
 |----------------|----------|---------------|
 | `save(Session)` | no-op (no session-metadata store) | Metadata mutated on the `Session` (e.g. `session.withMetadata(...)`) is not persisted and will not reappear on `findById`. Do not use `save` for metadata persistence. |
-| `findByUserId(String)` | maps `userId` to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`, falling back to the `Instant.EPOCH` sentinel when the summary has none (the same fallback documented on the `Session.createdAt` row); unknown user yields an empty list. |
+| `findByMetadata(String, String)` | answers for `SessionAttributes.PRINCIPAL_NAME` and `agentcore.actorId`: maps the value to the AgentCore actor and paginates `ListSessions` | Returns compound ids `"userId:sessionId"` that round-trip through the other methods; `createdAt` from each `SessionSummary`, falling back to the `Instant.EPOCH` sentinel when the summary has none (the same fallback documented on the `Session.createdAt` row); unknown user yields an empty list. Any other key returns an empty list, because no other metadata is stored. Needs the `bedrock-agentcore:ListSessions` IAM permission. |
 | `saveIfAbsent(Session)` | returns `true` when the session has no events, stores nothing | Like `save`, there is no session-metadata store; the check is not atomic (AgentCore has no compare-and-set), so two concurrent `SessionService.create` calls for the same id can both succeed. |
 | `deleteExpiredSessions(Instant)` | deletes nothing, returns `0` | Sessions have no TTL; AgentCore removes events itself through memory-level retention (`eventExpiryDuration`). A scheduled `SessionService.deleteExpiredSessions` keeps running. |
-| `findEventsByUserId(String, EventFilter)` | SPI default: `findByUserId`, then `findEvents` per session | AgentCore has no cross-session event query, so each call scans every session of the user (`ListSessions` plus one `ListEvents` read per session). |
+| `searchEvents(String, EventQuery)` | SPI default: `findEvents`, then matched in memory | AgentCore has no text search, so a search reads the session log (up to `total-events-limit`). |
 | `findById(String)` | returns `null` when the session has no events | AgentCore has no notion of an empty session; the first `appendEvent` creates it. |
-| `applyCompaction(String, CompactionPlan, long)` | throws `UnsupportedOperationException` | AgentCore events are immutable (nothing can be marked archived in place) and the log has no CAS, so the `expectedVersion` check cannot be made atomic; bound context via read-windowing (`EventFilter.lastN` on the advisor, or `totalEventsLimit`) and long-term memory extraction instead. Every event read back reports `isArchived() == false`. |
-| `getEventVersion(String)` | throws `UnsupportedOperationException` | Its only SPI purpose is supplying the `expectedVersion` for `applyCompaction`; a count would suggest an optimistic-lock capability the backend does not have. `DefaultSessionService.compact` calls it first, so a configured compaction fails here. |
+| `appendEvents(String, List, long)` | throws `UnsupportedOperationException` | The batch must be appended atomically at an expected log version (how a compaction is recorded); the AgentCore log has no CAS and no atomic multi-event write. Bound context via read-windowing (`EventFilter.lastN`, or `totalEventsLimit`) and long-term memory extraction instead. No compaction boundary is ever written, so the active view is the whole log. |
+| `getEventVersion(String)` | throws `UnsupportedOperationException` | Its only SPI purpose is supplying the `expectedVersion` for `appendEvents`; a count would suggest an optimistic-lock capability the backend does not have. `DefaultSessionService.compact` calls it first, so a configured compaction fails here. |
+| `appendEvent(SessionEvent)` | rejects events that are not `EventType.MESSAGE` with a message | AgentCore events hold conversation messages; other event types throw `IllegalArgumentException`. |
 | `appendEvent(SessionEvent)` | does not throw when session is unknown | First append implicitly creates the session server-side. |
-| `appendEvent(SessionEvent)` | idempotent by `SessionEvent.getId()`, best effort, expected rather than verified | The id feeds a deterministic CreateEvent `clientToken`. Per the CreateEvent API reference, AgentCore should then ignore a retry with the same id (for example with `IdempotentSessionEventIdGenerator`); the reference does not say what happens when the retry carries a different timestamp, and only the live `AgentCoreSessionRepositoryIT` checks it. If AgentCore rejects such a retry, it fails with `StorageException` and `IdempotentSessionEventIdGenerator` is unsafe with this repository. Unlike the SPI reference, AgentCore remembers tokens only for an undocumented window: a replay after it would be stored again, a re-append after `delete` inside it would be dropped, and with `IdempotentSessionEventIdGenerator` a user who repeats the same text in one session would be dropped inside it. The advisor's default random ids never collide. |
+| `appendEvent(SessionEvent)` | idempotent by `SessionEvent.getId()`, best effort, expected rather than verified | The id feeds a deterministic CreateEvent `clientToken`. Per the CreateEvent API reference, AgentCore should then ignore an application retry with the same id; the reference does not say what happens when the retry carries a different timestamp, and only the live `AgentCoreSessionRepositoryIT` checks it. Unlike the SPI reference, AgentCore remembers tokens only for an undocumented window: a replay after it would be stored again, and a re-append after `delete` inside it would be dropped. The advisor's random ids never collide. |
 | events read back (`findEvents`, advisor history) | ids derived from the AgentCore `eventId`, text only | No tool calls, media or custom metadata come back (only `agentcore.eventId`). Re-appending a loaded event with a rebuilt `Message` is not deduplicated. |
-| `total-events-limit` | caps every read without `EventFilter.lastN` to the newest N events | Keyword and pattern searches and `CrossSessionRecallTools` silently miss older matches; bound the advisor's context with `EventFilter.lastN` instead. |
-| `Session.createdAt` | `findByUserId`: real instant from each `SessionSummary`; `findById`: the tail (most recent) event timestamp, without calling `ListSessions` | Either path falls back to the `Instant.EPOCH` sentinel when its source carries no timestamp; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
+| `total-events-limit` | caps every read without `EventFilter.lastN` to the newest N events | `searchEvents` silently misses older matches; bound the advisor's context with `EventFilter.lastN` instead. |
+| `Session.createdAt` | `findByMetadata`: real instant from each `SessionSummary`; `findById`: the tail (most recent) event timestamp, without calling `ListSessions` | Either path falls back to the `Instant.EPOCH` sentinel when its source carries no timestamp; the last-event timestamp is also exposed under metadata key `agentcore.lastEventAt`. |
 | `Session.expiresAt` | `null` | TTL is managed on the memory resource itself. |
 
 **Deprecation notice.** The ChatMemory-facing beans (`chatMemoryRepository`, `chatMemory`,
@@ -484,7 +427,7 @@ AgentCore rejects a request whose actor ID or session ID breaks the rules below 
 
 This module checks a few rules before calling AgentCore. Long-term memory rejects an actor ID that contains `/` or `*`, because the namespace of actor `bob/x` would sit beneath that of actor `bob`. The Session API repository rejects control characters and empty parts (such as a leading colon) up front. Everything else is left to AgentCore.
 
-User IDs from identity providers often break these rules: e-mail addresses contain `@` and `.`, and subjects such as `auth0|123` contain `|`. Map such a subject to a safe, stable value before using it as the actor ID, for example your application's internal user ID or a hex-encoded SHA-256 hash of the subject. Use the same mapped value everywhere the user ID appears, including `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY`.
+User IDs from identity providers often break these rules: e-mail addresses contain `@` and `.`, and subjects such as `auth0|123` contain `|`. Map such a subject to a safe, stable value before using it as the actor ID, for example your application's internal user ID or a hex-encoded SHA-256 hash of the subject. Use the same mapped value everywhere the user ID appears: in the conversation ID of the ChatMemory stack and in the actor segment of Session API session IDs, from which `AgentCoreSessionRepository` derives the session's principal.
 
 ## Error Handling
 
@@ -537,7 +480,7 @@ void deleteByConversationId(String conversationId);
    - `bedrock-agentcore:ListEvents`
    - `bedrock-agentcore:CreateEvent`
    - `bedrock-agentcore:DeleteEvent`
-   - `bedrock-agentcore:ListSessions` (for `findByUserId` and `CrossSessionRecallTools`; `findById` derives `createdAt` from the event tail and does not call `ListSessions`)
+   - `bedrock-agentcore:ListSessions` (for `findByMetadata`; `findById` derives `createdAt` from the event tail and does not call `ListSessions`)
    - `bedrock-agentcore:RetrieveMemoryRecords` (for LTM)
 
 3. **Debug logging**:

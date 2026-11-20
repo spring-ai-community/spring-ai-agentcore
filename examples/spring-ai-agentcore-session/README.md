@@ -7,8 +7,8 @@ A runnable Spring Boot example demonstrating the Spring AI **Session API** bean 
 
 ## What this example shows
 
-When `agentcore.memory.session.enabled=true` is set and the
-`spring-ai-session` artifact (0.10.x) is on the classpath, the
+When `agentcore.memory.session.enabled=true` is set and the Spring AI 2.1 Session API
+artifacts (`spring-ai-session`, `spring-ai-session-advisor`) are on the classpath, the
 `spring-ai-agentcore-memory` module auto-configures four beans:
 
 - `AgentCoreSessionRepository` (implements `org.springframework.ai.session.SessionRepository`)
@@ -24,35 +24,31 @@ Each request sets the session id via
 
 ## Required user-side dependency
 
-`spring-ai-agentcore-memory` declares `spring-ai-session` as an `optional`
-dependency, so consumers on the Session API path add it explicitly. This example does so
-in its `pom.xml`:
+`spring-ai-agentcore-memory` declares the Spring AI 2.1 Session API artifacts as
+`optional` dependencies, so consumers on the Session API path add them explicitly. This
+example does so in its `pom.xml`:
 
 ```xml
 <dependency>
-    <groupId>org.springaicommunity</groupId>
+    <groupId>org.springframework.ai</groupId>
     <artifactId>spring-ai-session</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.ai</groupId>
+    <artifactId>spring-ai-session-advisor</artifactId>
 </dependency>
 ```
 
-The version is managed by `spring-ai-session-bom`, imported by the examples parent pom,
-so this project never pins the version directly.
+The versions are managed by `spring-ai-bom`, imported by the examples parent pom, so this
+project never pins them directly.
 
 ## The `userId:sessionSuffix` session id
 
-`AgentCoreSessionRepository` has no separate session-metadata store, so it derives
-`Session.userId` from the actor (userId) segment of the sessionId parsed by
-`AgentCoreMemoryConversationIdParser`. The sessionId has the form
-`userId:sessionSuffix`; the example uses `"testActor:testSession"`, where `testActor`
-is the userId and `testSession` is the suffix.
-
-If you pass `SessionMemoryAdvisor.USER_ID_CONTEXT_KEY` on a request, its value must equal
-the userId prefix of the sessionId. On the second turn the advisor runs an ownership
-check comparing `USER_ID_CONTEXT_KEY` against the derived `Session.userId`; a mismatch
-throws `IllegalStateException("...does not belong to user...")`. This controller does not
-set `USER_ID_CONTEXT_KEY`, so the check passes. The common trap is copying this example,
-reusing a sessionId, then passing a different `USER_ID_CONTEXT_KEY` on turn two. Keep the
-userId prefix and any `USER_ID_CONTEXT_KEY` value identical.
+`AgentCoreSessionRepository` has no separate session-metadata store, so it derives the
+session's principal (`SessionAttributes.PRINCIPAL_NAME`) from the actor (userId) segment
+of the sessionId parsed by `AgentCoreMemoryConversationIdParser`. The sessionId has the
+form `userId:sessionSuffix`; the example uses `"testActor:testSession"`, where
+`testActor` is the userId and `testSession` is the suffix.
 
 ## Prerequisites
 

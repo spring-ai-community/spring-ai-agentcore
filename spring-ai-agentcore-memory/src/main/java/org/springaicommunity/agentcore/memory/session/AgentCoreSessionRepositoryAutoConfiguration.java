@@ -133,12 +133,7 @@ public class AgentCoreSessionRepositoryAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean(SessionMemoryAdvisor.class)
 	SessionMemoryAdvisor sessionMemoryAdvisor(SessionService sessionService, AgentCoreSessionProperties props) {
-		SessionMemoryAdvisor.Builder builder = SessionMemoryAdvisor.builder(sessionService)
-			.order(SESSION_MEMORY_ADVISOR_ORDER);
-		if (props.defaultUserId() != null && !props.defaultUserId().isBlank()) {
-			builder.defaultUserId(props.defaultUserId());
-		}
-		return builder.build();
+		return SessionMemoryAdvisor.builder(sessionService).order(SESSION_MEMORY_ADVISOR_ORDER).build();
 	}
 
 	@Bean

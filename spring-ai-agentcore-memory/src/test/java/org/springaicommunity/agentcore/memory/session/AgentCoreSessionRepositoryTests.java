@@ -21,12 +21,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -57,11 +58,12 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.session.DefaultSessionService;
 import org.springframework.ai.session.EventFilter;
+import org.springframework.ai.session.EventQuery;
+import org.springframework.ai.session.EventType;
 import org.springframework.ai.session.Session;
+import org.springframework.ai.session.SessionAttributes;
 import org.springframework.ai.session.SessionEvent;
-import org.springframework.ai.session.advisor.IdempotentSessionEventIdGenerator;
 import org.springframework.ai.session.advisor.SessionMemoryAdvisor;
-import org.springframework.ai.session.compaction.CompactionPlan;
 import org.springframework.ai.session.compaction.CompactionStrategy;
 import org.springframework.ai.session.compaction.CompactionTrigger;
 
@@ -74,16 +76,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 /**
- * Unit tests for {@link AgentCoreSessionRepository}. Includes the two advisor-integration
- * tests that exercise the C1 hard precondition end-to-end through the real
- * {@link SessionMemoryAdvisor#before}.
+ * Unit tests for {@link AgentCoreSessionRepository}, including advisor-integration tests
+ * through the real {@link SessionMemoryAdvisor#before}.
  *
  * <p>
- * The repository is append-only: {@code applyCompaction} and {@code getEventVersion}
- * always throw {@link UnsupportedOperationException}, synthetic events are never
- * persisted, and reads are bounded via read-windowing ({@code totalEventsLimit},
- * {@code EventFilter.lastN}) with an early pagination stop for plain {@code lastN}
- * queries.
+ * The repository is append-only: {@code appendEvents} and {@code getEventVersion} always
+ * throw {@link UnsupportedOperationException}, synthetic events are never persisted, and
+ * reads are bounded via read-windowing ({@code totalEventsLimit},
+ * {@code EventFilter.lastN}) with an early pagination stop for last-N windows.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -141,11 +141,11 @@ class AgentCoreSessionRepositoryTests {
 			.build()).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("defaultSession");
 	}
 
-	// ==================== save / findById / findByUserId / deleteExpiredSessions ==
+	// ==================== save / findById / findByMetadata / deleteExpiredSessions ==
 
 	@Test
 	void saveReturnsSameSessionAndDoesNotCallClient() {
-		Session session = Session.builder().id(SESSION_ID).userId(ACTOR).build();
+		Session session = Session.builder().id(SESSION_ID).build();
 		Session saved = this.repository.save(session);
 		assertThat(saved).isSameAs(session);
 		then(this.client).shouldHaveNoInteractions();
@@ -161,12 +161,13 @@ class AgentCoreSessionRepositoryTests {
 
 		assertThat(synthesized).isNotNull();
 		assertThat(synthesized.id()).isEqualTo(SESSION_ID);
-		assertThat(synthesized.userId()).isEqualTo(ACTOR);
+		assertThat(SessionAttributes.principalName(synthesized)).isEqualTo(ACTOR);
 		// I4: createdAt is the tail event timestamp (already fetched), not a ListSessions
 		// lookup and not an EPOCH sentinel.
 		assertThat(synthesized.createdAt()).isEqualTo(eventTs);
 		assertThat(synthesized.expiresAt()).isNull();
-		assertThat(synthesized.metadata()).containsEntry(AgentCoreSessionRepository.ACTOR_ID_METADATA_KEY, ACTOR)
+		assertThat(synthesized.metadata()).containsEntry(SessionAttributes.PRINCIPAL_NAME, ACTOR)
+			.containsEntry(AgentCoreSessionRepository.ACTOR_ID_METADATA_KEY, ACTOR)
 			.containsEntry(AgentCoreSessionRepository.SESSION_METADATA_KEY, SESSION_SUFFIX)
 			.containsEntry(AgentCoreSessionRepository.LAST_EVENT_AT_METADATA_KEY, eventTs);
 
@@ -230,11 +231,11 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(tailReq.actorId()).isEqualTo("tenant:alice");
 		assertThat(tailReq.sessionId()).isEqualTo("conv-1");
 		assertThat(synthesized).isNotNull();
-		assertThat(synthesized.userId()).isEqualTo("tenant:alice");
+		assertThat(SessionAttributes.principalName(synthesized)).isEqualTo("tenant:alice");
 	}
 
 	@Test
-	void findByUserIdWithColonReturnsIdsThatRoundTripThroughFindById() {
+	void findByPrincipalWithColonReturnsIdsThatRoundTripThroughFindById() {
 		// #260: the compound ids listed for a user id with ':' must resolve back to that
 		// actor, not to the text before its first colon.
 		SessionSummary summary = SessionSummary.builder()
@@ -246,7 +247,7 @@ class AgentCoreSessionRepositoryTests {
 			.willReturn(ListSessionsResponse.builder().sessionSummaries(summary).build());
 		this.givenDataEvents(Event.builder().eventId("evt-5").eventTimestamp(Instant.now()).build());
 
-		List<Session> sessions = this.repository.findByUserId("tenant:alice");
+		List<Session> sessions = this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, "tenant:alice");
 
 		ArgumentCaptor<ListSessionsRequest> listSessions = ArgumentCaptor.forClass(ListSessionsRequest.class);
 		then(this.client).should().listSessions(listSessions.capture());
@@ -261,8 +262,8 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void findByUserIdReturnsSessionsFromPaginatedListSessions() {
-		// D2: findByUserId maps userId -> actor and paginates listSessions.
+	void findByPrincipalReturnsSessionsFromPaginatedListSessions() {
+		// D2: findByMetadata maps the principal -> actor and paginates listSessions.
 		Instant t1 = Instant.parse("2026-01-01T00:00:00Z");
 		Instant t2 = Instant.parse("2026-02-01T00:00:00Z");
 		SessionSummary s1 = SessionSummary.builder().sessionId("conv-1").actorId(ACTOR).createdAt(t1).build();
@@ -271,25 +272,78 @@ class AgentCoreSessionRepositoryTests {
 			.willReturn(ListSessionsResponse.builder().sessionSummaries(s1).nextToken("p2").build())
 			.willReturn(ListSessionsResponse.builder().sessionSummaries(s2).build());
 
-		List<Session> sessions = this.repository.findByUserId(ACTOR);
+		List<Session> sessions = this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, ACTOR);
 
 		assertThat(sessions).hasSize(2);
 		assertThat(sessions).extracting(Session::id).containsExactly("alice:conv-1", "alice:conv-2");
-		assertThat(sessions).allSatisfy((s) -> assertThat(s.userId()).isEqualTo(ACTOR));
+		assertThat(sessions).allSatisfy((s) -> assertThat(SessionAttributes.principalName(s)).isEqualTo(ACTOR));
 		assertThat(sessions.get(0).createdAt()).isEqualTo(t1);
 		assertThat(sessions.get(1).createdAt()).isEqualTo(t2);
 	}
 
 	@Test
-	void findByUserIdEmptyResultReturnsEmptyList() {
+	void findByPrincipalReturnsSessionsOldestFirstThenById() {
+		// The SPI requires oldest first (creation time, then id); AgentCore pages arrive
+		// in its own order.
+		Instant older = Instant.parse("2026-01-01T00:00:00Z");
+		Instant newer = Instant.parse("2026-03-01T00:00:00Z");
 		given(this.client.listSessions(any(ListSessionsRequest.class)))
-			.willReturn(ListSessionsResponse.builder().sessionSummaries(List.of()).build());
-		assertThat(this.repository.findByUserId("nobody")).isEmpty();
+			.willReturn(ListSessionsResponse.builder()
+				.sessionSummaries(SessionSummary.builder().sessionId("conv-c").actorId(ACTOR).createdAt(newer).build(),
+						SessionSummary.builder().sessionId("conv-b").actorId(ACTOR).createdAt(older).build())
+				.nextToken("p2")
+				.build())
+			.willReturn(ListSessionsResponse.builder()
+				.sessionSummaries(SessionSummary.builder().sessionId("conv-a").actorId(ACTOR).createdAt(older).build(),
+						SessionSummary.builder().sessionId("conv-x").actorId(ACTOR).build())
+				.build());
+
+		List<Session> sessions = this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, ACTOR);
+
+		// conv-x has no creation time and sorts as the EPOCH sentinel
+		assertThat(sessions).extracting(Session::id)
+			.containsExactly("alice:conv-x", "alice:conv-a", "alice:conv-b", "alice:conv-c");
 	}
 
 	@Test
-	void findByUserIdRejectsBlankUserId() {
-		assertThatThrownBy(() -> this.repository.findByUserId("  ")).isInstanceOf(IllegalArgumentException.class);
+	void findByPrincipalEmptyResultReturnsEmptyList() {
+		given(this.client.listSessions(any(ListSessionsRequest.class)))
+			.willReturn(ListSessionsResponse.builder().sessionSummaries(List.of()).build());
+		assertThat(this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, "nobody")).isEmpty();
+	}
+
+	@Test
+	void findByActorIdMetadataKeyListsTheActorsSessions() {
+		given(this.client.listSessions(any(ListSessionsRequest.class))).willReturn(ListSessionsResponse.builder()
+			.sessionSummaries(SessionSummary.builder().sessionId("conv-1").actorId(ACTOR).build())
+			.build());
+
+		assertThat(this.repository.findByMetadata(AgentCoreSessionRepository.ACTOR_ID_METADATA_KEY, ACTOR))
+			.extracting(Session::id)
+			.containsExactly("alice:conv-1");
+	}
+
+	@Test
+	void findByOtherMetadataKeysReturnsNothingWithoutCallingAgentCore() {
+		// No other metadata is stored, so no session can hold it.
+		assertThat(this.repository.findByMetadata(SessionAttributes.AGENT_NAME, "support")).isEmpty();
+		then(this.client).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void findByMetadataRejectsNullValueAndBlankName() {
+		assertThatThrownBy(() -> this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, null))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> this.repository.findByMetadata(" ", ACTOR))
+			.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "", "  ", " alice ", "alice ", "tenant::alice", ":alice", "ali\nce" })
+	void findByPrincipalMatchesExactlyAndNeverQueriesAnInvalidActor(String value) {
+		// Principals are trimmed actor ids, so " alice " must not find alice's sessions.
+		assertThat(this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, value)).isEmpty();
+		then(this.client).shouldHaveNoInteractions();
 	}
 
 	@Test
@@ -307,7 +361,7 @@ class AgentCoreSessionRepositoryTests {
 	void saveIfAbsentReturnsTrueWhenSessionHasNoEvents() {
 		this.givenDataEvents();
 
-		assertThat(this.repository.saveIfAbsent(Session.builder().id(SESSION_ID).userId(ACTOR).build())).isTrue();
+		assertThat(this.repository.saveIfAbsent(Session.builder().id(SESSION_ID).build())).isTrue();
 		then(this.client).should(never()).createEvent(any(CreateEventRequest.class));
 	}
 
@@ -315,7 +369,7 @@ class AgentCoreSessionRepositoryTests {
 	void saveIfAbsentReturnsFalseWhenSessionAlreadyHasEvents() {
 		this.givenDataEvents(payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z")));
 
-		assertThat(this.repository.saveIfAbsent(Session.builder().id(SESSION_ID).userId(ACTOR).build())).isFalse();
+		assertThat(this.repository.saveIfAbsent(Session.builder().id(SESSION_ID).build())).isFalse();
 	}
 
 	// ==================== sessionId seam validation ====================
@@ -572,49 +626,50 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void idempotentIdGeneratorRetrySendsTheSameClientToken() {
-		// A retried SessionMemoryAdvisor call (fresh request, fresh UserMessage, fresh
-		// timestamp) re-derives the same event id with IdempotentSessionEventIdGenerator,
-		// so both CreateEvent calls carry one token and AgentCore keeps a single event.
-		// The default random generator keeps distinct tokens, as before 0.8.0.
-		this.givenDataEvents();
+	void retriedAppendWithTheSameEventIdSendsTheSameClientToken() {
+		// An application retry that reuses its event id (fresh UserMessage, fresh
+		// timestamp) sends one token, so AgentCore keeps a single event; distinct ids
+		// keep distinct tokens.
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("new-1").build()).build());
-		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
-		IdempotentSessionEventIdGenerator ids = new IdempotentSessionEventIdGenerator();
-		SessionMemoryAdvisor idempotent = SessionMemoryAdvisor.builder(service)
-			.requestEventIdGenerator(ids)
-			.responseEventIdGenerator(ids)
-			.build();
-		SessionMemoryAdvisor random = SessionMemoryAdvisor.builder(service).build();
 
-		idempotent.before(userTurn("book a table"), null);
-		idempotent.before(userTurn("book a table"), null);
-		random.before(userTurn("book a table"), null);
-		random.before(userTurn("book a table"), null);
+		this.repository.appendEvent(userEvent("retry-1", "book a table"));
+		this.repository.appendEvent(userEvent("retry-1", "book a table"));
+		this.repository.appendEvent(userEvent("other-1", "book a table"));
 
 		ArgumentCaptor<CreateEventRequest> captor = ArgumentCaptor.forClass(CreateEventRequest.class);
-		then(this.client).should(times(4)).createEvent(captor.capture());
+		then(this.client).should(times(3)).createEvent(captor.capture());
 		List<String> tokens = captor.getAllValues().stream().map(CreateEventRequest::clientToken).toList();
 		assertThat(tokens.get(1)).isEqualTo(tokens.get(0));
 		assertThat(tokens.get(2)).isNotEqualTo(tokens.get(0));
-		assertThat(tokens.get(3)).isNotEqualTo(tokens.get(2)).isNotEqualTo(tokens.get(0));
 	}
 
-	// ==================== applyCompaction (always unsupported) ====================
+	@Test
+	void appendEventRejectsEventsThatAreNotMessages() {
+		SessionEvent state = SessionEvent.builder()
+			.sessionId(SESSION_ID)
+			.type(EventType.of("AGENT_STATE"))
+			.payload("step", 3)
+			.build();
+
+		assertThatThrownBy(() -> this.repository.appendEvent(state)).isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("stores only MESSAGE events")
+			.hasMessageContaining("AGENT_STATE");
+		then(this.client).shouldHaveNoInteractions();
+	}
+
+	// ==================== appendEvents (always unsupported) ====================
 
 	@Test
-	void applyCompactionThrowsUnsupportedOperationAndNeverTouchesClient() {
+	void appendEventsThrowsUnsupportedOperationAndNeverTouchesClient() {
 		SessionEvent summary = SessionEvent.builder()
 			.sessionId(SESSION_ID)
 			.message(UserMessage.builder().text("summary").build())
 			.build();
-		CompactionPlan plan = new CompactionPlan(Set.of("old-1"),
-				List.of(new CompactionPlan.Insert(null, List.of(summary))));
-		assertThatThrownBy(() -> this.repository.applyCompaction(SESSION_ID, plan, 1L))
+		assertThatThrownBy(() -> this.repository.appendEvents(SESSION_ID, List.of(summary), 1L))
 			.isInstanceOf(UnsupportedOperationException.class)
-			.hasMessageContaining("applyCompaction is unsupported")
-			.hasMessageContaining("compactionTrigger")
+			.hasMessageContaining("appendEvents is unsupported")
+			.hasMessageContaining("Do not configure compaction")
 			.hasMessageContaining("EventFilter.lastN");
 		then(this.client).shouldHaveNoInteractions();
 	}
@@ -626,9 +681,8 @@ class AgentCoreSessionRepositoryTests {
 		assertThatThrownBy(() -> this.repository.getEventVersion(SESSION_ID))
 			.isInstanceOf(UnsupportedOperationException.class)
 			.hasMessageContaining("getEventVersion is unsupported")
-			.hasMessageContaining("applyCompaction")
-			.hasMessageNotContaining("replaceEvents")
-			.hasMessageContaining("compactionTrigger");
+			.hasMessageContaining("appendEvents")
+			.hasMessageContaining("Do not configure compaction");
 		then(this.client).shouldHaveNoInteractions();
 	}
 
@@ -795,9 +849,9 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void totalEventsLimitHidesOlderMatchesFromKeywordSearches() {
-		// Documented divergence: reads without lastN, including keyword searches and
-		// CrossSessionRecallTools, see only the newest totalEventsLimit events, so an
-		// older match is silently missed. Pinned so that any change is deliberate.
+		// Documented divergence: reads without a last-N window, including searchEvents,
+		// see only the newest totalEventsLimit events, so an older match is silently
+		// missed. Pinned so that any change is deliberate.
 		AgentCoreSessionRepository limited = AgentCoreSessionRepository.builder()
 			.memoryId(MEMORY_ID)
 			.client(this.client)
@@ -807,33 +861,11 @@ class AgentCoreSessionRepositoryTests {
 		Event e2 = payloadEvent("e-2", "second", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
 		Event e1 = payloadEvent("e-1", "the needle", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		this.givenDataEvents(e3, e2, e1);
-		EventFilter needle = EventFilter.builder().keyword("needle").build();
+		EventQuery needle = EventQuery.keyword("needle");
 
-		assertThat(limited.findEvents(SESSION_ID, needle)).isEmpty();
-		assertThat(this.repository.findEvents(SESSION_ID, needle)).extracting(SessionEvent::getId)
+		assertThat(limited.searchEvents(SESSION_ID, needle)).isEmpty();
+		assertThat(this.repository.searchEvents(SESSION_ID, needle)).extracting(SessionEvent::getId)
 			.containsExactly("e-1");
-	}
-
-	@Test
-	void findEventsPageAndPageSizeSliceChronologically() {
-		Event e5 = payloadEvent("e-5", "fifth", Role.USER, Instant.parse("2026-01-05T00:00:00Z"));
-		Event e4 = payloadEvent("e-4", "fourth", Role.USER, Instant.parse("2026-01-04T00:00:00Z"));
-		Event e3 = payloadEvent("e-3", "third", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
-		Event e2 = payloadEvent("e-2", "second", Role.USER, Instant.parse("2026-01-02T00:00:00Z"));
-		Event e1 = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		this.givenDataEvents(e5, e4, e3, e2, e1);
-
-		List<SessionEvent> pageZero = this.repository.findEvents(SESSION_ID,
-				EventFilter.builder().pageSize(2).page(0).build());
-		assertThat(pageZero).extracting((e) -> e.getMessage().getText()).containsExactly("first", "second");
-
-		List<SessionEvent> tailPage = this.repository.findEvents(SESSION_ID,
-				EventFilter.builder().pageSize(2).page(2).build());
-		assertThat(tailPage).extracting((e) -> e.getMessage().getText()).containsExactly("fifth");
-
-		List<SessionEvent> beyondEnd = this.repository.findEvents(SESSION_ID,
-				EventFilter.builder().pageSize(2).page(5).build());
-		assertThat(beyondEnd).isEmpty();
 	}
 
 	@Test
@@ -850,57 +882,34 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void findEventsHonorsKeywordsAnyAndAllMatchModes() {
-		// spring-ai-session EventFilter.keywords/matchMode are applied client-side
-		// through EventFilter.matches; keywords are case-insensitive.
+	void searchEventsHonorsKeywordsAnyAndAllMatchModes() {
+		// EventQuery keywords/matchMode are matched client-side through the SPI default;
+		// keywords are case-insensitive.
 		Event e1 = payloadEvent("e-1", "Deploy the Lambda", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		Event e2 = payloadEvent("e-2", "lambda cold start", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
 		Event e3 = payloadEvent("e-3", "unrelated", Role.USER, Instant.parse("2026-01-03T00:00:00Z"));
 		this.givenDataEvents(e3, e2, e1);
 
-		EventFilter any = EventFilter.builder()
-			.keywords(List.of("DEPLOY", "cold"))
-			.matchMode(EventFilter.MatchMode.ANY)
-			.build();
-		assertThat(this.repository.findEvents(SESSION_ID, any)).extracting(SessionEvent::getId)
+		EventQuery any = EventQuery.builder().keywords("DEPLOY", "cold").matchMode(EventQuery.MatchMode.ANY).build();
+		assertThat(this.repository.searchEvents(SESSION_ID, any)).extracting(SessionEvent::getId)
 			.containsExactly("e-1", "e-2");
 
-		EventFilter all = EventFilter.builder()
-			.keywords(List.of("lambda", "deploy"))
-			.matchMode(EventFilter.MatchMode.ALL)
-			.build();
-		assertThat(this.repository.findEvents(SESSION_ID, all)).extracting(SessionEvent::getId).containsExactly("e-1");
-
-		// keywordsSearch pages by default (page 0, DEFAULT_PAGE_SIZE); it still matches.
-		assertThat(this.repository.findEvents(SESSION_ID,
-				EventFilter.keywordsSearch(List.of("lambda"), EventFilter.MatchMode.ANY)))
-			.extracting(SessionEvent::getId)
-			.containsExactly("e-1", "e-2");
+		EventQuery all = EventQuery.builder().keywords("lambda", "deploy").matchMode(EventQuery.MatchMode.ALL).build();
+		assertThat(this.repository.searchEvents(SESSION_ID, all)).extracting(SessionEvent::getId)
+			.containsExactly("e-1");
 	}
 
 	@Test
-	void findEventsHonorsPatternFilter() {
-		Event e1 = payloadEvent("e-1", "order #1234 shipped", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		Event e2 = payloadEvent("e-2", "no order number", Role.USER, Instant.parse("2026-01-02T00:00:00Z"));
-		this.givenDataEvents(e2, e1);
-
-		List<SessionEvent> events = this.repository.findEvents(SESSION_ID,
-				EventFilter.patternSearch(Pattern.compile("#\\d{4}")));
-		assertThat(events).extracting(SessionEvent::getId).containsExactly("e-1");
-	}
-
-	@Test
-	void findEventsActiveFilterReturnsEveryEventBecauseNothingIsArchived() {
-		// AgentCore events are never archived (applyCompaction is unsupported), so the
-		// EventFilter.active() narrowing that SessionMemoryAdvisor and
-		// DefaultSessionService.compact always apply must not drop anything.
+	void findEventsActiveViewIsTheWholeLog() {
+		// No compaction boundary is ever written (appendEvents is unsupported), so the
+		// EventFilter.active() view that SessionMemoryAdvisor always reads must not drop
+		// anything.
 		Event e1 = payloadEvent("e-1", "first", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		Event e2 = payloadEvent("e-2", "second", Role.ASSISTANT, Instant.parse("2026-01-02T00:00:00Z"));
 		this.givenDataEvents(e2, e1);
 
 		List<SessionEvent> active = this.repository.findEvents(SESSION_ID, EventFilter.active());
 		assertThat(active).extracting(SessionEvent::getId).containsExactly("e-1", "e-2");
-		assertThat(active).noneMatch(SessionEvent::isArchived);
 		// lastN(1) lands on the assistant reply, so the turn-aware window adds its user
 		// message.
 		assertThat(this.repository.findEvents(SESSION_ID, EventFilter.active().merge(EventFilter.lastN(1))))
@@ -928,8 +937,8 @@ class AgentCoreSessionRepositoryTests {
 
 	@Test
 	void defaultSessionServiceCompactFailsWithGuidanceAndNeverWrites() {
-		// DefaultSessionService.compact (what SessionMemoryAdvisor runs when a
-		// compactionTrigger is configured) reads findById (a ListEvents call), then
+		// DefaultSessionService.compact (what SessionTurnAdvisor runs when compaction is
+		// configured) reads findById (a ListEvents call), then
 		// getEventVersion, before the trigger or strategy run. It therefore fails there
 		// with the configuration guidance, never pays for a strategy (for example an LLM
 		// summary) and never reaches a write.
@@ -942,7 +951,7 @@ class AgentCoreSessionRepositoryTests {
 		assertThatThrownBy(() -> service.compact(SESSION_ID, trigger, strategy))
 			.isInstanceOf(UnsupportedOperationException.class)
 			.hasMessageContaining("getEventVersion is unsupported")
-			.hasMessageContaining("compactionTrigger");
+			.hasMessageContaining("Do not configure compaction");
 		then(trigger).shouldHaveNoInteractions();
 		then(strategy).shouldHaveNoInteractions();
 		then(this.client).should(never()).createEvent(any(CreateEventRequest.class));
@@ -970,10 +979,10 @@ class AgentCoreSessionRepositoryTests {
 		assertThat(service.findById(SESSION_ID)).isNull();
 	}
 
-	// ==================== C1 advisor-integration tests ====================
+	// ==================== advisor-integration tests ====================
 
 	@Test
-	void findByIdMatchingUserIdContextAppendMessagePasses() {
+	void advisorTwoTurnsReadAndAppendThroughTheRepository() {
 		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
 		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage())
 			.willReturn(ListEventsResponse.builder().events(tail).build());
@@ -983,87 +992,44 @@ class AgentCoreSessionRepositoryTests {
 		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
 		SessionMemoryAdvisor advisor = SessionMemoryAdvisor.builder(service).build();
 
-		ChatClientRequest turn1 = ChatClientRequest.builder()
-			.prompt(new Prompt(List.of(new UserMessage("first"))))
-			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, SESSION_ID)
-			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, ACTOR)
-			.build();
-		advisor.before(turn1, null);
+		advisor.before(userTurn("first"), null);
+		advisor.before(userTurn("second"), null);
 
-		ChatClientRequest turn2 = ChatClientRequest.builder()
-			.prompt(new Prompt(List.of(new UserMessage("second"))))
-			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, SESSION_ID)
-			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, ACTOR)
-			.build();
-		advisor.before(turn2, null);
-
-		then(this.client).should(Mockito.atLeastOnce()).listEvents(any(ListEventsRequest.class));
+		ArgumentCaptor<CreateEventRequest> created = ArgumentCaptor.forClass(CreateEventRequest.class);
+		then(this.client).should(times(2)).createEvent(created.capture());
+		assertThat(created.getAllValues()).allSatisfy((request) -> {
+			assertThat(request.actorId()).isEqualTo(ACTOR);
+			assertThat(request.sessionId()).isEqualTo(SESSION_SUFFIX);
+		});
 	}
 
 	@Test
-	void findByIdMismatchedUserIdContextAdvisorThrowsIllegalStateException() {
-		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		// Turn 1: the advisor's findById and saveIfAbsent (from SessionService.create)
-		// both see an empty session.
-		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage(), emptyPage())
-			.willReturn(ListEventsResponse.builder().events(tail).build());
-		given(this.client.createEvent(any(CreateEventRequest.class)))
-			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("stamp").build()).build());
-
-		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
-		SessionMemoryAdvisor advisor = SessionMemoryAdvisor.builder(service).build();
-
-		ChatClientRequest turn1 = ChatClientRequest.builder()
-			.prompt(new Prompt(List.of(new UserMessage("first"))))
-			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, SESSION_ID)
-			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, "bob")
-			.build();
-		advisor.before(turn1, null);
-
-		ChatClientRequest turn2 = ChatClientRequest.builder()
-			.prompt(new Prompt(List.of(new UserMessage("second"))))
-			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, SESSION_ID)
-			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, "bob")
-			.build();
-		assertThatThrownBy(() -> advisor.before(turn2, null)).isInstanceOf(IllegalStateException.class)
-			.hasMessageContaining("does not belong to user 'bob'");
-	}
-
-	@Test
-	void findByIdUserIdWithColonPassesOwnershipCheck() {
-		// #260: a first-colon split derived Session.userId "tenant" here, so the
-		// advisor rejected user "tenant:alice" on the second turn.
+	void advisorUsesTheActorBeforeTheLastColon() {
+		// #260: actor ids may contain ':', so the last colon starts the session.
 		String sessionId = "tenant:alice:conv-1";
-		String userId = "tenant:alice";
-		Event tail = payloadEvent("e-1", "hi", Role.USER, Instant.parse("2026-01-01T00:00:00Z"));
-		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage())
-			.willReturn(ListEventsResponse.builder().events(tail).build());
+		given(this.client.listEvents(any(ListEventsRequest.class))).willReturn(emptyPage());
 		given(this.client.createEvent(any(CreateEventRequest.class)))
 			.willReturn(CreateEventResponse.builder().event(Event.builder().eventId("stamp").build()).build());
 
 		DefaultSessionService service = DefaultSessionService.builder().sessionRepository(this.repository).build();
 		SessionMemoryAdvisor advisor = SessionMemoryAdvisor.builder(service).build();
 
-		ChatClientRequest turn1 = ChatClientRequest.builder()
+		advisor.before(ChatClientRequest.builder()
 			.prompt(new Prompt(List.of(new UserMessage("first"))))
 			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId)
-			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, userId)
-			.build();
-		advisor.before(turn1, null);
+			.build(), null);
 
-		ChatClientRequest turn2 = ChatClientRequest.builder()
-			.prompt(new Prompt(List.of(new UserMessage("second"))))
-			.context(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId)
-			.context(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, userId)
-			.build();
-		advisor.before(turn2, null);
-
-		ListEventsRequest lastReq = this.captureLastListEvents();
-		assertThat(lastReq.actorId()).isEqualTo(userId);
-		assertThat(lastReq.sessionId()).isEqualTo("conv-1");
+		ArgumentCaptor<CreateEventRequest> created = ArgumentCaptor.forClass(CreateEventRequest.class);
+		then(this.client).should().createEvent(created.capture());
+		assertThat(created.getValue().actorId()).isEqualTo("tenant:alice");
+		assertThat(created.getValue().sessionId()).isEqualTo("conv-1");
 	}
 
 	// ==================== Helpers ====================
+
+	private static SessionEvent userEvent(String id, String text) {
+		return SessionEvent.builder().id(id).sessionId(SESSION_ID).message(new UserMessage(text)).build();
+	}
 
 	private static ChatClientRequest userTurn(String text) {
 		return ChatClientRequest.builder()

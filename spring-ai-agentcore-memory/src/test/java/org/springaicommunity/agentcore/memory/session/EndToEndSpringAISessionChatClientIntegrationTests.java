@@ -106,15 +106,13 @@ class EndToEndSpringAISessionChatClientIntegrationTests {
 
 		client.prompt()
 			.user("My name is Diego. Remember it.")
-			.advisors((a) -> a.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId)
-				.param(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, "alice"))
+			.advisors((a) -> a.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId))
 			.call()
 			.content();
 
 		String reply = client.prompt()
 			.user("What is my name?")
-			.advisors((a) -> a.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId)
-				.param(SessionMemoryAdvisor.USER_ID_CONTEXT_KEY, "alice"))
+			.advisors((a) -> a.param(SessionMemoryAdvisor.SESSION_ID_CONTEXT_KEY, sessionId))
 			.call()
 			.content();
 

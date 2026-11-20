@@ -17,33 +17,28 @@
 package org.springaicommunity.agentcore.memory.session;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.TreeMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.springframework.ai.session.EventFilter;
-import org.springframework.ai.session.Session;
-import org.springframework.ai.session.SessionEvent;
 import org.springframework.ai.session.SessionRepository;
-import org.springframework.ai.session.compaction.CompactionPlan;
 import org.springframework.core.NativeDetector;
 
 /**
- * Fail-fast check that the spring-ai-session API on the classpath is the one
- * {@link AgentCoreSessionRepository} is compiled against. spring-ai-session is pre-1.0
- * and every minor release so far has changed the {@link SessionRepository} SPI; with a
- * stale or mixed classpath the repository would otherwise load fine and fail on the first
- * request with an {@link AbstractMethodError} or {@link NoSuchMethodError}.
+ * Fail-fast check that the Session API on the classpath is the Spring AI one
+ * {@link AgentCoreSessionRepository} is compiled against. Before Spring AI 2.1 the API
+ * was the community artifact {@code org.springaicommunity:spring-ai-session} (earlier
+ * {@code spring-ai-session-management}), which ships the same
+ * {@code org.springframework.ai.session} packages with an incompatible API. With such a
+ * jar still on the classpath the repository would load fine and fail on the first request
+ * with an {@link AbstractMethodError} or {@link NoSuchMethodError}.
  *
  * <p>
  * Two checks run, once per class loader, from the repository constructor (so a repository
@@ -51,15 +46,11 @@ import org.springframework.core.NativeDetector;
  * <ul>
  * <li>A signature probe: every {@link SessionRepository} method must resolve to a
  * concrete {@link AgentCoreSessionRepository} method with a compatible return type, and
- * {@link SessionEvent} and {@link EventFilter} must expose the archive members. It
- * catches an old jar, a newer SPI and a mixed split, including a shaded jar whose Maven
- * markers were stripped.</li>
- * <li>A best-effort Maven marker scan. The renamed {@code spring-ai-session-management}
- * artifact carries the same packages, so an unrelocated copy of it fails fast, as do two
- * different {@code spring-ai-session} versions. A relocated copy bundled inside another
- * jar, the same version seen twice (for example through a parent and a child class
- * loader), and a version outside the supported line only log a WARN, and missing markers
- * are skipped.</li>
+ * {@link EventFilter#applyWindow(List)} must exist. It catches an old jar and a mixed
+ * split, including a shaded jar whose Maven markers were stripped.</li>
+ * <li>A best-effort Maven marker scan: an unrelocated community artifact fails fast. A
+ * relocated copy bundled inside another jar only logs a WARN, and missing markers are
+ * skipped.</li>
  * </ul>
  * Both are skipped in a GraalVM native image, which is a closed world where a mismatch
  * already fails the image build.
@@ -68,38 +59,22 @@ import org.springframework.core.NativeDetector;
  */
 final class SessionApiCompatibility {
 
-	/**
-	 * Version prefix of the spring-ai-session line this module is built and tested for.
-	 */
-	static final String SUPPORTED_VERSION_LINE = "0.10.";
+	static final String REQUIRED_ARTIFACT = "org.springframework.ai:spring-ai-session (Spring AI 2.1)";
 
-	/**
-	 * {@link #SUPPORTED_VERSION_LINE} as written in every message, the configuration
-	 * metadata and the READMEs.
-	 */
-	static final String SUPPORTED_VERSIONS = SUPPORTED_VERSION_LINE + "x";
-
-	static final String REQUIRED_ARTIFACT = "org.springaicommunity:spring-ai-session " + SUPPORTED_VERSIONS;
-
-	static final String LEGACY_MARKER = "META-INF/maven/org.springaicommunity/spring-ai-session-management/pom.properties";
-
-	static final String CURRENT_MARKER = "META-INF/maven/org.springaicommunity/spring-ai-session/pom.properties";
+	/** Maven markers of the community artifacts that ship the same packages. */
+	static final List<String> COMMUNITY_MARKERS = List.of(
+			"META-INF/maven/org.springaicommunity/spring-ai-session/pom.properties",
+			"META-INF/maven/org.springaicommunity/spring-ai-session-management/pom.properties");
 
 	static final String SPI_CLASS_RESOURCE = "org/springframework/ai/session/SessionRepository.class";
 
-	private static final String REMEDY = "Use " + REQUIRED_ARTIFACT + " (import"
-			+ " org.springaicommunity:spring-ai-session-bom " + SUPPORTED_VERSION_LINE + "0 or a later "
-			+ SUPPORTED_VERSIONS + "). If org.springaicommunity:spring-ai-session-management is also on the"
-			+ " classpath, remove it.";
+	private static final String REMEDY = "Remove org.springaicommunity:spring-ai-session and"
+			+ " org.springaicommunity:spring-ai-session-management (and the org.springaicommunity:spring-ai-session-bom"
+			+ " import): Spring AI 2.1 ships the Session API as " + REQUIRED_ARTIFACT
+			+ ", managed by org.springframework.ai:spring-ai-bom.";
 
 	private static final String RELOCATED_NOTE = "the same classpath root does not ship"
 			+ " org.springframework.ai.session.SessionRepository, so it is treated as a relocated copy and ignored";
-
-	private static final String DUPLICATE_NOTE = "this is harmless while the versions agree, but usually points"
-			+ " at a duplicated jar";
-
-	private static final String UNSUPPORTED_LINE_NOTE = "Pre-1.0 minor releases have changed the SessionRepository"
-			+ " SPI; check the release notes before relying on this combination";
 
 	private static final Logger logger = LoggerFactory.getLogger(SessionApiCompatibility.class);
 
@@ -119,8 +94,7 @@ final class SessionApiCompatibility {
 			verified = true;
 			return;
 		}
-		checkSignatures(SessionRepository.class, AgentCoreSessionRepository.class, SessionEvent.class,
-				EventFilter.class);
+		checkSignatures(SessionRepository.class, AgentCoreSessionRepository.class, EventFilter.class);
 		ClassLoader loader = AgentCoreSessionRepository.class.getClassLoader();
 		checkArtifactMarkers((loader != null) ? loader : ClassLoader.getSystemClassLoader());
 		verified = true;
@@ -141,24 +115,11 @@ final class SessionApiCompatibility {
 		verified = false;
 	}
 
-	static void checkSignatures(Class<?> repositorySpi, Class<?> implementation, Class<?> sessionEvent,
-			Class<?> eventFilter) {
+	static void checkSignatures(Class<?> repositorySpi, Class<?> implementation, Class<?> eventFilter) {
 		List<String> problems = new ArrayList<>();
-		Method findById = findMethod(repositorySpi, "findById", String.class);
-		if (findById == null) {
-			problems.add(repositorySpi.getSimpleName() + ".findById(String) is missing");
-		}
-		else if (findById.getReturnType() != Session.class) {
-			problems.add(repositorySpi.getSimpleName() + ".findById(String) returns "
-					+ findById.getReturnType().getName() + " instead of " + Session.class.getName());
-		}
-		if (findMethod(repositorySpi, "applyCompaction", String.class, CompactionPlan.class, long.class) == null) {
-			problems.add(repositorySpi.getSimpleName() + ".applyCompaction(String, CompactionPlan, long) is missing");
-		}
-		// An SPI method the implementation cannot serve (an abstract method added by a
-		// newer
-		// release, or a changed parameter or return type) would otherwise surface as an
-		// AbstractMethodError on its first call.
+		// An SPI method the implementation cannot serve (an abstract method of another
+		// API version, or a changed parameter or return type) would otherwise surface as
+		// an AbstractMethodError on its first call.
 		for (Method spi : repositorySpi.getMethods()) {
 			if (Modifier.isStatic(spi.getModifiers())) {
 				continue;
@@ -169,18 +130,8 @@ final class SessionApiCompatibility {
 				problems.add(implementation.getSimpleName() + " does not implement " + describe(spi));
 			}
 		}
-		if (findMethod(sessionEvent, "isArchived") == null) {
-			problems.add(sessionEvent.getSimpleName() + ".isArchived() is missing");
-		}
-		Method active = findMethod(eventFilter, "active");
-		if (active == null || !Modifier.isStatic(active.getModifiers())) {
-			problems.add(eventFilter.getSimpleName() + ".active() is missing");
-		}
-		if (findMethod(sessionEvent, "isTurnStart") == null) {
-			problems.add(sessionEvent.getSimpleName() + ".isTurnStart() is missing");
-		}
-		if (findMethod(eventFilter, "applyTurnAwareWindow", List.class) == null) {
-			problems.add(eventFilter.getSimpleName() + ".applyTurnAwareWindow(List) is missing");
+		if (findMethod(eventFilter, "applyWindow", List.class) == null) {
+			problems.add(eventFilter.getSimpleName() + ".applyWindow(List) is missing");
 		}
 		if (!problems.isEmpty()) {
 			throw new IllegalStateException("AgentCoreSessionRepository requires " + REQUIRED_ARTIFACT
@@ -191,57 +142,34 @@ final class SessionApiCompatibility {
 
 	static void checkArtifactMarkers(ClassLoader loader) {
 		List<URL> spiClasses = resources(loader, SPI_CLASS_RESOURCE);
-		List<URL> legacy = new ArrayList<>();
-		for (URL marker : resources(loader, LEGACY_MARKER)) {
-			if (shipsSpiClass(marker, spiClasses)) {
-				legacy.add(marker);
-			}
-			else {
-				logger.warn("org.springaicommunity:spring-ai-session-management marker found at {}, but {}", marker,
-						RELOCATED_NOTE);
-			}
-		}
-		if (!legacy.isEmpty()) {
-			throw new IllegalStateException("org.springaicommunity:spring-ai-session-management is on the classpath "
-					+ legacy + ". It was renamed to spring-ai-session in 0.6.0 and ships the same packages with an"
-					+ " incompatible API, so the two cannot be mixed. Remove"
-					+ " org.springaicommunity:spring-ai-session-management; AgentCoreSessionRepository requires "
-					+ REQUIRED_ARTIFACT + ".");
-		}
-		Map<String, List<URL>> byVersion = new TreeMap<>();
-		for (URL url : resources(loader, CURRENT_MARKER)) {
-			String version = readVersion(url);
-			if (version != null) {
-				byVersion.computeIfAbsent(version, (v) -> new ArrayList<>()).add(url);
+		List<URL> community = new ArrayList<>();
+		for (String markerPath : COMMUNITY_MARKERS) {
+			for (URL marker : resources(loader, markerPath)) {
+				if (shipsSpiClass(marker, markerPath, spiClasses)) {
+					community.add(marker);
+				}
+				else {
+					logger.warn("Community Session API marker found at {}, but {}", marker, RELOCATED_NOTE);
+				}
 			}
 		}
-		if (byVersion.size() > 1) {
-			throw new IllegalStateException("Several versions of org.springaicommunity:spring-ai-session are on"
-					+ " the classpath %s. Keep exactly one; AgentCoreSessionRepository requires %s."
-						.formatted(byVersion, REQUIRED_ARTIFACT));
+		if (!community.isEmpty()) {
+			throw new IllegalStateException("The community Session API is on the classpath " + community
+					+ ". It ships the same org.springframework.ai.session packages as Spring AI 2.1 with an"
+					+ " incompatible API, so the two cannot be mixed. " + REMEDY);
 		}
-		byVersion.forEach((version, urls) -> {
-			if (urls.size() > 1) {
-				logger.warn("org.springaicommunity:spring-ai-session {} is on the classpath {} times {}; {}", version,
-						urls.size(), urls, DUPLICATE_NOTE);
-			}
-			if (!version.startsWith(SUPPORTED_VERSION_LINE)) {
-				logger.warn("AgentCoreSessionRepository is built and tested against {}, but found"
-						+ " spring-ai-session {}. {}", REQUIRED_ARTIFACT, version, UNSUPPORTED_LINE_NOTE);
-			}
-		});
 	}
 
-	// maven-shade keeps META-INF/maven of relocated dependencies by default, so a legacy
-	// marker only conflicts when the same jar or directory also ships the unrelocated
-	// SPI class. A marker URL that does not end with the marker path cannot be mapped to
-	// a root and is treated as a conflict.
-	private static boolean shipsSpiClass(URL marker, List<URL> spiClasses) {
+	// maven-shade keeps META-INF/maven of relocated dependencies by default, so a marker
+	// only conflicts when the same jar or directory also ships the unrelocated SPI class.
+	// A marker URL that does not end with the marker path cannot be mapped to a root and
+	// is treated as a conflict.
+	private static boolean shipsSpiClass(URL marker, String markerPath, List<URL> spiClasses) {
 		String markerUrl = marker.toString();
-		if (!markerUrl.endsWith(LEGACY_MARKER)) {
+		if (!markerUrl.endsWith(markerPath)) {
 			return true;
 		}
-		String spiUrl = markerUrl.substring(0, markerUrl.length() - LEGACY_MARKER.length()) + SPI_CLASS_RESOURCE;
+		String spiUrl = markerUrl.substring(0, markerUrl.length() - markerPath.length()) + SPI_CLASS_RESOURCE;
 		return spiClasses.stream().anyMatch((spi) -> spi.toString().equals(spiUrl));
 	}
 
@@ -271,19 +199,6 @@ final class SessionApiCompatibility {
 			logger.debug("Could not scan the classpath for {}; skipping the check", name, ex);
 			return List.of();
 		}
-	}
-
-	private static String readVersion(URL url) {
-		Properties properties = new Properties();
-		try (InputStream in = url.openStream()) {
-			properties.load(in);
-		}
-		catch (IOException ex) {
-			logger.debug("Could not read {}; skipping it", url, ex);
-			return null;
-		}
-		String version = properties.getProperty("version");
-		return (version != null && !version.isBlank()) ? version.trim() : null;
 	}
 
 }
