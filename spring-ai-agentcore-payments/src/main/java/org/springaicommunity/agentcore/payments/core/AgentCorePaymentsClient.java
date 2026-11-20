@@ -463,24 +463,15 @@ public class AgentCorePaymentsClient {
 	private @Nullable MppChallenge selectMppChallenge(List<MppChallenge> challenges, String instrumentNetwork,
 			PaymentRequired response) {
 		try {
-			return MppChallenge.select(challenges, instrumentNetwork, this.networkPreferences, Instant.now());
+			return MppChallenge.select(challenges, instrumentNetwork, this.networkPreferences,
+					Boolean.TRUE.equals(this.buyerPaysGasFees), Instant.now());
 		}
 		catch (MppChallenge.MppSelectionException ex) {
-			if (!this.offersX402(response)) {
+			if (!response.offersX402()) {
 				throw ex;
 			}
 			logger.info("{}; paying the x402 option of the same 402 response instead", ex.getMessage());
 			return null;
-		}
-	}
-
-	private boolean offersX402(PaymentRequired response) {
-		try {
-			X402PaymentRequirements.parse(response, this.jsonMapper);
-			return true;
-		}
-		catch (PaymentException ex) {
-			return false;
 		}
 	}
 

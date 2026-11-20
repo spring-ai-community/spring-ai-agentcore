@@ -41,8 +41,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * the asset's smallest unit
  * @param buyerPaysGasFees MPP only: {@code true} lets AgentCore Payments charge
  * blockchain network fees to the user's wallet, on top of the amount, when the merchant
- * does not sponsor them; {@code false} declines; unset sends no preference, and such
- * challenges are rejected by the service
+ * does not sponsor them; unset or {@code false}, such challenges are not paid (the
+ * service would reject them) and another payment option is used
  * @param postPaymentDelay wait before retrying a paid request
  * @param paidHttpTool settings of the paid HTTP request tool
  * @param session defaults of payment sessions created by {@code PaymentSessionRegistry}

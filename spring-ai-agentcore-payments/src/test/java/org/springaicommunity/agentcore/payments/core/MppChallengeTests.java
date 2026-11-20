@@ -111,10 +111,13 @@ class MppChallengeTests {
 		List<MppChallenge> challenges = this.parse(challenge("late", "evm", 84532, "2026-11-20T13:00:00Z") + ", "
 				+ challenge("soon", "evm", 84532, "2026-11-20T12:30:00Z") + ", " + challenge("base", "evm", 8453));
 
-		assertThat(MppChallenge.select(challenges, "ETHEREUM", List.of("eip155:8453"), NOW).id()).isEqualTo("base");
-		assertThat(MppChallenge.select(challenges, "ETHEREUM", List.of("eip155:84532"), NOW).id()).isEqualTo("soon");
+		assertThat(MppChallenge.select(challenges, "ETHEREUM", List.of("eip155:8453"), true, NOW).id())
+			.isEqualTo("base");
+		assertThat(MppChallenge.select(challenges, "ETHEREUM", List.of("eip155:84532"), true, NOW).id())
+			.isEqualTo("soon");
 		assertThat(MppChallenge
-			.select(this.parse(challenge("x", "evm", 1) + ", " + challenge("y", "evm", 1)), "ETHEREUM", List.of(), NOW)
+			.select(this.parse(challenge("x", "evm", 1) + ", " + challenge("y", "evm", 1)), "ETHEREUM", List.of(), true,
+					NOW)
 			.id()).isEqualTo("x");
 	}
 
@@ -123,12 +126,13 @@ class MppChallengeTests {
 		List<MppChallenge> challenges = this
 			.parse(challenge("sol", "solana", request("{}")) + ", " + challenge("tempo", "tempo", 42431));
 
-		assertThat(MppChallenge.select(challenges, "ETHEREUM", NetworkPreferences.DEFAULT, NOW).id())
+		assertThat(MppChallenge.select(challenges, "ETHEREUM", NetworkPreferences.DEFAULT, true, NOW).id())
 			.isEqualTo("tempo");
-		assertThat(MppChallenge.select(challenges, "SOLANA", NetworkPreferences.DEFAULT, NOW).id()).isEqualTo("sol");
+		assertThat(MppChallenge.select(challenges, "SOLANA", NetworkPreferences.DEFAULT, true, NOW).id())
+			.isEqualTo("sol");
 		assertThatExceptionOfType(MppChallenge.MppSelectionException.class)
 			.isThrownBy(() -> MppChallenge.select(this.parse(challenge("sol", "solana", request("{}"))), "ETHEREUM",
-					NetworkPreferences.DEFAULT, NOW))
+					NetworkPreferences.DEFAULT, true, NOW))
 			.withMessageContaining("network 'ETHEREUM'")
 			.withMessageContaining("Offered methods: solana");
 	}
@@ -140,7 +144,7 @@ class MppChallengeTests {
 				+ request("{\"methodDetails\":{\"chainId\":1}}") + "\"");
 
 		assertThatExceptionOfType(MppChallenge.MppSelectionException.class)
-			.isThrownBy(() -> MppChallenge.select(challenges, "ETHEREUM", NetworkPreferences.DEFAULT, NOW))
+			.isThrownBy(() -> MppChallenge.select(challenges, "ETHEREUM", NetworkPreferences.DEFAULT, true, NOW))
 			.withMessageContaining("1 expired, 1 with unsupported intent: session");
 	}
 
@@ -148,7 +152,47 @@ class MppChallengeTests {
 	void treatsUnparseableExpiryAsNotExpired() {
 		List<MppChallenge> challenges = this.parse(challenge("a", "evm", 1, "tomorrow"));
 
-		assertThat(MppChallenge.select(challenges, "ETHEREUM", NetworkPreferences.DEFAULT, NOW).id()).isEqualTo("a");
+		assertThat(MppChallenge.select(challenges, "ETHEREUM", NetworkPreferences.DEFAULT, true, NOW).id())
+			.isEqualTo("a");
+	}
+
+	@Test
+	void keepsTheReceivedTextOfTheChallenge() {
+		String received = "payment  id=\"a\",realm=\"merchant\" ,  method=\"evm\", intent=\"charge\", request=\""
+				+ request("{\"methodDetails\":{\"chainId\":1}}") + "\"";
+
+		List<MppChallenge> challenges = this.parse("Bearer realm=\"api\", " + received + ", Basic realm=\"x\"");
+
+		assertThat(challenges).hasSize(1);
+		assertThat(challenges.get(0).raw()).isEqualTo(received);
+	}
+
+	@Test
+	void skipsChallengesThatLeaveNetworkFeesToTheBuyer() {
+		String unsponsored = challenge("unsponsored", "evm", 8453);
+		String sponsored = challenge("sponsored", "evm",
+				request("{\"methodDetails\":{\"chainId\":84532,\"feePayer\":true}}"));
+		List<MppChallenge> challenges = this.parse(unsponsored + ", " + sponsored);
+
+		assertThat(MppChallenge.select(challenges, "ETHEREUM", List.of("eip155:8453"), false, NOW).id())
+			.isEqualTo("sponsored");
+		assertThat(MppChallenge.select(challenges, "ETHEREUM", List.of("eip155:8453"), true, NOW).id())
+			.isEqualTo("unsponsored");
+		assertThatExceptionOfType(MppChallenge.MppSelectionException.class).isThrownBy(
+				() -> MppChallenge.select(this.parse(unsponsored), "ETHEREUM", NetworkPreferences.DEFAULT, false, NOW))
+			.withMessageContaining("leave the network fee to the buyer");
+	}
+
+	@Test
+	void readsChainIdsOfAnySize() {
+		String huge = "123456789012345678901234567890";
+
+		assertThat(this.parse(challenge("a", "evm", request("{\"methodDetails\":{\"chainId\":\"" + huge + "\"}}")))
+			.get(0)
+			.network()).isEqualTo("eip155:" + huge);
+		assertThat(this.parse(challenge("a", "evm", request("{\"methodDetails\":{\"chainId\":" + huge + "}}")))
+			.get(0)
+			.network()).isEqualTo("eip155:" + huge);
 	}
 
 	@Test

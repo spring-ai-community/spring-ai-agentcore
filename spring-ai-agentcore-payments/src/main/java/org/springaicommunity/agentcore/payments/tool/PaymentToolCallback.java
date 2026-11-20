@@ -128,10 +128,14 @@ public class PaymentToolCallback implements ToolCallback {
 		}
 		if (paymentRequired.offersMpp() && hasAuthorizationHeader(toolInput)) {
 			// MPP sends its credential in the Authorization header, which would replace
-			// the tool's own credential; checked before paying so that no budget is spent
-			throw new ToolExecutionException(this.getToolDefinition(), new PaymentException("Tool '" + toolName
-					+ "' already sends an Authorization header, which the MPP payment credential would replace; "
-					+ "not paying"));
+			// the tool's own credential: pay only x402. Checked before paying so that no
+			// budget is spent
+			if (!paymentRequired.offersX402()) {
+				throw new ToolExecutionException(this.getToolDefinition(), new PaymentException("Tool '" + toolName
+						+ "' already sends an Authorization header, which "
+						+ "the MPP payment credential would replace, and no x402 option is offered; not paying"));
+			}
+			paymentRequired = paymentRequired.withoutMpp();
 		}
 		logger.info("Tool '{}' requires payment, paying through AgentCore Payments", toolName);
 

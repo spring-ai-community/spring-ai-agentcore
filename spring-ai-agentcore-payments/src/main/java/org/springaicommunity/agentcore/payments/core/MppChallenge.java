@@ -16,6 +16,7 @@
 
 package org.springaicommunity.agentcore.payments.core;
 
+import java.math.BigInteger;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -113,19 +114,21 @@ final class MppChallenge {
 
 	/**
 	 * Selects the challenge to pay. Drops challenges with an intent other than
-	 * {@code charge}, expired challenges and challenges whose method the instrument
-	 * cannot pay; ranks the rest by network preference, then by soonest expiry, then by
-	 * server order.
+	 * {@code charge}, expired challenges, challenges whose method the instrument cannot
+	 * pay and, unless the buyer pays network fees, challenges whose merchant does not
+	 * sponsor them (the service would reject them); ranks the rest by network preference,
+	 * then by soonest expiry, then by server order.
 	 * @param challenges parsed challenges, not empty
 	 * @param instrumentNetwork payment instrument network ({@code ETHEREUM} or
 	 * {@code SOLANA})
 	 * @param preferences network identifiers, most preferred first
+	 * @param buyerPaysGasFees whether network fees may be charged to the buyer's wallet
 	 * @param now reference time for expiry
 	 * @return the selected challenge
 	 * @throws MppSelectionException if no challenge can be paid
 	 */
 	static MppChallenge select(List<MppChallenge> challenges, String instrumentNetwork, List<String> preferences,
-			Instant now) {
+			boolean buyerPaysGasFees, Instant now) {
 		String network = instrumentNetwork.trim().toUpperCase(Locale.ROOT);
 		if (!METHOD_NETWORKS.containsValue(network)) {
 			throw new MppSelectionException("MPP: unsupported payment instrument network '" + instrumentNetwork
@@ -163,6 +166,15 @@ final class MppChallenge {
 			throw new MppSelectionException("MPP: no challenge can be paid by a payment instrument on network '"
 					+ network + "'. Offered methods: " + String.join(", ", methods) + "; supported methods: "
 					+ String.join(", ", new TreeSet<>(METHOD_NETWORKS.keySet())));
+		}
+		if (!buyerPaysGasFees) {
+			int unsponsored = payable.size();
+			payable.removeIf((challenge) -> !challenge.merchantPaysFees());
+			if (payable.isEmpty()) {
+				throw new MppSelectionException("MPP: " + unsponsored
+						+ " payable challenge(s) leave the network fee to the buyer (methodDetails.feePayer is not "
+						+ "true), and the buyer does not pay network fees");
+			}
 		}
 		List<String> ranking = preferences.stream().map((p) -> p.toLowerCase(Locale.ROOT)).toList();
 		return payable.stream()
@@ -219,11 +231,12 @@ final class MppChallenge {
 		String family = METHOD_NETWORKS.get(this.method());
 		if ("ETHEREUM".equals(family)) {
 			JsonNode chainId = details.path("chainId");
+			// BigInteger: merchant data, any size, used only as an identifier
 			if (chainId.isIntegralNumber()) {
-				return "eip155:" + chainId.asLong();
+				return "eip155:" + chainId.bigIntegerValue();
 			}
 			if (chainId.isString() && chainId.stringValue().trim().matches("[0-9]+")) {
-				return "eip155:" + Long.parseLong(chainId.stringValue().trim());
+				return "eip155:" + new BigInteger(chainId.stringValue().trim());
 			}
 			return null;
 		}
@@ -233,6 +246,11 @@ final class MppChallenge {
 			return SOLANA_NETWORKS.get(name.trim().toLowerCase(Locale.ROOT));
 		}
 		return null;
+	}
+
+	private boolean merchantPaysFees() {
+		JsonNode feePayer = this.request.path("methodDetails").path("feePayer");
+		return feePayer.isBoolean() && feePayer.booleanValue();
 	}
 
 	private String intent() {
@@ -274,32 +292,35 @@ final class MppChallenge {
 			return;
 		}
 		Map<String, String> params = null;
-		List<String> parts = new ArrayList<>();
-		for (String part : splitOutsideQuotes(value)) {
-			if (startsScheme(part, AUTH_SCHEME)) {
-				add(params, parts, jsonMapper, out);
+		int challengeStart = -1;
+		int challengeEnd = -1;
+		for (Part part : splitOutsideQuotes(value)) {
+			if (startsScheme(part.text(), AUTH_SCHEME)) {
+				add(params, value, challengeStart, challengeEnd, jsonMapper, out);
 				params = new LinkedHashMap<>();
-				parts = new ArrayList<>();
-				String rest = part.substring(AUTH_SCHEME.length()).trim();
+				challengeStart = part.start();
+				challengeEnd = -1;
+				String rest = part.text().substring(AUTH_SCHEME.length()).trim();
 				if (!rest.isEmpty() && putParam(params, rest)) {
-					parts.add(rest);
+					challengeEnd = part.end();
 				}
 			}
-			else if (startsOtherScheme(part)) {
+			else if (startsOtherScheme(part.text())) {
 				// e.g. Bearer realm="x": its params must not become part of the challenge
-				add(params, parts, jsonMapper, out);
+				add(params, value, challengeStart, challengeEnd, jsonMapper, out);
 				params = null;
 			}
-			else if (params != null && putParam(params, part)) {
-				parts.add(part);
+			else if (params != null && putParam(params, part.text())) {
+				challengeEnd = part.end();
 			}
 		}
-		add(params, parts, jsonMapper, out);
+		add(params, value, challengeStart, challengeEnd, jsonMapper, out);
 	}
 
-	private static void add(@Nullable Map<String, String> params, List<String> parts, JsonMapper jsonMapper,
-			List<MppChallenge> out) {
-		if (params == null || parts.isEmpty()) {
+	// The raw challenge is the received text from the scheme token to its last parameter
+	private static void add(@Nullable Map<String, String> params, String value, int start, int end,
+			JsonMapper jsonMapper, List<MppChallenge> out) {
+		if (params == null || end < 0) {
 			return;
 		}
 		for (String name : REQUIRED_PARAMS) {
@@ -315,7 +336,7 @@ final class MppChallenge {
 		if (request == null) {
 			return;
 		}
-		out.add(new MppChallenge(params, AUTH_SCHEME + " " + String.join(", ", parts), request, out.size()));
+		out.add(new MppChallenge(params, value.substring(start, end), request, out.size()));
 	}
 
 	// The request parameter is JSON, base64url-encoded without padding
@@ -369,13 +390,15 @@ final class MppChallenge {
 		return !startsScheme(part, AUTH_SCHEME);
 	}
 
-	// RFC 9110 parameter values may be quoted strings containing commas
-	private static List<String> splitOutsideQuotes(String value) {
-		List<String> parts = new ArrayList<>();
-		StringBuilder current = new StringBuilder();
+	// RFC 9110 parameter values may be quoted strings containing commas. Each part keeps
+	// its position in the header value, without surrounding whitespace.
+	private static List<Part> splitOutsideQuotes(String value) {
+		List<Part> parts = new ArrayList<>();
+		int partStart = 0;
 		boolean quoted = false;
 		boolean escaped = false;
-		for (char c : value.toCharArray()) {
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
 			if (escaped) {
 				escaped = false;
 			}
@@ -386,21 +409,27 @@ final class MppChallenge {
 				quoted = !quoted;
 			}
 			else if (c == ',' && !quoted) {
-				addPart(parts, current);
-				current.setLength(0);
-				continue;
+				addPart(parts, value, partStart, i);
+				partStart = i + 1;
 			}
-			current.append(c);
 		}
-		addPart(parts, current);
+		addPart(parts, value, partStart, value.length());
 		return parts;
 	}
 
-	private static void addPart(List<String> parts, StringBuilder current) {
-		String part = current.toString().trim();
-		if (!part.isEmpty()) {
-			parts.add(part);
+	private static void addPart(List<Part> parts, String value, int start, int end) {
+		while (start < end && Character.isWhitespace(value.charAt(start))) {
+			start++;
 		}
+		while (end > start && Character.isWhitespace(value.charAt(end - 1))) {
+			end--;
+		}
+		if (start < end) {
+			parts.add(new Part(value.substring(start, end), start, end));
+		}
+	}
+
+	private record Part(String text, int start, int end) {
 	}
 
 	/**

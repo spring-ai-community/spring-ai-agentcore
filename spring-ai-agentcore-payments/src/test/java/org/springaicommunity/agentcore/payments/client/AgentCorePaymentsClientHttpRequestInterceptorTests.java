@@ -67,6 +67,9 @@ class AgentCorePaymentsClientHttpRequestInterceptorTests {
 				.encodeToString("{\"methodDetails\":{\"chainId\":42431}}".getBytes(StandardCharsets.UTF_8))
 			+ "\"";
 
+	private static final String X402_REQUIREMENTS = "{\"x402Version\":1,\"accepts\":[{\"scheme\":\"exact\","
+			+ "\"network\":\"base-sepolia\"}]}";
+
 	private static final PaymentContext DEFAULTS = new PaymentContext("user-1", "instrument-1", "session-1");
 
 	private final AgentCorePaymentsClient payments = mock(AgentCorePaymentsClient.class);
@@ -109,6 +112,30 @@ class AgentCorePaymentsClientHttpRequestInterceptorTests {
 
 		assertThat(this.builder.build().get().uri(URL).retrieve().body(String.class)).isEqualTo("paid content");
 		this.server.verify();
+	}
+
+	@Test
+	void paysX402AndKeepsTheRequestsAuthorizationHeaderWhenBothProtocolsAreOffered() {
+		this.server.expect(once(), requestTo(URL))
+			.andRespond(withStatus(HttpStatus.PAYMENT_REQUIRED).header(HttpHeaders.WWW_AUTHENTICATE, MPP_CHALLENGE)
+				.contentType(MediaType.APPLICATION_JSON)
+				.body(X402_REQUIREMENTS));
+		this.server.expect(once(), requestTo(URL))
+			.andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer api-token"))
+			.andExpect(header("X-PAYMENT", "proof"))
+			.andRespond(withSuccess());
+		given(this.payments.generatePaymentHeader(any(), any())).willReturn(new PaymentHeader("X-PAYMENT", "proof"));
+
+		this.builder.build()
+			.get()
+			.uri(URL)
+			.header(HttpHeaders.AUTHORIZATION, "Bearer api-token")
+			.retrieve()
+			.toBodilessEntity();
+
+		this.server.verify();
+		then(this.payments).should()
+			.generatePaymentHeader(any(), argThat((PaymentRequired required) -> !required.offersMpp()));
 	}
 
 	@Test

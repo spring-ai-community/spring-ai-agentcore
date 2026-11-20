@@ -99,6 +99,10 @@ final class X402PaymentRequirements {
 		return new X402PaymentRequirements(jsonMapper, payload, v);
 	}
 
+	boolean hasOptions() {
+		return !this.payload.get("accepts").isEmpty();
+	}
+
 	int version() {
 		return this.version;
 	}

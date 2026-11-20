@@ -62,9 +62,10 @@ public class AgentCorePaymentsClientHttpRequestInterceptor implements ClientHttp
 	private static final Logger logger = LoggerFactory.getLogger(AgentCorePaymentsClientHttpRequestInterceptor.class);
 
 	// MPP sends its credential in the Authorization header, which would replace the
-	// request's own credential; checked before paying so that no budget is spent
+	// request's own credential: such a request pays only x402. Checked before paying so
+	// that no budget is spent
 	static final String MPP_AUTHORIZATION_CONFLICT = "Not paying: the request already has an Authorization header, "
-			+ "which the MPP payment credential would replace, for ";
+			+ "which the MPP payment credential would replace, and no x402 option is offered, for ";
 
 	private final AgentCorePaymentsClient payments;
 
@@ -101,8 +102,11 @@ public class AgentCorePaymentsClientHttpRequestInterceptor implements ClientHttp
 		}
 		PaymentRequired paymentRequired = read(response);
 		if (paymentRequired.offersMpp() && request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION) != null) {
-			throw new PaymentException(
-					MPP_AUTHORIZATION_CONFLICT + request.getURI().getHost() + request.getURI().getPath());
+			if (!paymentRequired.offersX402()) {
+				throw new PaymentException(
+						MPP_AUTHORIZATION_CONFLICT + request.getURI().getHost() + request.getURI().getPath());
+			}
+			paymentRequired = paymentRequired.withoutMpp();
 		}
 		logger.info("{} {}://{}{} requires payment, paying through AgentCore Payments", request.getMethod(),
 				request.getURI().getScheme(), request.getURI().getHost(), request.getURI().getPath());

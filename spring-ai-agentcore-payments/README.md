@@ -37,7 +37,7 @@ The module is enabled by setting the payment manager ARN.
 | `agentcore.payments.agent-name` | — | Agent name sent with data plane calls |
 | `agentcore.payments.network-preferences` | Solana / Base mainnets first, then testnets | Order used to choose between the networks a merchant accepts. MPP challenges are matched as `eip155:<chainId>` (EVM, Tempo) or `solana-mainnet` / `solana-devnet` / `solana-testnet`; unlisted networks still pay when nothing listed is offered |
 | `agentcore.payments.permit2-allowance-limit` | — | Permit2 allowance for the x402 `upto` scheme, in the asset's smallest unit |
-| `agentcore.payments.buyer-pays-gas-fees` | — | MPP only. `true` lets AgentCore Payments charge blockchain network fees to the user's wallet, on top of the amount, when the merchant does not sponsor them (`methodDetails.feePayer` not `true`); unset or `false`, such challenges are rejected by the service |
+| `agentcore.payments.buyer-pays-gas-fees` | — | MPP only. `true` lets AgentCore Payments charge blockchain network fees to the user's wallet, on top of the amount, when the merchant does not sponsor them (`methodDetails.feePayer` not `true`). Unset or `false`, such challenges are not paid (the service would reject them); another MPP challenge or the x402 option is paid instead |
 | `agentcore.payments.post-payment-delay` | `3s` | Blocking wait before the paid request is sent again. x402 authorizations carry a `validAfter` time; merchants that settle on chain right away can reject an authorization that is not valid yet. `0` disables the wait |
 | `agentcore.payments.paid-http-tool.enabled` | `false` | Register the `paidHttpRequest` tool; requires `allowed-hosts` |
 | `agentcore.payments.paid-http-tool.allowed-hosts` | — | Hosts the tool may call and pay: exact hostnames (case-insensitive, port ignored) or `*.example.com` for subdomains. Startup fails if the tool is enabled without it |
@@ -152,7 +152,7 @@ The merchant's `402` decides the protocol; nothing is configured per protocol, a
 
 When a `402` offers both, MPP is paid, as in the AWS SDK for Python. x402 is used only when no MPP challenge can be paid with the wallet (expired, another intent, or a method of another blockchain), and only before anything is signed: a payment that fails after signing is never retried with the other protocol.
 
-MPP sends the credential in the `Authorization` header. If the request already has one, for example an API token, the interceptor and `PaymentToolCallback` do not pay and throw a `PaymentException`: the payment would replace the request's own credential.
+MPP sends the credential in the `Authorization` header. If the request already has one, for example an API token, the interceptor and `PaymentToolCallback` keep it and pay the x402 option of the `402` instead; if only MPP is offered, they throw a `PaymentException` without paying.
 
 ### Who pays: user, instrument and session
 

@@ -195,7 +195,8 @@ class PaymentToolCallbackTests {
 
 		assertThatExceptionOfType(ToolExecutionException.class)
 			.isThrownBy(() -> this.paying(tool).call("{\"headers\":{\"authorization\":\"Bearer api-token\"}}"))
-			.withMessageContaining("already sends an Authorization header");
+			.withMessageContaining("already sends an Authorization header")
+			.withMessageContaining("no x402 option");
 		then(this.payments).shouldHaveNoInteractions();
 	}
 
