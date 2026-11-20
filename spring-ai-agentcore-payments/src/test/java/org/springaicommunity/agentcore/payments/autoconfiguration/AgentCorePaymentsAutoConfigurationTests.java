@@ -23,6 +23,7 @@ import io.modelcontextprotocol.server.McpServerFeatures;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springaicommunity.agentcore.payments.client.AgentCorePaymentsClientHttpRequestInterceptor;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import org.springaicommunity.agentcore.payments.core.PaymentSessionRegistry;
@@ -68,7 +69,7 @@ class AgentCorePaymentsAutoConfigurationTests {
 
 	@Test
 	void isDisabledWithoutPaymentManagerArn() {
-		this.contextRunner.run((context) -> assertThat(context).doesNotHaveBean(AgentCorePaymentsTemplate.class));
+		this.contextRunner.run((context) -> assertThat(context).doesNotHaveBean(AgentCorePaymentsClient.class));
 	}
 
 	@Test
@@ -77,7 +78,7 @@ class AgentCorePaymentsAutoConfigurationTests {
 			.withPropertyValues(ARN, "agentcore.payments.user-id=user-1",
 					"agentcore.payments.payment-session-id=session-1")
 			.run((context) -> {
-				assertThat(context).hasSingleBean(AgentCorePaymentsTemplate.class)
+				assertThat(context).hasSingleBean(AgentCorePaymentsClient.class)
 					.hasSingleBean(AgentCorePaymentsClientHttpRequestInterceptor.class)
 					.hasSingleBean(PaymentSessionRegistry.class)
 					.hasSingleBean(AgentCorePaymentsTools.class);
@@ -87,6 +88,22 @@ class AgentCorePaymentsAutoConfigurationTests {
 						"getPaymentInstrument", "listPaymentInstruments", "getPaymentInstrumentBalance",
 						"getPaymentSession");
 			});
+	}
+
+	@Test
+	@SuppressWarnings("removal")
+	void paymentsClientCanStillBeInjectedByItsFormerName() {
+		this.contextRunner.withPropertyValues(ARN)
+			.run((context) -> assertThat(context).hasSingleBean(AgentCorePaymentsTemplate.class));
+	}
+
+	@Test
+	void backsOffWhenTheApplicationDefinesAPaymentsClient() {
+		AgentCorePaymentsClient custom = new AgentCorePaymentsClient(mock(BedrockAgentCoreClient.class),
+				"arn:aws:bedrock-agentcore:us-east-1:123456789012:payment-manager/custom");
+		this.contextRunner.withPropertyValues(ARN)
+			.withBean(AgentCorePaymentsClient.class, () -> custom)
+			.run((context) -> assertThat(context.getBean(AgentCorePaymentsClient.class)).isSameAs(custom));
 	}
 
 	@Test

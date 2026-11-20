@@ -19,7 +19,7 @@ package org.springaicommunity.agentcore.payments.tool;
 import java.time.Duration;
 import java.util.Arrays;
 
-import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -37,13 +37,13 @@ import org.springframework.util.Assert;
  */
 public class AgentCorePaymentsToolCallbacks {
 
-	private final AgentCorePaymentsTemplate payments;
+	private final AgentCorePaymentsClient payments;
 
 	private final PaymentContextResolver contextResolver;
 
 	private final Duration postPaymentDelay;
 
-	public AgentCorePaymentsToolCallbacks(AgentCorePaymentsTemplate payments, PaymentContextResolver contextResolver,
+	public AgentCorePaymentsToolCallbacks(AgentCorePaymentsClient payments, PaymentContextResolver contextResolver,
 			Duration postPaymentDelay) {
 		Assert.notNull(payments, "payments must not be null");
 		Assert.notNull(contextResolver, "contextResolver must not be null");

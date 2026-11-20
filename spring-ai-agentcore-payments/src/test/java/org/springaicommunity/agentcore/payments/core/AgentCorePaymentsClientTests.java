@@ -60,12 +60,12 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 /**
- * Tests for {@link AgentCorePaymentsTemplate}.
+ * Tests for {@link AgentCorePaymentsClient}.
  *
  * @author Andrei Shakirin
  */
 @ExtendWith(MockitoExtension.class)
-class AgentCorePaymentsTemplateTests {
+class AgentCorePaymentsClientTests {
 
 	private static final String ARN = "arn:aws:bedrock-agentcore:us-east-1:123456789012:payment-manager/pm-1";
 
@@ -84,9 +84,9 @@ class AgentCorePaymentsTemplateTests {
 				.payload(Document.fromMap(Map.of("signature", Document.fromString("0xsig"))))
 				.build()))
 			.build());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
-		PaymentHeader header = template.generatePaymentHeader(CONTEXT,
+		PaymentHeader header = payments.generatePaymentHeader(CONTEXT,
 				X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY));
 
 		assertThat(header.name()).isEqualTo("X-PAYMENT");
@@ -116,10 +116,10 @@ class AgentCorePaymentsTemplateTests {
 			.message("Insufficient budget for session payment-session-mAB6PzTFxEcvL4B. "
 					+ "Pending amount: 0.001 USD, Transaction amount: 0.002000 USD")
 			.build());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
 		assertThatExceptionOfType(InsufficientBudgetException.class)
-			.isThrownBy(() -> template.generatePaymentHeader(CONTEXT,
+			.isThrownBy(() -> payments.generatePaymentHeader(CONTEXT,
 					X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)))
 			.withMessageNotContaining("payment-session-");
 	}
@@ -128,7 +128,7 @@ class AgentCorePaymentsTemplateTests {
 	@SuppressWarnings("unchecked")
 	void doesNotMapOtherValidationErrors() {
 		this.givenEthereumInstrument();
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 		for (String message : List.of("Insufficient funds in wallet for transaction",
 				"Invalid value for field 'session': value 'expired' is not an allowed state",
 				"Payment instrument not found: payment-instrument-1")) {
@@ -136,7 +136,7 @@ class AgentCorePaymentsTemplateTests {
 			willThrow(error).given(this.client).processPayment(any(Consumer.class));
 
 			assertThatExceptionOfType(ValidationException.class)
-				.isThrownBy(() -> template.generatePaymentHeader(CONTEXT,
+				.isThrownBy(() -> payments.generatePaymentHeader(CONTEXT,
 						X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)))
 				.isSameAs(error);
 		}
@@ -147,11 +147,11 @@ class AgentCorePaymentsTemplateTests {
 	void usesCallerTokenAndLooksUpInstrumentNetworkOnce() {
 		this.givenEthereumInstrument();
 		given(this.client.processPayment(any(Consumer.class))).willReturn(paymentWithProof());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 		PaymentRequired paymentRequired = X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY);
 
-		template.generatePaymentHeader(CONTEXT, paymentRequired, "purchase-1");
-		template.generatePaymentHeader(CONTEXT, paymentRequired);
+		payments.generatePaymentHeader(CONTEXT, paymentRequired, "purchase-1");
+		payments.generatePaymentHeader(CONTEXT, paymentRequired);
 
 		then(this.client).should().getPaymentInstrument(any(Consumer.class));
 		assertThat(this.capturedProcessPayments()).extracting(ProcessPaymentRequest::clientToken)
@@ -168,9 +168,9 @@ class AgentCorePaymentsTemplateTests {
 		given(this.client.processPayment(any(Consumer.class))).willThrow(ValidationException.builder()
 			.message("Payment session not found: payment-session-ppWwkpSBHBZhdJE")
 			.build());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
-		assertThatExceptionOfType(PaymentSessionNotFoundException.class).isThrownBy(() -> template
+		assertThatExceptionOfType(PaymentSessionNotFoundException.class).isThrownBy(() -> payments
 			.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)));
 	}
 
@@ -180,12 +180,12 @@ class AgentCorePaymentsTemplateTests {
 		this.givenEthereumInstrument();
 		given(this.client.processPayment(any(Consumer.class))).willReturn(ProcessPaymentResponse.builder().build())
 			.willReturn(paymentWithProof());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 		PaymentRequired paymentRequired = X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY);
 
 		assertThatExceptionOfType(PaymentException.class)
-			.isThrownBy(() -> template.generatePaymentHeader(CONTEXT, paymentRequired));
-		template.generatePaymentHeader(CONTEXT, paymentRequired);
+			.isThrownBy(() -> payments.generatePaymentHeader(CONTEXT, paymentRequired));
+		payments.generatePaymentHeader(CONTEXT, paymentRequired);
 
 		then(this.client).should(times(2)).getPaymentInstrument(any(Consumer.class));
 	}
@@ -195,14 +195,14 @@ class AgentCorePaymentsTemplateTests {
 	void grantsPermit2AllowanceOnlyForUptoScheme() {
 		this.givenEthereumInstrument();
 		given(this.client.processPayment(any(Consumer.class))).willReturn(paymentWithProof());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN, null,
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN, null,
 				NetworkPreferences.DEFAULT, "1000000");
 
-		template.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
+		payments.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
 				{"x402Version":1,"accepts":[
 				  {"scheme":"upto","network":"base-sepolia","maxAmountRequired":"5000"}
 				]}"""));
-		template.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY));
+		payments.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY));
 
 		assertThat(this.capturedProcessPayments())
 			.extracting((request) -> request.paymentInput().cryptoX402().permit2AllowanceLimit())
@@ -213,10 +213,10 @@ class AgentCorePaymentsTemplateTests {
 	@SuppressWarnings("unchecked")
 	void rejectsBalanceQueryOnChainOfAnotherNetwork() {
 		this.givenEthereumInstrument();
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
 		assertThatExceptionOfType(PaymentException.class)
-			.isThrownBy(() -> template.getPaymentInstrumentBalance("user-1", "instrument-1", BlockchainChainId.SOLANA,
+			.isThrownBy(() -> payments.getPaymentInstrumentBalance("user-1", "instrument-1", BlockchainChainId.SOLANA,
 					InstrumentBalanceToken.USDC))
 			.withMessageContaining("BASE_SEPOLIA");
 		then(this.client).should(never()).getPaymentInstrumentBalance(any(Consumer.class));
@@ -224,10 +224,10 @@ class AgentCorePaymentsTemplateTests {
 
 	@Test
 	void requiresPaymentSessionBeforeCallingTheService() {
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
 		assertThatExceptionOfType(PaymentConfigurationException.class)
-			.isThrownBy(() -> template.generatePaymentHeader(new PaymentContext("user-1", "instrument-1", null),
+			.isThrownBy(() -> payments.generatePaymentHeader(new PaymentContext("user-1", "instrument-1", null),
 					X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY)))
 			.withMessageContaining(PaymentContext.PAYMENT_SESSION_ID_KEY);
 		then(this.client).shouldHaveNoInteractions();
@@ -238,9 +238,9 @@ class AgentCorePaymentsTemplateTests {
 	void passesOutOfRangeAndDecimalNumbersOfTheOptionExactly() {
 		this.givenEthereumInstrument();
 		given(this.client.processPayment(any(Consumer.class))).willReturn(paymentWithProof());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
-		template.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
+		payments.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
 				{"x402Version":1,"accepts":[{"scheme":"exact","network":"eip155:8453","maxAmountRequired":"5000",
 				  "payTo":"0xabc","asset":"0xdef","extra":{"huge":1e348,"price":0.10000000000000000001}}]}"""));
 
@@ -257,10 +257,10 @@ class AgentCorePaymentsTemplateTests {
 
 	@Test
 	void rejectsNumberBeyondDecimalRangeBeforePaying() {
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
 		assertThatExceptionOfType(PaymentException.class)
-			.isThrownBy(() -> template.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
+			.isThrownBy(() -> payments.generatePaymentHeader(CONTEXT, X402PaymentRequirementsTests.v1("""
 					{"x402Version":1,"accepts":[{"scheme":"exact","network":"eip155:8453","maxAmountRequired":"5000",
 					  "payTo":"0xabc","asset":"0xdef","extra":{"n":123e456789012345678901234567890}}]}""")))
 			.withMessageContaining("not valid JSON");
@@ -278,9 +278,9 @@ class AgentCorePaymentsTemplateTests {
 						"nonce", Document.fromNumber(new BigDecimal("42")))))
 				.build()))
 			.build());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
-		PaymentHeader header = template.generatePaymentHeader(CONTEXT,
+		PaymentHeader header = payments.generatePaymentHeader(CONTEXT,
 				X402PaymentRequirementsTests.v1(X402PaymentRequirementsTests.V1_BODY));
 
 		JsonNode decoded = JsonMapper.builder()
@@ -296,9 +296,9 @@ class AgentCorePaymentsTemplateTests {
 	void createsPaymentSessionWithCallerToken() {
 		given(this.client.createPaymentSession(any(Consumer.class))).willReturn(
 				CreatePaymentSessionResponse.builder().paymentSession(PaymentSession.builder().build()).build());
-		AgentCorePaymentsTemplate template = new AgentCorePaymentsTemplate(this.client, ARN);
+		AgentCorePaymentsClient payments = new AgentCorePaymentsClient(this.client, ARN);
 
-		template.createPaymentSession("user-1", "0.50", 15, "session-token-1");
+		payments.createPaymentSession("user-1", "0.50", 15, "session-token-1");
 
 		ArgumentCaptor<Consumer<CreatePaymentSessionRequest.Builder>> captor = ArgumentCaptor.forClass(Consumer.class);
 		then(this.client).should().createPaymentSession(captor.capture());

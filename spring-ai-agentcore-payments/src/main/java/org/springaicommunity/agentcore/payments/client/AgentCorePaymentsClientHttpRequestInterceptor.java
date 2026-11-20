@@ -23,7 +23,7 @@ import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import org.springaicommunity.agentcore.payments.core.PaymentException;
 import org.springaicommunity.agentcore.payments.core.PaymentHeader;
@@ -61,7 +61,7 @@ public class AgentCorePaymentsClientHttpRequestInterceptor implements ClientHttp
 
 	private static final Logger logger = LoggerFactory.getLogger(AgentCorePaymentsClientHttpRequestInterceptor.class);
 
-	private final AgentCorePaymentsTemplate payments;
+	private final AgentCorePaymentsClient payments;
 
 	private final Supplier<PaymentContext> defaultContext;
 
@@ -69,7 +69,7 @@ public class AgentCorePaymentsClientHttpRequestInterceptor implements ClientHttp
 
 	/**
 	 * Creates the interceptor.
-	 * @param payments the payments template used to sign payments
+	 * @param payments the payments client used to sign payments
 	 * @param defaultContext supplies the payment context of requests without
 	 * {@link #PAYMENT_CONTEXT_ATTRIBUTE}
 	 * @param postPaymentDelay wait before sending the paid request, so that the signed
@@ -77,7 +77,7 @@ public class AgentCorePaymentsClientHttpRequestInterceptor implements ClientHttp
 	 * payment is already signed and counted against the session budget, but the paid
 	 * request is not sent
 	 */
-	public AgentCorePaymentsClientHttpRequestInterceptor(AgentCorePaymentsTemplate payments,
+	public AgentCorePaymentsClientHttpRequestInterceptor(AgentCorePaymentsClient payments,
 			Supplier<PaymentContext> defaultContext, Duration postPaymentDelay) {
 		Assert.notNull(payments, "payments must not be null");
 		Assert.notNull(defaultContext, "defaultContext must not be null");

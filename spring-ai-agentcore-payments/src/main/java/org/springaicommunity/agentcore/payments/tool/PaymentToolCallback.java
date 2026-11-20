@@ -22,7 +22,7 @@ import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.PaymentException;
 import org.springaicommunity.agentcore.payments.core.PaymentHeader;
 import org.springaicommunity.agentcore.payments.core.PaymentRequired;
@@ -71,7 +71,7 @@ public class PaymentToolCallback implements ToolCallback {
 
 	private final ToolCallback delegate;
 
-	private final AgentCorePaymentsTemplate payments;
+	private final AgentCorePaymentsClient payments;
 
 	private final PaymentContextResolver contextResolver;
 
@@ -80,14 +80,14 @@ public class PaymentToolCallback implements ToolCallback {
 	/**
 	 * Creates a paying wrapper.
 	 * @param delegate the tool to wrap
-	 * @param payments the payments template used to sign payments
+	 * @param payments the payments client used to sign payments
 	 * @param contextResolver resolves user, instrument and session per call
 	 * @param postPaymentDelay wait before calling the tool with the payment, so that the
 	 * signed authorization is valid on chain. If the thread is interrupted during the
 	 * wait, the payment is already signed and counted against the session budget, but the
 	 * paid request is not sent
 	 */
-	public PaymentToolCallback(ToolCallback delegate, AgentCorePaymentsTemplate payments,
+	public PaymentToolCallback(ToolCallback delegate, AgentCorePaymentsClient payments,
 			PaymentContextResolver contextResolver, Duration postPaymentDelay) {
 		Assert.notNull(delegate, "delegate must not be null");
 		Assert.notNull(payments, "payments must not be null");

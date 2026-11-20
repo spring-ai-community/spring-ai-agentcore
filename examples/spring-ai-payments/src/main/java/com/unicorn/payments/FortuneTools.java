@@ -25,7 +25,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 
 import org.jspecify.annotations.Nullable;
-import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.PaymentException;
 import org.springaicommunity.agentcore.payments.core.PaymentHeader;
 import org.springaicommunity.agentcore.payments.core.PaymentRequired;
@@ -52,13 +52,13 @@ class FortuneTools {
 
 	private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
-	private final AgentCorePaymentsTemplate payments;
+	private final AgentCorePaymentsClient payments;
 
 	private final PaymentContextResolver paymentContextResolver;
 
 	private final String fortuneUrl;
 
-	FortuneTools(AgentCorePaymentsTemplate payments, PaymentContextResolver paymentContextResolver,
+	FortuneTools(AgentCorePaymentsClient payments, PaymentContextResolver paymentContextResolver,
 			@Value("${app.fortune-url}") String fortuneUrl) {
 		this.payments = payments;
 		this.paymentContextResolver = paymentContextResolver;

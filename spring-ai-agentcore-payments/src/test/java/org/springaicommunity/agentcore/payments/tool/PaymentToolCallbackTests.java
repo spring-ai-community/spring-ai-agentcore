@@ -24,7 +24,7 @@ import java.util.function.Function;
 
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
-import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.InsufficientBudgetException;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import org.springaicommunity.agentcore.payments.core.PaymentException;
@@ -55,7 +55,7 @@ class PaymentToolCallbackTests {
 			+ "{\"statusCode\":402,\"headers\":{\"content-type\":\"application/json\"},"
 			+ "\"body\":{\"x402Version\":1,\"accepts\":[]}}";
 
-	private final AgentCorePaymentsTemplate payments = mock(AgentCorePaymentsTemplate.class);
+	private final AgentCorePaymentsClient payments = mock(AgentCorePaymentsClient.class);
 
 	private final PaymentContextResolver resolver = new DefaultPaymentContextResolver(
 			new PaymentContext("user-1", "instrument-1", "session-1"));

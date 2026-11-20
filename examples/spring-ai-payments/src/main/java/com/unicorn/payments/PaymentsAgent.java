@@ -41,7 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <li>{@code tool}: the generic {@code paidHttpRequest} tool and payment query tools; the
  * prompt names the URL</li>
  * <li>{@code custom}: domain tool on the JDK HttpClient that pays through
- * {@code AgentCorePaymentsTemplate} ({@link FortuneTools})</li>
+ * {@code AgentCorePaymentsClient} ({@link FortuneTools})</li>
  * </ul>
  * All three pay from the budget of the conversation, created by
  * {@link PaymentSessionRegistry} per user and AgentCore Runtime session.

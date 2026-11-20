@@ -21,6 +21,7 @@ import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.agentcore.payments.client.AgentCorePaymentsClientHttpRequestInterceptor;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import org.springaicommunity.agentcore.payments.core.PaymentSessionRegistry;
@@ -69,9 +70,12 @@ public class AgentCorePaymentsAutoConfiguration {
 		return BedrockAgentCoreClient.create();
 	}
 
+	// Registered as the deprecated subclass so that applications injecting
+	// AgentCorePaymentsTemplate keep working until it is removed in 3.0.0
 	@Bean
-	@ConditionalOnMissingBean
-	AgentCorePaymentsTemplate agentCorePaymentsTemplate(BedrockAgentCoreClient client,
+	@ConditionalOnMissingBean(AgentCorePaymentsClient.class)
+	@SuppressWarnings("removal")
+	AgentCorePaymentsTemplate agentCorePaymentsClient(BedrockAgentCoreClient client,
 			AgentCorePaymentsProperties properties) {
 		return new AgentCorePaymentsTemplate(client, properties.paymentManagerArn(), properties.agentName(),
 				properties.networkPreferences(), properties.permit2AllowanceLimit());
@@ -79,7 +83,7 @@ public class AgentCorePaymentsAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	PaymentSessionRegistry paymentSessionRegistry(AgentCorePaymentsTemplate payments,
+	PaymentSessionRegistry paymentSessionRegistry(AgentCorePaymentsClient payments,
 			AgentCorePaymentsProperties properties) {
 		AgentCorePaymentsProperties.Session session = properties.session();
 		return new PaymentSessionRegistry(payments, session.maxSpend(), session.expiry(), session.maxEntries());
@@ -100,7 +104,7 @@ public class AgentCorePaymentsAutoConfiguration {
 	@Bean
 	@ConditionalOnMissingBean
 	AgentCorePaymentsClientHttpRequestInterceptor agentCorePaymentsClientHttpRequestInterceptor(
-			AgentCorePaymentsTemplate payments, PaymentContextResolver contextResolver,
+			AgentCorePaymentsClient payments, PaymentContextResolver contextResolver,
 			AgentCorePaymentsProperties properties) {
 		return new AgentCorePaymentsClientHttpRequestInterceptor(payments, () -> contextResolver.resolve(null),
 				properties.postPaymentDelay());
@@ -108,14 +112,14 @@ public class AgentCorePaymentsAutoConfiguration {
 
 	@Bean
 	@ConditionalOnMissingBean
-	AgentCorePaymentsToolCallbacks agentCorePaymentsToolCallbacks(AgentCorePaymentsTemplate payments,
+	AgentCorePaymentsToolCallbacks agentCorePaymentsToolCallbacks(AgentCorePaymentsClient payments,
 			PaymentContextResolver contextResolver, AgentCorePaymentsProperties properties) {
 		return new AgentCorePaymentsToolCallbacks(payments, contextResolver, properties.postPaymentDelay());
 	}
 
 	@Bean
 	@ConditionalOnMissingBean
-	AgentCorePaymentsTools agentCorePaymentsTools(AgentCorePaymentsTemplate payments,
+	AgentCorePaymentsTools agentCorePaymentsTools(AgentCorePaymentsClient payments,
 			PaymentContextResolver contextResolver, AgentCorePaymentsClientHttpRequestInterceptor paymentsInterceptor,
 			AgentCorePaymentsProperties properties) {
 		PaidHttpRequestTool paidHttpRequestTool = null;

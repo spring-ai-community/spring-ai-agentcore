@@ -6,7 +6,7 @@ An AgentCore Runtime agent that pays for x402-protected APIs through [AgentCore 
 |---|---|---|---|
 | `interceptor` (default) | 1. HTTP client interceptor: domain tool on a `RestClient` with `AgentCorePaymentsClientHttpRequestInterceptor` | [`MarketRecapTools`](src/main/java/com/unicorn/payments/MarketRecapTools.java), [`PaymentsConfiguration`](src/main/java/com/unicorn/payments/PaymentsConfiguration.java) | market recap |
 | `tool` | 2. `paidHttpRequest` tool plus payment query tools; the prompt names the URL | auto-configured `AgentCorePaymentsTools`, enabled for the two test merchants in `application.properties` | URL from the prompt, allowed hosts only |
-| `custom` | 3. Own integration: domain tool on the JDK `HttpClient` calling `AgentCorePaymentsTemplate.generatePaymentHeader(...)` | [`FortuneTools`](src/main/java/com/unicorn/payments/FortuneTools.java) | fortune reading |
+| `custom` | 3. Own integration: domain tool on the JDK `HttpClient` calling `AgentCorePaymentsClient.generatePaymentHeader(...)` | [`FortuneTools`](src/main/java/com/unicorn/payments/FortuneTools.java) | fortune reading |
 
 All three pay from the budget of the conversation: [`PaymentsAgent`](src/main/java/com/unicorn/payments/PaymentsAgent.java) calls `PaymentSessionRegistry.getOrCreate(userId, runtimeSessionId)` once per invocation (0.10 USD for 30 minutes, see `application.properties`) and passes user and payment session to the tools through the tool context.
 

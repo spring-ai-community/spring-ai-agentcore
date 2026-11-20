@@ -22,7 +22,7 @@ import java.util.Locale;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import org.jspecify.annotations.Nullable;
-import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsTemplate;
+import org.springaicommunity.agentcore.payments.core.AgentCorePaymentsClient;
 import org.springaicommunity.agentcore.payments.core.PaymentContext;
 import software.amazon.awssdk.services.bedrockagentcore.model.Amount;
 import software.amazon.awssdk.services.bedrockagentcore.model.BlockchainChainId;
@@ -58,11 +58,11 @@ public class PaymentQueryTools {
 
 	private static final String CHAIN_DESCRIPTION = "BASE_SEPOLIA, BASE, ETHEREUM, SOLANA or SOLANA_DEVNET";
 
-	private final AgentCorePaymentsTemplate payments;
+	private final AgentCorePaymentsClient payments;
 
 	private final PaymentContextResolver contextResolver;
 
-	public PaymentQueryTools(AgentCorePaymentsTemplate payments, PaymentContextResolver contextResolver) {
+	public PaymentQueryTools(AgentCorePaymentsClient payments, PaymentContextResolver contextResolver) {
 		Assert.notNull(payments, "payments must not be null");
 		Assert.notNull(contextResolver, "contextResolver must not be null");
 		this.payments = payments;
