@@ -26,6 +26,8 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -329,11 +331,19 @@ class AgentCoreSessionRepositoryTests {
 	}
 
 	@Test
-	void findByMetadataRejectsBlankArguments() {
-		assertThatThrownBy(() -> this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, "  "))
+	void findByMetadataRejectsNullValueAndBlankName() {
+		assertThatThrownBy(() -> this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, null))
 			.isInstanceOf(IllegalArgumentException.class);
 		assertThatThrownBy(() -> this.repository.findByMetadata(" ", ACTOR))
 			.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = { "", "  ", " alice ", "alice ", "tenant::alice", ":alice", "ali\nce" })
+	void findByPrincipalMatchesExactlyAndNeverQueriesAnInvalidActor(String value) {
+		// Principals are trimmed actor ids, so " alice " must not find alice's sessions.
+		assertThat(this.repository.findByMetadata(SessionAttributes.PRINCIPAL_NAME, value)).isEmpty();
+		then(this.client).shouldHaveNoInteractions();
 	}
 
 	@Test

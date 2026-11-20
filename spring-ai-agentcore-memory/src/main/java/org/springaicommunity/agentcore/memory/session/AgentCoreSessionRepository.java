@@ -352,12 +352,13 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 	 * (see {@link #save(Session)}). Returned {@link Session} ids are compound
 	 * ({@code "userId:sessionId"}) so they round-trip through {@link #findById(String)}
 	 * and {@link #findEvents(String, EventFilter)}. {@code createdAt} comes from each
-	 * {@code SessionSummary}; {@code expiresAt} is {@code null}. An unknown user yields
-	 * an empty list rather than an exception. Sessions are returned oldest first, by
-	 * creation time and then id; a session without a creation time sorts as
-	 * {@link #SYNTHETIC_CREATED_AT}.
+	 * {@code SessionSummary}; {@code expiresAt} is {@code null}. The value is compared
+	 * exactly: an unknown user, or a value that cannot be an actor id (blank, surrounding
+	 * whitespace, a blank part between colons, control characters), yields an empty list
+	 * without calling AgentCore. Sessions are returned oldest first, by creation time and
+	 * then id; a session without a creation time sorts as {@link #SYNTHETIC_CREATED_AT}.
 	 * @param name the metadata key
-	 * @param value the user id (AgentCore actor); must not be blank
+	 * @param value the user id (AgentCore actor); must not be null
 	 * @return the user's sessions, possibly empty
 	 */
 	@Override
@@ -365,16 +366,24 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 		if (name == null || name.isBlank()) {
 			throw new IllegalArgumentException("name must not be null or empty");
 		}
-		if (value == null || value.trim().isEmpty()) {
-			throw new IllegalArgumentException("value must not be null or empty");
+		if (value == null) {
+			throw new IllegalArgumentException("value must not be null");
 		}
 		if (!SessionAttributes.PRINCIPAL_NAME.equals(name) && !ACTOR_ID_METADATA_KEY.equals(name)) {
 			logger.debug("findByMetadata({}) returns no sessions: only {} and {} are known for AgentCore sessions",
 					name, SessionAttributes.PRINCIPAL_NAME, ACTOR_ID_METADATA_KEY);
 			return List.of();
 		}
+		// The value is compared exactly. Principals come from parsed sessionIds, whose
+		// segments are trimmed and never blank or control characters, so a value that is
+		// not such an actor id matches no session; querying a trimmed copy would match
+		// another principal.
+		if (!isActorId(value)) {
+			logger.debug("findByMetadata({}) returns no sessions: the value is not a valid actor id", name);
+			return List.of();
+		}
 		String userId = value;
-		String actorId = value.trim();
+		String actorId = value;
 		int maxResults = Math.min(Math.max(this.pageSize, 1), SERVICE_MAX_RESULTS);
 		try {
 			List<Session> sessions = new ArrayList<>();
@@ -895,6 +904,13 @@ public final class AgentCoreSessionRepository implements SessionRepository {
 			throw new IllegalArgumentException("MemoryId cannot be null or empty");
 		}
 		return memoryId;
+	}
+
+	private static boolean isActorId(String value) {
+		if (value.isEmpty() || !value.equals(value.trim()) || AgentCoreMemoryConversationIdParser.hasBlankPart(value)) {
+			return false;
+		}
+		return value.chars().noneMatch((c) -> c < 0x20 || c == 0x7F);
 	}
 
 	private static void validateSessionId(String sessionId) {
