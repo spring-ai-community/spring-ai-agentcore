@@ -132,8 +132,8 @@ public class PaymentToolCallback implements ToolCallback {
 			// budget is spent
 			if (!paymentRequired.offersX402()) {
 				throw new ToolExecutionException(this.getToolDefinition(), new PaymentException("Tool '" + toolName
-						+ "' already sends an Authorization header, which "
-						+ "the MPP payment credential would replace, and no x402 option is offered; not paying"));
+						+ "' already sends an Authorization header, and the 402 offers only MPP, which sends its "
+						+ "credential in that header; not paying"));
 			}
 			paymentRequired = paymentRequired.withoutMpp();
 		}

@@ -458,8 +458,7 @@ public class AgentCorePaymentsClient {
 
 	// Selects the MPP challenge to pay, or returns null when none can be paid but the
 	// response also offers x402. Falling back is only allowed here, before
-	// ProcessPayment:
-	// after a payment was submitted, paying x402 could charge twice.
+	// ProcessPayment, because paying x402 after a submitted payment could charge twice.
 	private @Nullable MppChallenge selectMppChallenge(List<MppChallenge> challenges, String instrumentNetwork,
 			PaymentRequired response) {
 		try {

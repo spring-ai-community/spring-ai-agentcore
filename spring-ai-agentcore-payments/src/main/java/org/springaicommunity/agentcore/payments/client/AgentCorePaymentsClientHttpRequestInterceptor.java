@@ -64,8 +64,8 @@ public class AgentCorePaymentsClientHttpRequestInterceptor implements ClientHttp
 	// MPP sends its credential in the Authorization header, which would replace the
 	// request's own credential: such a request pays only x402. Checked before paying so
 	// that no budget is spent
-	static final String MPP_AUTHORIZATION_CONFLICT = "Not paying: the request already has an Authorization header, "
-			+ "which the MPP payment credential would replace, and no x402 option is offered, for ";
+	static final String MPP_AUTHORIZATION_CONFLICT = "Not paying: the 402 offers only MPP, which sends its credential "
+			+ "in the Authorization header, and the request already has one, for ";
 
 	private final AgentCorePaymentsClient payments;
 

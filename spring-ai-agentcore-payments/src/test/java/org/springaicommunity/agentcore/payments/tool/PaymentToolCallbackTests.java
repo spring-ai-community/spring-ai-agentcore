@@ -41,6 +41,7 @@ import org.springframework.ai.tool.execution.ToolExecutionException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -184,20 +185,40 @@ class PaymentToolCallbackTests {
 
 	@Test
 	void doesNotPayMppWhenToolInputHasItsOwnAuthorizationHeader() {
-		String request = Base64.getUrlEncoder()
-			.withoutPadding()
-			.encodeToString("{\"methodDetails\":{\"chainId\":42431}}".getBytes(StandardCharsets.UTF_8));
-		String mppRequired = PaymentToolCallback.PAYMENT_REQUIRED_MARKER
-				+ "{\"statusCode\":402,\"headers\":{\"WWW-Authenticate\":\"Payment id=\\\"c1\\\", "
-				+ "realm=\\\"m\\\", method=\\\"tempo\\\", intent=\\\"charge\\\", request=\\\"" + request
-				+ "\\\"\"},\"body\":null}";
-		RecordingTool tool = new RecordingTool((input) -> mppRequired);
+		RecordingTool tool = new RecordingTool((input) -> mppRequired("null"));
 
 		assertThatExceptionOfType(ToolExecutionException.class)
 			.isThrownBy(() -> this.paying(tool).call("{\"headers\":{\"authorization\":\"Bearer api-token\"}}"))
 			.withMessageContaining("already sends an Authorization header")
-			.withMessageContaining("no x402 option");
+			.withMessageContaining("offers only MPP");
 		then(this.payments).shouldHaveNoInteractions();
+	}
+
+	@Test
+	void paysX402AndKeepsToolInputAuthorizationHeaderWhenBothProtocolsAreOffered() {
+		RecordingTool tool = new RecordingTool((input) -> (input.contains("X-PAYMENT")) ? "{\"statusCode\":200}"
+				: mppRequired("{\"x402Version\":1,\"accepts\":[{\"scheme\":\"exact\",\"network\":\"base\"}]}"));
+		given(this.payments.generatePaymentHeader(any(), any())).willReturn(new PaymentHeader("X-PAYMENT", "proof"));
+
+		String result = this.paying(tool).call("{\"headers\":{\"Authorization\":\"Bearer api-token\"}}");
+
+		assertThat(result).isEqualTo("{\"statusCode\":200}");
+		assertThat(tool.inputs.get(1)).contains("\"Authorization\":\"Bearer api-token\"")
+			.contains("\"X-PAYMENT\":\"proof\"");
+		then(this.payments).should()
+			.generatePaymentHeader(any(), argThat((PaymentRequired required) -> !required.offersMpp()));
+	}
+
+	// a tool result for a 402 with an MPP challenge and the given JSON body
+	private static String mppRequired(String body) {
+		String request = Base64.getUrlEncoder()
+			.withoutPadding()
+			.encodeToString(
+					"{\"methodDetails\":{\"chainId\":42431,\"feePayer\":true}}".getBytes(StandardCharsets.UTF_8));
+		return PaymentToolCallback.PAYMENT_REQUIRED_MARKER
+				+ "{\"statusCode\":402,\"headers\":{\"WWW-Authenticate\":\"Payment id=\\\"c1\\\", "
+				+ "realm=\\\"m\\\", method=\\\"tempo\\\", intent=\\\"charge\\\", request=\\\"" + request
+				+ "\\\"\"},\"body\":" + body + "}";
 	}
 
 	private PaymentToolCallback paying(ToolCallback tool) {

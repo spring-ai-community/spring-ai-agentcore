@@ -150,7 +150,7 @@ class AgentCorePaymentsClientHttpRequestInterceptorTests {
 				.header(HttpHeaders.AUTHORIZATION, "Bearer api-token")
 				.retrieve()
 				.toBodilessEntity())
-			.withMessageContaining("already has an Authorization header");
+			.withMessageContaining("offers only MPP");
 		then(this.payments).should(never()).generatePaymentHeader(any(), any());
 	}
 
