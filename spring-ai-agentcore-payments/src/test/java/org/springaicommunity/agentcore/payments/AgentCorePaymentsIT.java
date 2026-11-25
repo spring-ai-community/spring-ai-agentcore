@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AgentCorePaymentsIT {
 
 	@Test
-	void paysForX402EndpointWithinSessionBudget() {
+	void paysForPaidEndpointWithinSessionBudget() {
 		String region = System.getenv().getOrDefault("AGENTCORE_PAYMENTS_REGION", "us-east-1");
 		String userId = System.getenv("AGENTCORE_PAYMENTS_USER_ID");
 		String instrumentId = System.getenv("AGENTCORE_PAYMENTS_INSTRUMENT_ID");

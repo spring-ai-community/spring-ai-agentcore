@@ -26,8 +26,9 @@ cat <<EOT
 Wallet created: $WALLET (instrument $INSTRUMENT_ID, user $USER_ID)
 
 Next steps:
-  1. Fund it with USDC on Base Sepolia: https://faucet.circle.com
-  2. Log in with $EMAIL in the Privy frontend and click "Connect agent" (see README.md)
+  1. Fund it: USDC on Base Sepolia (x402), https://faucet.circle.com, and pathUSD on Tempo Moderato (MPP)
+  2. Log in with $EMAIL in the Privy frontend and click "Connect agent"
+     (both: ../README.md, Setup step 4)
   3. Run the example with:
      export PAYMENT_REGION=$REGION
      export PAYMENT_MANAGER_ARN=$MANAGER_ARN

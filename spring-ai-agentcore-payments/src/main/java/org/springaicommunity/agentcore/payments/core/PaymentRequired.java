@@ -17,6 +17,8 @@
 package org.springaicommunity.agentcore.payments.core;
 
 import org.jspecify.annotations.Nullable;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.springframework.http.HttpHeaders;
 
@@ -32,5 +34,47 @@ public record PaymentRequired(int statusCode, HttpHeaders headers, @Nullable Str
 
 	/** HTTP status code for Payment Required. */
 	public static final int PAYMENT_REQUIRED_STATUS = 402;
+
+	private static final JsonMapper JSON_MAPPER = JsonMapper.builder()
+		.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+		.build();
+
+	/**
+	 * Whether the response offers a valid MPP challenge
+	 * ({@code WWW-Authenticate: Payment ...}). Paying it sends the credential in the
+	 * {@code Authorization} header of the retried request, replacing any credential the
+	 * request already carries.
+	 * @return {@code true} if an MPP challenge is offered
+	 */
+	public boolean offersMpp() {
+		return !MppChallenge.parse(this.headers, JSON_MAPPER).isEmpty();
+	}
+
+	/**
+	 * Whether the response offers x402 payment options.
+	 * @return {@code true} if valid x402 requirements with at least one option are
+	 * present
+	 */
+	public boolean offersX402() {
+		try {
+			return X402PaymentRequirements.parse(this, JSON_MAPPER).hasOptions();
+		}
+		catch (PaymentException ex) {
+			return false;
+		}
+	}
+
+	/**
+	 * Returns this response without its {@code WWW-Authenticate} headers, so that only
+	 * x402 options are paid. Used when the retried request must keep its own
+	 * {@code Authorization} header, which an MPP payment would replace.
+	 * @return a copy without MPP challenges
+	 */
+	public PaymentRequired withoutMpp() {
+		HttpHeaders headers = new HttpHeaders();
+		headers.putAll(this.headers);
+		headers.remove(HttpHeaders.WWW_AUTHENTICATE);
+		return new PaymentRequired(this.statusCode, headers, this.body);
+	}
 
 }

@@ -78,7 +78,7 @@ public class AgentCorePaymentsAutoConfiguration {
 	AgentCorePaymentsTemplate agentCorePaymentsClient(BedrockAgentCoreClient client,
 			AgentCorePaymentsProperties properties) {
 		return new AgentCorePaymentsTemplate(client, properties.paymentManagerArn(), properties.agentName(),
-				properties.networkPreferences(), properties.permit2AllowanceLimit());
+				properties.networkPreferences(), properties.permit2AllowanceLimit(), properties.buyerPaysGasFees());
 	}
 
 	@Bean
